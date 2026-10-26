@@ -445,6 +445,33 @@ async function runScriptMeasured(script, env, run) {
   }
   await access(file);
   if (run.stopRequested) return { exitCode: null, stdout: '', stderr: '', cancelled: true };
+
+  const logsDir = path.join(PROJECT_ROOT, 'logs', 'runs');
+  await fs.promises.mkdir(logsDir, { recursive: true });
+  const logFilePath = path.join(logsDir, `${run.id}.log`);
+  const logRelPath = path.relative(PROJECT_ROOT, logFilePath).replace(/\\/g, '/');
+  run.logFile = logRelPath;
+
+  const startTime = new Date();
+  const logHeader = [
+    '================================================================================',
+    `[调用唯一ID] ${run.id}`,
+    `[执行脚本]   ${script.id} (${script.title})`,
+    `[目标设备]   ${env.YUNMOMO_DEVICE_ID || '无'}`,
+    `[启动时间]   ${startTime.toLocaleString('zh-CN')} (${startTime.toISOString()})`,
+    `[环境版本]   SDK=${env.YUNMOMO_SDK_VERSION || (isV2 ? 'v2' : 'v3')}`,
+    '================================================================================',
+    '',
+    '--- 原始标准输出与错误 (STDOUT / STDERR) ---',
+    ''
+  ].join('\n');
+  await fs.promises.writeFile(logFilePath, logHeader, 'utf8');
+
+  env = {
+    ...env,
+    YUNMOMO_SCRIPT_RUN_ID: run.id,
+  };
+
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [file, ...(script.args ?? [])], {
       cwd: PROJECT_ROOT,
@@ -466,22 +493,45 @@ async function runScriptMeasured(script, env, run) {
     child.stdout.on('data', chunk => {
       stdout = appendOutput(stdout, chunk);
       run.stdout = stdout;
+      fs.promises.appendFile(logFilePath, chunk).catch(() => {});
     });
     child.stderr.on('data', chunk => {
       stderr = appendOutput(stderr, chunk);
       run.stderr = stderr;
+      fs.promises.appendFile(logFilePath, chunk).catch(() => {});
     });
     child.on('error', err => {
+      const footer = [
+        '',
+        '================================================================================',
+        `[异常失败]   ${err.message}`,
+        `[结束时间]   ${new Date().toISOString()}`,
+        '================================================================================'
+      ].join('\n');
+      fs.promises.appendFile(logFilePath, footer).catch(() => {});
       settleScriptChild(run, { error: err });
       reject(err);
     });
     child.on('close', code => {
       settleScriptChild(run, { code });
+      const finishTime = new Date();
+      const exitCode = step && code === 0 && /"ok"\s*:\s*false/.test(stdout + stderr) ? 1 : typeof code === 'number' ? code : -1;
+      const logFooter = [
+        '',
+        '================================================================================',
+        `[结束时间]   ${finishTime.toLocaleString('zh-CN')} (${finishTime.toISOString()})`,
+        `[退出代码]   ${exitCode}`,
+        `[执行耗时]   ${Date.now() - startTime.getTime()} ms`,
+        '================================================================================'
+      ].join('\n');
+      fs.promises.appendFile(logFilePath, logFooter).catch(() => {});
       resolve({
-        exitCode: step && code === 0 && /"ok"\s*:\s*false/.test(stdout + stderr) ? 1 : typeof code === 'number' ? code : -1,
+        exitCode,
         stdout: redact(stdout),
         stderr: redact(stderr),
-        cancelled: run.stopRequested
+        cancelled: run.stopRequested,
+        logFile: logRelPath,
+        scriptRunId: run.id
       });
     });
   });
@@ -627,7 +677,8 @@ async function executeScriptMeasured(body) {
       selectedDevice: selected,
       exitCode: result.exitCode,
       stdout: result.stdout,
-      stderr: result.stderr
+      stderr: result.stderr,
+      logFile: result.logFile || run.logFile || `logs/runs/${scriptRunId}.log`
     };
   } finally {
     if (lockedDeviceId) {
@@ -1022,6 +1073,8 @@ async function handler(request, response) {
           json(response, 200, {
             ok: true,
             active: true,
+            scriptRunId: run.id,
+            logFile: run.logFile || `logs/runs/${run.id}.log`,
             stdout: redact(run.stdout || ''),
             stderr: redact(run.stderr || ''),
             status: run.status
@@ -1030,10 +1083,27 @@ async function handler(request, response) {
           json(response, 200, {
             ok: true,
             active: false,
+            scriptRunId,
+            logFile: `logs/runs/${scriptRunId}.log`,
             stdout: '',
             stderr: '',
             status: 'finished'
           });
+        }
+        return;
+      }
+      if (url.pathname === '/api/logs') {
+        const scriptRunId = String(url.searchParams.get('scriptRunId') || url.searchParams.get('runId') || '').trim();
+        if (!/^[A-Za-z0-9_-]{8,128}$/.test(scriptRunId)) {
+          json(response, 400, { ok: false, error: '无效的日志调用编号' });
+          return;
+        }
+        const logPath = path.join(PROJECT_ROOT, 'logs', 'runs', `${scriptRunId}.log`);
+        try {
+          const content = await fs.promises.readFile(logPath, 'utf8');
+          json(response, 200, { ok: true, scriptRunId, content });
+        } catch {
+          json(response, 404, { ok: false, error: '未找到指定调用的日志文件' });
         }
         return;
       }

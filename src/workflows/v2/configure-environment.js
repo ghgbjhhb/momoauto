@@ -76,16 +76,19 @@ async function openKeyAuth(phone, control, worker, directory, state, found, opti
     launchEvidence: observation => keyAuthEvidence(observation.items),
     offsets: [{ y: -35 }, { y: -50 }, { y: 0 }],
     prepare: async observation => {
-      if (keyAuthLoading(observation.items)) {
+      const isTarget = successState(observation.items).ok || failureState(observation.items).failed;
+      const isLauncher = homeAnchorMatches(observation.items).length >= 2;
+      // 只要已进入“密钥认证”且既未完成判定也未退回桌面，就持续等待核验结果出炉，严禁过早下发 BACK 键关闭应用
+      if (!isTarget && !isLauncher) {
         return await shared.observeUntil(
           phone,
           worker,
           directory,
           state,
-          obs => !keyAuthLoading(obs.items) || successState(obs.items).ok || failureState(obs.items).failed,
+          obs => successState(obs.items).ok || failureState(obs.items).failed || homeAnchorMatches(obs.items).length >= 2,
           options.appTimeoutMs,
           options.pollMs,
-          'key-auth-wait-loaded'
+          'key-auth-wait-attestation'
         );
       }
       return observation;

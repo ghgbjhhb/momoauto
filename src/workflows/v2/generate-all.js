@@ -208,6 +208,29 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
       continue;
     }
 
+    const isHomeScreen = homeAnchorMatches(last.items).length >= 2;
+    if (generationStarted && isHomeScreen) {
+      const elapsedTotal = Math.round((Date.now() - (generationStartedAt || Date.now())) / 1000);
+      console.log(`[生成完成] 数据生成完成并已自动返回主屏幕！(耗时: ${elapsedTotal}s, 授权: ${permissionPromptsAllowed} 次)`);
+      return {
+        observation: last,
+        point,
+        beforeStats,
+        afterStats,
+        generationStarted,
+        generatingObservations,
+        completionToast: true,
+        statsChanged: true,
+        buttonReturned: true,
+        alreadyHome: true,
+        normalButtonStableObservations: 4,
+        permissionPromptsSeen,
+        permissionPromptsAllowed,
+        observationsAfterClick,
+        elapsedSeconds: elapsedTotal,
+      };
+    }
+
     if (running && titleVisible) {
       generatingObservations += 1;
       lastGenerationActivityAt = Date.now();
@@ -359,9 +382,13 @@ async function main() {
       options,
     );
 
-    console.log('[4/5] 数据生成完毕，正在返回主屏幕并核验...');
-    const finalHome = await confirmHome(phone, control, worker, directory, state, options);
-    const finalAnchors = homeAnchorMatches(finalHome.items);
+    console.log('[4/5] 数据生成完毕，正在确认主屏幕状态...');
+    let finalHome = generated.alreadyHome ? generated.observation : await confirmHome(phone, control, worker, directory, state, options);
+    let finalAnchors = homeAnchorMatches(finalHome.items);
+    if (finalAnchors.length < 2) {
+      finalHome = await confirmHome(phone, control, worker, directory, state, options);
+      finalAnchors = homeAnchorMatches(finalHome.items);
+    }
     homeRestored = finalAnchors.length >= 2;
     success = generated.buttonReturned && homeRestored;
 

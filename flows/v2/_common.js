@@ -23,14 +23,37 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
   const deviceId = String(env.YUNMOMO_DEVICE_ID || '');
   if (!/^[A-Za-z0-9_-]+$/.test(deviceId)) throw new Error('请用 YUNMOMO_DEVICE_ID 指定目标云机');
   if (!env.YUNMOMO_TOKEN) throw new Error('请通过 YUNMOMO_TOKEN 提供当前登录令牌');
+
+  const runId = env.YUNMOMO_SCRIPT_RUN_ID || ('run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  const logsDir = path.join(PROJECT_ROOT, 'logs', 'runs');
+  await require('node:fs/promises').mkdir(logsDir, { recursive: true });
+  const logFile = path.join(logsDir, `${runId}.log`);
+  const logRel = path.relative(PROJECT_ROOT, logFile).replace(/\\/g, '/');
+
+  const startTime = new Date();
+  const header = [
+    '================================================================================',
+    `[调用唯一ID] ${runId}`,
+    `[流程步骤]   第 ${order}/8 步：${step.name}`,
+    `[目标设备]   ${deviceId}`,
+    `[启动时间]   ${startTime.toLocaleString('zh-CN')} (${startTime.toISOString()})`,
+    `[执行脚本]   ${step.source}`,
+    '================================================================================',
+    '',
+    '--- 原始标准输出与错误 ---',
+    ''
+  ].join('\n');
+  await require('node:fs/promises').writeFile(logFile, header, 'utf8');
+
   const childEnv = timing.childEnv({
     ...env,
     YUNMOMO_DEVICE_ID: deviceId,
     YUNMOMO_SDK_VERSION: 'v2',
     [step.confirmation]: 'YES',
     YUNMOMO_VERIFY_ONLY: '0',
+    YUNMOMO_SCRIPT_RUN_ID: runId,
   });
-  onOutput(`开始 ${order}/8：${step.name}，目标设备 ${deviceId}\n`);
+  onOutput(`[调用ID: ${runId}]\n开始 ${order}/8：${step.name}，目标设备 ${deviceId}\n`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(PROJECT_ROOT, step.source), '--execute'], {
       cwd: PROJECT_ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
@@ -40,15 +63,40 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
       const text = redact(data.toString());
       output += text;
       onOutput(text);
+      require('node:fs/promises').appendFile(logFile, data.toString()).catch(() => {});
     };
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);
-    child.once('error', error => { error.output = output; reject(error); });
+    child.once('error', error => {
+      error.output = output;
+      error.runId = runId;
+      error.logFile = logRel;
+      const footer = [
+        '',
+        '================================================================================',
+        `[异常失败]   ${error.message}`,
+        `[结束时间]   ${new Date().toISOString()}`,
+        '================================================================================'
+      ].join('\n');
+      require('node:fs/promises').appendFile(logFile, footer).catch(() => {});
+      reject(error);
+    });
     child.once('close', (code, signal) => {
-      if (code === 0 && !/"ok"\s*:\s*false/.test(output)) resolve({ output, code });
+      const footer = [
+        '',
+        '================================================================================',
+        `[退出代码]   ${code}`,
+        `[结束时间]   ${new Date().toISOString()}`,
+        '================================================================================'
+      ].join('\n');
+      require('node:fs/promises').appendFile(logFile, footer).catch(() => {});
+      onOutput(`[原始日志] 已归档至 ${logRel}\n`);
+      if (code === 0 && !/"ok"\s*:\s*false/.test(output)) resolve({ output, code, runId, logFile: logRel });
       else {
         const error = new Error(`${step.name}执行失败（退出码 ${code}，信号 ${signal || '无'}）`);
         error.output = output;
+        error.runId = runId;
+        error.logFile = logRel;
         reject(error);
       }
     });

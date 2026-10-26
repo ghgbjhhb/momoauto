@@ -255,8 +255,9 @@ async function requestJson(url, options) {
 }
 
 function createScriptRunId() {
-  return globalThis.crypto?.randomUUID?.() ||
-    'web-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `run-${ts}-${rand}`;
 }
 
 function findScriptRunButton(scriptId) {
@@ -1047,9 +1048,19 @@ function renderScripts() {
   }
 }
 
-function writeOutput(title, lines) {
+function writeOutput(title, lines, meta = {}) {
   const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-  elements.outputBox.textContent = '[' + timestamp + '] ' + title + '\n' + lines.filter(Boolean).join('\n');
+  const runId = meta.runId || state.activeRun?.id || '';
+  const runIdPrefix = runId ? `[调用ID: ${runId}] ` : '';
+  const header = `[${timestamp}] ${runIdPrefix}${title}`;
+
+  const cleanLines = Array.isArray(lines) ? lines.filter(Boolean) : [String(lines || '')];
+  const logFile = meta.logFile || state.activeRun?.logFile || (runId ? `logs/runs/${runId}.log` : '');
+  if (logFile && !cleanLines.some(l => l.includes(logFile))) {
+    cleanLines.push(`[原始日志] ${logFile}`);
+  }
+
+  elements.outputBox.textContent = header + '\n' + cleanLines.join('\n');
   elements.outputSection.open = true;
   elements.outputBox.scrollTop = elements.outputBox.scrollHeight;
 }
@@ -1200,7 +1211,7 @@ async function executeScript(script, button, card) {
     button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止执行</span>`;
   }
   if (card) card.classList.add('running');
-  writeOutput('正在执行：' + script.title, []);
+  writeOutput('正在执行：' + script.title, [], { runId: scriptRunId });
 
   const outputPollTimer = setInterval(async () => {
     if (!state.activeRun || state.activeRun.id !== scriptRunId) {
@@ -1209,10 +1220,13 @@ async function executeScript(script, button, card) {
     }
     try {
       const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
-      if (live.ok && (live.stdout || live.stderr)) {
-        if (state.activeRun && state.activeRun.id === scriptRunId) {
-          const lines = cleanScriptLines(live.stdout, live.stderr);
-          writeOutput('正在执行：' + script.title, lines);
+      if (live.ok) {
+        if (live.logFile && state.activeRun) state.activeRun.logFile = live.logFile;
+        if (live.stdout || live.stderr) {
+          if (state.activeRun && state.activeRun.id === scriptRunId) {
+            const lines = cleanScriptLines(live.stdout, live.stderr);
+            writeOutput('正在执行：' + script.title, lines, { runId: scriptRunId, logFile: live.logFile });
+          }
         }
       }
     } catch { /* 轮询异常静默忽略 */ }
@@ -1250,7 +1264,7 @@ async function executeScript(script, button, card) {
     } else {
       title = '执行失败：' + script.title + (result.exitCode !== null ? ' (退出码: ' + result.exitCode + ')' : '');
     }
-    writeOutput(title, lines);
+    writeOutput(title, lines, { runId: scriptRunId, logFile: result.logFile });
     if (result.ok && card) {
       const privateInput = card.querySelector('[data-parameter="vpcData"]');
       if (privateInput) privateInput.value = '';
@@ -1310,10 +1324,17 @@ async function executeScript(script, button, card) {
         if (cur === 'running') setStepState(targetId, 1, 'failed');
       }
     }
-    writeOutput('执行请求失败：' + script.title, [error.message,
+    const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError');
+    const displayMsg = isNetwork
+      ? '网络连接失败（Failed to fetch）：后端控制台服务暂时断开或重启中，请检查服务是否运行或稍后重试。'
+      : error.message;
+    writeOutput('执行请求失败：' + script.title, [
+      displayMsg,
       Number.isFinite(error.durationMs) ? '总耗时：' + error.durationMs + ' ms' : '',
-      error.runId ? '运行编号：' + error.runId : '']);
-    showToast(error.message);
+      `调用编号：${scriptRunId}`,
+      state.activeRun?.logFile ? `原始日志：${state.activeRun.logFile}` : ''
+    ], { runId: scriptRunId });
+    showToast(displayMsg);
   } finally {
     clearInterval(outputPollTimer);
     if (state.activeRun?.id === scriptRunId) {

@@ -365,8 +365,10 @@ async function findApp(phone, control, worker, directory, state, home, options,
 function tapBox(control, box, observation, yOffset = 0) {
   const scaleX = control.screenWidth / Math.max(1, observation.width);
   const scaleY = control.screenHeight / Math.max(1, observation.height);
-  const x = Math.round(((box.left + box.right) / 2) * scaleX);
-  const y = Math.round(((box.top + box.bottom) / 2) * scaleY + yOffset * scaleY);
+  const rawX = Math.round(((box.left + box.right) / 2) * scaleX);
+  const rawY = Math.round(((box.top + box.bottom) / 2) * scaleY + yOffset * scaleY);
+  const x = Math.min(control.screenWidth - 1, Math.max(0, rawX));
+  const y = Math.min(control.screenHeight - 1, Math.max(0, rawY));
   return { x, y };
 }
 
