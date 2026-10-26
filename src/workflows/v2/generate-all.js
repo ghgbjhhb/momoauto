@@ -6,6 +6,8 @@
 // observations. This prevents returning home on the pre-generation screen
 // when the first OCR frame is captured before the app updates.
 const fs = require('node:fs/promises');
+const path = require('node:path');
+const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
@@ -61,9 +63,13 @@ function toolReady(items) {
 }
 
 function generatingState(items) {
+  const fullText = items.map(item => normalizeText(item.text)).join('');
   return Boolean(
-    findStrictPhrase(items, '正在生成') ||
-    findStrictPhrase(items, '生成中') ||
+    fullText.includes('正在生成') ||
+    fullText.includes('正在下载') ||
+    fullText.includes('生成中') ||
+    fullText.includes('成功添加') ||
+    fullText.includes('已生成') ||
     findStrictPhrase(items, '正在发送短信') ||
     findStrictPhrase(items, '发送大量短信')
   );
@@ -75,7 +81,7 @@ function permissionPrompt(items) {
 
   const fullText = items.map(item => normalizeText(item.text)).join('');
   const hasPromptKeyword =
-    fullText.includes('允许') && (
+    (fullText.includes('允许') || fullText.includes('充许')) && (
       fullText.includes('访问') ||
       fullText.includes('权限') ||
       fullText.includes('通讯录') ||
@@ -86,7 +92,8 @@ function permissionPrompt(items) {
       fullText.includes('拒绝') ||
       fullText.includes('是否允许') ||
       fullText.includes('照片') ||
-      fullText.includes('媒体')
+      fullText.includes('媒体') ||
+      fullText.includes('必要权限')
     );
 
   const hasSpecialSmsPrompt =
@@ -108,7 +115,7 @@ function allowButtonBox(items) {
   const candidates = items
     .filter(item => {
       const text = normalizeText(item.text);
-      return text.includes('允许') &&
+      return (text.includes('允许') || text.includes('充许')) &&
         !text.includes('不允许') &&
         !text.includes('是否') &&
         !text.includes('访问') &&
@@ -120,12 +127,12 @@ function allowButtonBox(items) {
 }
 
 function completionEvidence(items) {
-  const text = items.map(item => normalizeText(item.text)).join('');
+  const fullText = items.map(item => normalizeText(item.text)).join('');
   return Boolean(
-    text.includes('所有数据生成完成') ||
-    text.includes('数据生成完成') ||
-    text.includes('生成完成') ||
-    (text.includes('成功') && (text.includes('短信') || text.includes('查看')))
+    fullText.includes('所有数据生成完成') ||
+    fullText.includes('数据生成完成') ||
+    fullText.includes('生成完成') ||
+    (fullText.includes('成功') && (fullText.includes('短信') || fullText.includes('查看')))
   );
 }
 
@@ -168,6 +175,7 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
 
   const deadline = Date.now() + options.generationTimeoutMs;
   let generationStarted = false;
+  let needsReClick = false;
   let completionToast = false;
   let last = ready;
   let observationsAfterClick = 0;
@@ -179,6 +187,7 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
   let permissionPromptsSeen = 0;
   let permissionPromptsAllowed = 0;
   let lastProgressLogAt = 0;
+  let lastStepLogged = '';
 
   while (Date.now() <= deadline) {
     state.counter += 1;
@@ -192,11 +201,7 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
 
     if (isPermission) {
       permissionPromptsSeen += 1;
-      generationStarted = true;
-      if (!generationStartedAt) generationStartedAt = Date.now();
-      lastGenerationActivityAt = Date.now();
-      normalButtonStableObservations = 0;
-      buttonReturnedAt = 0;
+      needsReClick = true; // 权限弹窗拦截了生成点击，权限授予后必须重新点击一次“一键生成全部”
       const allow = allowButtonBox(last.items);
       if (allow) {
         const allowPoint = tapBox(control, allow, last);
@@ -209,11 +214,48 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
       continue;
     }
 
+    // 若权限已处理完毕、重新返回了正常工具箱页面，且此前未真正进入生成状态，则自动补击一次“一键生成全部”
+    if (needsReClick && normalButton && titleVisible && !running && !generationStarted) {
+      console.log(`[生成] 权限已授予完毕，再次点击“一键生成全部”启动数据生成 (${point.x}, ${point.y})...`);
+      await control.tap(point.x, point.y);
+      await control.flush();
+      needsReClick = false;
+      await new Promise(resolve => setTimeout(resolve, options.pollMs));
+      continue;
+    }
+
     const afterStats = statsFingerprint(last.items);
     const statsChanged = Boolean(beforeStats && afterStats && beforeStats !== afterStats);
-    if (statsChanged && !generationStarted) {
+
+    // 真正进入生成状态（由 OCR 识别到“正在生成/正在下载”等实质状态字样，或数据统计数值发生变动）
+    if (running && titleVisible) {
+      generatingObservations += 1;
+      lastGenerationActivityAt = Date.now();
+      if (!generationStarted) {
+        generationStarted = true;
+        generationStartedAt = Date.now();
+        console.log('[生成中] 已检测到数据生成状态，正在生成...');
+      }
+      normalButtonStableObservations = 0;
+      buttonReturnedAt = 0;
+    } else if (statsChanged && !generationStarted) {
       generationStarted = true;
       if (!generationStartedAt) generationStartedAt = Date.now();
+      lastGenerationActivityAt = Date.now();
+    }
+
+    // 细粒度子步骤动态打印
+    const fullText = last.items.map(it => normalizeText(it.text)).join('');
+    let currentSubStep = '';
+    if (fullText.includes('正在生成联系人')) currentSubStep = '正在生成联系人...';
+    else if (fullText.includes('正在生成通话记录')) currentSubStep = '正在生成通话记录...';
+    else if (fullText.includes('正在生成应用使用记录')) currentSubStep = '正在生成应用使用记录...';
+    else if (fullText.includes('正在下载照片')) currentSubStep = '正在下载模拟照片...';
+    else if (fullText.includes('正在发送短信')) currentSubStep = '正在发送模拟短信...';
+
+    if (currentSubStep && currentSubStep !== lastStepLogged) {
+      lastStepLogged = currentSubStep;
+      console.log(`[生成进度] ${currentSubStep}`);
     }
 
     const isHomeScreen = homeAnchorMatches(last.items).length >= 2;
@@ -239,19 +281,7 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
       };
     }
 
-    if (running && titleVisible) {
-      generatingObservations += 1;
-      lastGenerationActivityAt = Date.now();
-      if (!generationStarted) {
-        generationStarted = true;
-        generationStartedAt = Date.now();
-        console.log('[生成中] 已检测到数据生成状态，正在生成...');
-      }
-      normalButtonStableObservations = 0;
-      buttonReturnedAt = 0;
-    }
-
-    if (generationStarted && normalButton && titleVisible) {
+    if (generationStarted && normalButton && titleVisible && !running) {
       normalButtonStableObservations += 1;
       if (!buttonReturnedAt) buttonReturnedAt = Date.now();
     } else if (!normalButton || !titleVisible) {
@@ -345,9 +375,13 @@ async function main() {
   console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
   console.log('[1/5] 正在确认主屏幕就绪...');
 
+  const runId = String(process.env.YUNMOMO_SCRIPT_RUN_ID || ('run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)));
+  const screenshotsDir = path.join(PROJECT_ROOT, 'logs', 'screenshots', runId);
+  await fs.mkdir(screenshotsDir, { recursive: true });
+  const directory = screenshotsDir;
+
   const phone = client.device(actualDeviceId);
   const control = await phone.openControl({ udid: target.udid });
-  const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script5-');
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
   let success = false;
@@ -384,7 +418,6 @@ async function main() {
     );
 
     console.log('[4/5] 数据生成完毕，正在快速返回主屏幕并核验...');
-    // 伍羊工具箱位于第二页，退出后会落在第二页；直接发送 HOME 并右滑至第一页，让主屏锚点一次命中，无需任何死等
     if (!generated.alreadyHome) {
       await sendHome(control);
       await swipeHomePage(control, 'right');
@@ -414,11 +447,8 @@ async function main() {
     }
     await worker.close();
     await control.close();
-    if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
-      await fs.rm(directory, { recursive: true, force: true });
-    } else {
-      console.log('OCR screenshots kept at ' + directory);
-    }
+    // 永久保留所有执行截图于 logs/screenshots/<runId>/ 目录供随时核查
+    console.log(`[过程截图] 过程截图已留存至 logs/screenshots/${runId}/ (共 ${state.counter} 张)`);
   }
 }
 
