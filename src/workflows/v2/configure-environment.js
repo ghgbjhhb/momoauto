@@ -5,9 +5,10 @@
 // flow uses local RapidOCR text/coordinates as anchors and the existing
 // proxy-ADB control channel for HOME, swipe and tap events.
 const fs = require('node:fs/promises');
+const path = require('node:path');
+const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 
-const DEFAULT_DEVICE_ID = '2033060279606353921';
 const DEFAULT_POLL_MS = 700;
 const DEFAULT_HOME_TIMEOUT_MS = 15000;
 const DEFAULT_APP_TIMEOUT_MS = 20000;
@@ -30,12 +31,65 @@ function successState(items) {
   return { certificate, bootloader, ok: certificate && bootloader };
 }
 
+function failureState(items) {
+  const softwareCert = Boolean(
+    findPhrase(items, '谷歌软件根证书') ||
+    (findPhrase(items, '软件') && findPhrase(items, '根证书'))
+  );
+  const bootloaderUnlocked = Boolean(
+    findPhrase(items, '引导加载程序已解锁') ||
+    findPhrase(items, '引导加载程序未锁定') ||
+    (findPhrase(items, '引导') && (findPhrase(items, '解锁') || findPhrase(items, '未锁定')))
+  );
+  return { softwareCert, bootloaderUnlocked, failed: softwareCert || bootloaderUnlocked };
+}
+
+function keyAuthLoading(items) {
+  return Boolean(
+    findPhrase(items, '获取吊销列表中') ||
+    findPhrase(items, '正在获取吊销列表') ||
+    findPhrase(items, '正在获取')
+  );
+}
+
+function keyAuthEvidence(items) {
+  const homeLike = homeAnchorMatches(items).length >= 2;
+  if (homeLike) return false;
+  return Boolean(
+    keyAuthLoading(items) ||
+    successState(items).ok ||
+    failureState(items).failed ||
+    findPhrase(items, '密钥认证') ||
+    findPhrase(items, '使用软件自带的吊销列表') ||
+    findPhrase(items, '硬件根证书') ||
+    findPhrase(items, '引导加载程序')
+  );
+}
+
 async function openKeyAuth(phone, control, worker, directory, state, found, options) {
   return openAppWithRecovery(phone, control, worker, directory, state, found, options, {
-    appName: '密钥认证', targetName: '根证书及引导锁定状态页面', label: 'key-auth',
+    appName: '密钥认证',
+    targetName: '根证书及引导锁定状态页面',
+    label: 'key-auth',
     targetBox: shared.appTargetBox,
-    isTarget: observation => successState(observation.items).ok,
-    offsets: [{ y: 0 }, { y: -55 }],
+    isTarget: observation => successState(observation.items).ok || failureState(observation.items).failed,
+    launchEvidence: observation => keyAuthEvidence(observation.items),
+    offsets: [{ y: -35 }, { y: -50 }, { y: 0 }],
+    prepare: async observation => {
+      if (keyAuthLoading(observation.items)) {
+        return await shared.observeUntil(
+          phone,
+          worker,
+          directory,
+          state,
+          obs => !keyAuthLoading(obs.items) || successState(obs.items).ok || failureState(obs.items).failed,
+          options.appTimeoutMs,
+          options.pollMs,
+          'key-auth-wait-loaded'
+        );
+      }
+      return observation;
+    },
   });
 }
 
@@ -43,7 +97,10 @@ async function main() {
   if (!process.env.YUNMOMO_TOKEN) {
     throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
   }
-  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
+  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || '').trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(targetDeviceId)) {
+    throw new Error('请用 YUNMOMO_DEVICE_ID 指定目标云机');
+  }
   if (process.env.YUNMOMO_CONFIRM_ENV_CONFIG !== 'YES' && !process.argv.includes('--execute')) {
     throw new Error('脚本4会发送 HOME、滑动和点击事件；确认执行请设置 YUNMOMO_CONFIRM_ENV_CONFIG=YES 或传入 --execute');
   }
@@ -59,6 +116,9 @@ async function main() {
   const target = devices.records.find(record => deviceIdOf(record) === targetDeviceId);
   if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
+  const targetName = target.deviceName ?? target.name ?? 'SF';
+  console.log(`[准备] 目标设备: ${targetName} (${targetDeviceId}) | 流程: 环境配置v2`);
+
   const phone = client.device(targetDeviceId);
   const control = await phone.openControl({ udid: target.udid });
   const directory = await shared.createOcrDirectory('yunmomo-script4-');
@@ -66,36 +126,86 @@ async function main() {
   const state = { counter: 0 };
   let success = false;
   let homeRestored = false;
+  let opened = null;
+  let initialAnchors = [];
+  let finalAnchors = [];
+  let finalState = { certificate: false, bootloader: false, ok: false };
+  let executionError = null;
+
   try {
     await control.connect();
+
+    console.log('[1/4] 正在连接云机控制流，确认主屏幕...');
     const home = await confirmHome(phone, control, worker, directory, state, options);
+    initialAnchors = homeAnchorMatches(home.items);
+    console.log(`      主屏幕已就绪（锚点: ${initialAnchors.join('、') || '正常'}）`);
+
+    console.log('[2/4] 正在主屏定位并启动“密钥认证”...');
     const found = await findApp(phone, control, worker, directory, state, home, options);
-    const opened = await openKeyAuth(phone, control, worker, directory, state, found, options);
+    opened = await openKeyAuth(phone, control, worker, directory, state, found, options);
+    console.log(`      已打开密钥认证页面（点击坐标: ${opened.point.x}, ${opened.point.y}）`);
+
+    finalState = successState(opened.opened.items);
+    console.log('[3/4] 正在核验密钥与证书状态...');
+    console.log(`      根证书: ${finalState.certificate ? '谷歌硬件根证书 (有效)' : '未检测到硬件根证书 (异常)'}`);
+    console.log(`      引导程序: ${finalState.bootloader ? '已锁定 (正常)' : '未锁定 (异常)'}`);
+
+    console.log('[4/4] 退出密钥认证，恢复主屏幕...');
     const finalHome = await confirmHome(phone, control, worker, directory, state, options);
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    const finalState = successState(opened.opened.items);
+    finalAnchors = homeAnchorMatches(finalHome.items);
     success = finalState.ok;
     homeRestored = finalAnchors.length >= 2;
-    console.log(JSON.stringify({
-      ok: success && homeRestored,
-      script: 'environment-config',
-      targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      ocr: 'RapidOCR 1.2.3 (local WSL worker)',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      certificateState: finalState.certificate,
-      bootloaderState: finalState.bootloader,
-      successDetected: success,
-      finalHomeAnchors: finalAnchors,
-      homeRestored,
-      screenshotObservations: state.counter,
-    }, null, 2));
+    console.log(`      主屏幕恢复${homeRestored ? '完成' : '失败'}`);
+
+    if (!success) {
+      const reasons = [];
+      if (!finalState.certificate) reasons.push('未检测到谷歌硬件根证书');
+      if (!finalState.bootloader) reasons.push('引导加载程序未锁定');
+      throw new Error(`环境配置核验失败：${reasons.join('，') || '根证书或引导锁状态异常'}`);
+    }
+    if (!homeRestored) {
+      throw new Error('未能成功恢复桌面状态，主屏锚点不足');
+    }
+
+    console.log('[完成] 环境配置核验通过！');
+  } catch (err) {
+    executionError = err;
+    throw err;
   } finally {
-    if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+    try {
+      const outputDir = path.join(PROJECT_ROOT, '.local-output', '环境配置');
+      await fs.mkdir(outputDir, { recursive: true });
+      const detailedReport = {
+        ok: success && homeRestored,
+        timestamp: new Date().toISOString(),
+        script: 'environment-config-v2',
+        targetDeviceId,
+        targetDeviceName: targetName,
+        ocr: 'RapidOCR 1.2.3 (local WSL worker)',
+        initialHomeAnchors: initialAnchors,
+        appLocated: Boolean(opened),
+        appTap: opened?.point ?? null,
+        appTapRetried: opened?.retried ?? false,
+        appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+        certificateState: finalState.certificate,
+        bootloaderState: finalState.bootloader,
+        successDetected: success,
+        finalHomeAnchors,
+        homeRestored,
+        screenshotObservations: state.counter,
+        error: executionError ? { message: executionError.message, stack: executionError.stack } : null,
+      };
+      const reportFile = path.join(outputDir, `env-config-${targetDeviceId}-${Date.now()}.json`);
+      const latestFile = path.join(outputDir, 'latest.json');
+      const content = JSON.stringify(detailedReport, null, 2);
+      await fs.writeFile(reportFile, content, 'utf8');
+      await fs.writeFile(latestFile, content, 'utf8');
+      console.log('      诊断数据已存入: .local-output/环境配置/latest.json');
+    } catch (saveErr) {
+      console.error('saveErr:', saveErr);
+    }
+
+    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
         await sendHome(control);
         homeRestored = true;

@@ -137,6 +137,6 @@ async function main() {
     : `第 ${onlyStep} 步已结束，请核对日志和截图；没有运行下一步。`);
 }
 
-main = require('../src/automation/timing').timedScript('script.flows.执行全部', main);
+main = require('../../src/automation/timing').timedScript('script.flows.v2.执行全部', main);
 
 main().catch(error => { console.error(redact(error.message)); process.exitCode = 1; });
