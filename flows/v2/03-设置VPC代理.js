@@ -1,7 +1,9 @@
 'use strict';
 
 const args = process.argv.slice(2);
-const isStandaloneAction = args.some(a => ['--show', '--status', '--info', '--query', '--stop', '--close', '--disable'].includes(a));
+const actionParam = String(process.env.YUNMOMO_PROXY_ACTION || '').toLowerCase();
+const isStandaloneAction = args.some(a => ['--show', '--status', '--info', '--query', '--stop', '--close', '--disable'].includes(a)) ||
+  ['show', 'status', 'info', 'query', 'stop', 'close', 'disable'].includes(actionParam);
 
 if (isStandaloneAction) {
   require('../../src/workflows/v2/set-vpc-proxy').main().catch(error => {

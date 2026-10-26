@@ -712,6 +712,7 @@ function startPreview() {
 }
 
 function parameterChoiceLabel(field, value) {
+  if (field.name === 'action') return ({ set: '设置/更新代理 (默认)', show: '展示当前代理 (查询)', close: '关闭设备代理' })[value] || String(value);
   if (field.name === 'androidVersion') return value === 'all' ? '全部版本' : 'Android ' + value;
   if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新',
     execute: '执行发送', draft: '生成并输入', watch: '1. 挂机模式 (巡查前几页)', drain: '2. 全量模式 (必须翻到底)' })[value] || String(value);
@@ -1147,11 +1148,14 @@ async function executeScript(script, button, card) {
     }
   }
 
-  // 03 设置 VPC 代理：网页弹窗识别并输入 VPC 代理
-  if (script.id === 'flow-03' || script.order === 3) {
-    const vpcData = await promptVpcProxyDialog();
-    if (!vpcData) return;
-    options.vpcData = vpcData;
+  // 03 设置 VPC 代理：网页弹窗识别并输入 VPC 代理（仅当操作指令为设置时才弹窗）
+  if (script.id === 'flow-03' || script.order === 3 || script.id.startsWith('flow-03')) {
+    const action = options.action || 'set';
+    if (action === 'set') {
+      const vpcData = await promptVpcProxyDialog();
+      if (!vpcData) return;
+      options.vpcData = vpcData;
+    }
   }
 
   const resetConfirmed = script.destructive ? window.confirm(

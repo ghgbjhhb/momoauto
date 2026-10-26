@@ -123,7 +123,12 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     file: 'flows/v2/' + step.entry,
     args: ['--execute'],
     requiresDevice: true,
-    requiresCertificate: step.order === 2
+    requiresCertificate: step.order === 2,
+    ...(step.order === 3 ? {
+      parameters: [
+        { name: 'action', label: '操作指令', choices: ['set', 'show', 'close'], defaultValue: 'set' }
+      ]
+    } : {})
   })),
   {
     id: 'flow-09-v2', order: 9, version: 'v2', category: 'v2', title: '改机重置v2',
@@ -149,7 +154,12 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     file: 'flows/v3/' + step.entry,
     args: ['--execute'],
     requiresDevice: true,
-    requiresCertificate: step.order === 2
+    requiresCertificate: step.order === 2,
+    ...(step.order === 3 ? {
+      parameters: [
+        { name: 'action', label: '操作指令', choices: ['set', 'show', 'close'], defaultValue: 'set' }
+      ]
+    } : {})
   })),
   {
     id: 'flow-09-v3', order: 9, title: '改机重置v3',
@@ -658,6 +668,9 @@ function configureScript(script, body, env) {
   if (script.id.startsWith('flow-03')) {
     if (options.vpcData?.trim()) {
       env.YUNMOMO_VPC_DATA = options.vpcData.trim();
+    }
+    if (options.action?.trim()) {
+      env.YUNMOMO_PROXY_ACTION = options.action.trim();
     }
   }
   if (script.id.startsWith('flow-09')) {
