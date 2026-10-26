@@ -28,7 +28,7 @@ const {
 } = require('../../automation/screen');
 
 const DEFAULT_DEVICE_ID = '1920787385311416321'; // GVIP701808715424 (SF)
-const DEFAULT_POLL_MS = 400;
+const DEFAULT_POLL_MS = 600;
 const DEFAULT_HOME_TIMEOUT_MS = 15000;
 const DEFAULT_APP_TIMEOUT_MS = 20000;
 const DEFAULT_GENERATION_TIMEOUT_MS = 120000;
@@ -189,6 +189,7 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
   let permissionPromptsAllowed = 0;
   let lastProgressLogAt = 0;
   let lastStepLogged = '';
+  let consecutiveReadyFrames = 0;
 
   while (Date.now() <= deadline) {
     state.counter += 1;
@@ -203,6 +204,7 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
     if (isPermission) {
       permissionPromptsSeen += 1;
       needsReClick = true; // 权限弹窗拦截了生成点击，权限授予后必须重新点击一次“一键生成全部”
+      consecutiveReadyFrames = 0;
       const allow = allowButtonBox(last.items);
       if (allow) {
         const allowPoint = tapBox(control, allow, last);
@@ -210,19 +212,32 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
         await control.tap(allowPoint.x, allowPoint.y);
         await control.flush();
         permissionPromptsAllowed += 1;
+        // 点击允许后，必须等待窗口淡出动画及下一轮权限弹出的过渡时间（1000ms）
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        await new Promise(resolve => setTimeout(resolve, options.pollMs));
       }
-      await new Promise(resolve => setTimeout(resolve, options.pollMs));
       continue;
     }
 
-    // 若权限已处理完毕、重新返回了正常工具箱页面，且此前未真正进入生成状态，则自动补击一次“一键生成全部”
-    if (needsReClick && normalButton && titleVisible && !running && !generationStarted) {
-      console.log(`[生成] 权限已授予完毕，再次点击“一键生成全部”启动数据生成 (${point.x}, ${point.y})...`);
-      await control.tap(point.x, point.y);
-      await control.flush();
-      needsReClick = false;
-      await new Promise(resolve => setTimeout(resolve, options.pollMs));
-      continue;
+    const fullText = last.items.map(it => normalizeText(it.text)).join('');
+    const hasPermissionToast = fullText.includes('必要权限') || fullText.includes('依次请求');
+
+    // 若权限已处理完毕、重新返回了正常工具箱页面，且此前未真正进入生成状态，等待动画稳定后自动补击“一键生成全部”
+    if (needsReClick && normalButton && titleVisible && !running && !generationStarted && !hasPermissionToast) {
+      consecutiveReadyFrames += 1;
+      // 必须连续 2 帧稳定确认界面动画彻底结束且无后续权限弹窗，再启动补击
+      if (consecutiveReadyFrames >= 2) {
+        console.log(`[生成] 权限已授予且动画完成，再次点击“一键生成全部”启动数据生成 (${point.x}, ${point.y})...`);
+        await control.tap(point.x, point.y);
+        await control.flush();
+        needsReClick = false;
+        consecutiveReadyFrames = 0;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+    } else {
+      consecutiveReadyFrames = 0;
     }
 
     const afterStats = statsFingerprint(last.items);
@@ -246,7 +261,6 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
     }
 
     // 细粒度子步骤动态打印
-    const fullText = last.items.map(it => normalizeText(it.text)).join('');
     let currentSubStep = '';
     if (fullText.includes('正在生成联系人')) currentSubStep = '正在生成联系人...';
     else if (fullText.includes('正在生成通话记录')) currentSubStep = '正在生成通话记录...';
