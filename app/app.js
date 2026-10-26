@@ -712,7 +712,7 @@ function startPreview() {
 }
 
 function parameterChoiceLabel(field, value) {
-  if (field.name === 'action') return ({ set: '设置新代理', show: '展示当前代理', close: '关闭代理' })[value] || String(value);
+  if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
   if (field.name === 'androidVersion') return value === 'all' ? '全部版本' : 'Android ' + value;
   if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新',
     execute: '执行发送', draft: '生成并输入', watch: '1. 挂机模式 (巡查前几页)', drain: '2. 全量模式 (必须翻到底)' })[value] || String(value);
@@ -730,7 +730,9 @@ function createScriptCard(script) {
   card.className = 'script-card';
   card.dataset.scriptId = script.id;
   if (script.batch) card.classList.add('script-hero-card');
-  if (script.parameters?.length) card.classList.add('script-card-has-params');
+
+  const isSingleChoice = script.parameters?.length === 1 && script.parameters[0].choices;
+  if (script.parameters?.length && !isSingleChoice) card.classList.add('script-card-has-params');
   if (script.destructive) card.classList.add('script-card-destructive');
 
   const head = document.createElement('div');
@@ -762,7 +764,7 @@ function createScriptCard(script) {
 
   card.append(head);
 
-  if (script.parameters?.length) {
+  if (script.parameters?.length && !isSingleChoice) {
     const settings = document.createElement('details');
     settings.className = 'script-settings';
     settings.open = true;
@@ -803,6 +805,24 @@ function createScriptCard(script) {
 
   const actions = document.createElement('div');
   actions.className = 'script-actions';
+
+  // 单一选择参数（如 VPC 代理操作）直接内联展示在执行按钮左侧，保持紧凑整齐
+  if (isSingleChoice) {
+    const field = script.parameters[0];
+    const select = document.createElement('select');
+    select.className = 'script-inline-select';
+    select.dataset.parameter = field.name;
+    select.setAttribute('aria-label', field.label);
+    for (const value of field.choices) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = parameterChoiceLabel(field, value);
+      select.append(option);
+    }
+    select.value = field.defaultValue ?? '';
+    actions.append(select);
+  }
+
   const activeRun = state.activeRun?.scriptId === script.id ? state.activeRun : null;
   const isCurrentRunning = Boolean(activeRun);
   const button = document.createElement('button');

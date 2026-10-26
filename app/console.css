@@ -420,6 +420,40 @@ h1, h2 { font-size: 16px; line-height: 1.5; letter-spacing: 0; }
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.script-inline-select {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  background: #0e1724;
+  border: 1px solid #34445b;
+  border-radius: 5px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.script-inline-select:hover {
+  border-color: #4b6485;
+  background: #131f30;
+  color: #ffffff;
+}
+
+.script-inline-select:focus {
+  border-color: #2766c5;
+  box-shadow: 0 0 0 1px #2766c5;
+  background: #131f30;
+  color: #ffffff;
+}
+
+.script-inline-select option {
+  background: #0e1724;
+  color: #e2e8f0;
 }
 
 .run-button, .run-button-hero, .stepper-run-all-btn {
