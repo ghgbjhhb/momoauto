@@ -344,6 +344,7 @@ function createScriptRunRecord(scriptRunId, script) {
   let resolveDone;
   const done = new Promise(resolve => { resolveDone = resolve; });
   return {
+    id: scriptRunId,
     scriptRunId,
     scriptId: script.id,
     deviceId: '',

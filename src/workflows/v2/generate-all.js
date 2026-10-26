@@ -24,6 +24,7 @@ const {
   swipeHomePage,
   tapBox,
   sendHome,
+  clipboardToastVisible,
 } = require('../../automation/screen');
 
 const DEFAULT_DEVICE_ID = '1920787385311416321'; // GVIP701808715424 (SF)
