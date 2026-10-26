@@ -116,7 +116,7 @@ async function persistToken(token) {
 const SCRIPT_DEFINITIONS = Object.freeze([
   // V2 版本初始化脚本 (01~09)
   ...STEPS_V2.map(step => ({
-    id: 'flow-' + String(step.order).padStart(2, '0') + '-v2',
+    id: 'flow-' + (Number.isInteger(step.order) ? String(step.order).padStart(2, '0') : String(step.order)) + '-v2',
     order: step.order,
     version: 'v2',
     category: 'v2',
@@ -125,6 +125,11 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     args: ['--execute'],
     requiresDevice: true,
     requiresCertificate: step.order === 2,
+    ...(step.order === 2.1 ? {
+      parameters: [
+        { name: 'filePath', label: '真机参数', defaultValue: 'todo' }
+      ]
+    } : {}),
     ...(step.order === 3 ? {
       parameters: [
         { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
@@ -431,8 +436,11 @@ async function runScript(script, env, run) {
 async function runScriptMeasured(script, env, run) {
   const isV2 = script.version === 'v2' || script.id.endsWith('-v2');
   const stepList = isV2 ? STEPS_V2 : STEPS_V3;
-  const step = stepList.find(item => script.id === 'flow-' + String(item.order).padStart(2, '0') + (isV2 ? '-v2' : '-v3') ||
-                                     script.id === 'flow-' + String(item.order).padStart(2, '0'));
+  const step = stepList.find(item => {
+    const orderStr = Number.isInteger(item.order) ? String(item.order).padStart(2, '0') : String(item.order);
+    return script.id === 'flow-' + orderStr + (isV2 ? '-v2' : '-v3') ||
+           script.id === 'flow-' + orderStr;
+  });
   const file = path.join(PROJECT_ROOT, script.file || step?.source);
   if (step) {
     if (!/^[A-Za-z0-9_-]+$/.test(String(env.YUNMOMO_DEVICE_ID || ''))) throw new Error('请用 YUNMOMO_DEVICE_ID 指定目标云机');
@@ -717,6 +725,11 @@ function configureScript(script, body, env) {
     }
   }
   if (script.destructive && body.resetConfirmed !== true) throw invalidOptions('改机重置会清除数据，请先确认目标设备及清数据操作');
+  if (script.id.startsWith('flow-02.1') || script.id.startsWith('flow-2.1')) {
+    if (options.filePath?.trim()) {
+      env.YUNMOMO_REAL_PARAMS_FILE = options.filePath.trim();
+    }
+  }
   if (script.id.startsWith('flow-03')) {
     if (options.vpcData?.trim()) {
       env.YUNMOMO_VPC_DATA = options.vpcData.trim();

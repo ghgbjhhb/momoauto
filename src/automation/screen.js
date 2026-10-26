@@ -320,8 +320,8 @@ async function confirmHome(phone, control, worker, directory, state, options) {
 async function swipeHomePage(control, direction) {
   const width = control.screenWidth || 400;
   const height = control.screenHeight || 720;
-  // Swipe at 65% height to touch the empty canvas area below icons, avoiding icon reordering gestures
-  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.65)));
+  // Swipe at 46% height (~330px) to touch the empty canvas gap between icon rows, avoiding icon drag gestures
+  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.46)));
   const fromX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.82) : Math.round(width * 0.18)));
   const toX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.18) : Math.round(width * 0.82)));
   await control.swipe(

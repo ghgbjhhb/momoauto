@@ -38,8 +38,9 @@ async function main() {
   const reviewArgument = process.argv.find(argument => argument.startsWith('--review-step='));
   const onlyStep = stepArgument ? Number(stepArgument.slice('--step='.length)) : null;
   const reviewStep = reviewArgument ? Number(reviewArgument.slice('--review-step='.length)) : null;
+  const stepsList = STEPS;
   for (const value of [onlyStep, reviewStep]) {
-    if (value !== null && (!Number.isInteger(value) || value < 1 || value > 8)) throw new Error('步骤编号必须为 1～8');
+    if (value !== null && !stepsList.some(s => s.order === value)) throw new Error('步骤编号无效，有效步骤：' + stepsList.map(s => s.order).join(', '));
   }
   if (onlyStep !== null && reviewStep !== null) throw new Error('运行和截图核对必须分开执行');
   const deviceId = String(process.env.YUNMOMO_DEVICE_ID || '');
@@ -53,7 +54,6 @@ async function main() {
   await fs.mkdir(root, { recursive: true });
   const resume = process.argv.includes('--resume');
   const version = 'v2';
-  const stepsList = STEPS;
   let directory;
   let report;
   if (resume) {

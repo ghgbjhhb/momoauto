@@ -27,13 +27,13 @@ const {
 } = require('../../automation/screen');
 
 const DEFAULT_DEVICE_ID = '1920787385311416321'; // GVIP701808715424 (SF)
-const DEFAULT_POLL_MS = 700;
+const DEFAULT_POLL_MS = 400;
 const DEFAULT_HOME_TIMEOUT_MS = 15000;
 const DEFAULT_APP_TIMEOUT_MS = 20000;
 const DEFAULT_GENERATION_TIMEOUT_MS = 120000;
-const DEFAULT_COMPLETION_STABLE_OBSERVATIONS = 4;
-const DEFAULT_MIN_POST_GENERATION_WAIT_MS = 2000;
-const DEFAULT_COMPLETION_QUIET_MS = 15000;
+const DEFAULT_COMPLETION_STABLE_OBSERVATIONS = 2;
+const DEFAULT_MIN_POST_GENERATION_WAIT_MS = 1000;
+const DEFAULT_COMPLETION_QUIET_MS = 10000;
 const DEFAULT_MAX_PAGES_PER_DIRECTION = 5;
 
 function matchesDevice(record, identifier) {
@@ -331,6 +331,104 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
   throw new Error('等待“一键生成全部”恢复正常状态超时；最后画面：' + detail);
 }
 
+async function uninstallToolBox(phone, control, worker, directory, state, options) {
+  console.log('[卸载] 数据生成完毕，准备卸载“伍羊工具箱”...');
+  await sendHome(control);
+  await new Promise(r => setTimeout(r, 600));
+
+  state.counter += 1;
+  let obs = await screenshotAndOcr(phone, worker, directory, state.counter);
+  let wy = toolBox(obs.items);
+
+  // 若当前页面未看到，尝试左右翻页定位
+  if (!wy) {
+    await swipeHomePage(control, 'left');
+    await new Promise(r => setTimeout(r, 600));
+    state.counter += 1;
+    obs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    wy = toolBox(obs.items);
+  }
+  if (!wy) {
+    await swipeHomePage(control, 'right');
+    await new Promise(r => setTimeout(r, 600));
+    state.counter += 1;
+    obs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    wy = toolBox(obs.items);
+  }
+
+  if (!wy) {
+    console.log('[卸载] 桌面未找到“伍羊工具箱”，应用可能已被移除');
+    return { uninstalled: true, skipped: true };
+  }
+
+  const iconPoint = tapBox(control, wy, obs, -40);
+  let dialogConfirmed = false;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    console.log(`[卸载] 长按“伍羊工具箱”图标 (${iconPoint.x}, ${iconPoint.y}) [第 ${attempt} 次]...`);
+    await control.longPress(iconPoint.x, iconPoint.y, { durationMs: 1000 });
+    await control.flush();
+    await new Promise(r => setTimeout(r, 600));
+
+    state.counter += 1;
+    const popupObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    const uninstallBtn = findStrictPhrase(popupObs.items, '卸载') || findPhrase(popupObs.items, '卸载');
+
+    let tapTarget;
+    if (uninstallBtn) {
+      tapTarget = tapBox(control, uninstallBtn, popupObs);
+      console.log(`[卸载] 识别到“卸载”气泡标，点击 (${tapTarget.x}, ${tapTarget.y})...`);
+    } else {
+      // 气泡标位于图标正上方
+      tapTarget = { x: iconPoint.x, y: Math.max(0, iconPoint.y - 58) };
+      console.log(`[卸载] 点击图标上方“卸载”气泡标位置 (${tapTarget.x}, ${tapTarget.y})...`);
+    }
+
+    await control.tap(tapTarget.x, tapTarget.y);
+    await control.flush();
+    await new Promise(r => setTimeout(r, 800));
+
+    state.counter += 1;
+    const dialogObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    const hasConfirm = findStrictPhrase(dialogObs.items, '要卸载此应用吗') ||
+      findPhrase(dialogObs.items, '要卸载此应用吗') ||
+      findPhrase(dialogObs.items, '卸载此应用');
+    const isTargetApp = findStrictPhrase(dialogObs.items, '伍羊工具箱') ||
+      findPhrase(dialogObs.items, '伍羊工具箱') ||
+      findPhrase(dialogObs.items, '伍羊');
+    const okBtn = findStrictPhrase(dialogObs.items, '确定') || findPhrase(dialogObs.items, '确定');
+
+    if (hasConfirm && okBtn) {
+      const okPoint = tapBox(control, okBtn, dialogObs);
+      console.log(`[卸载] 双层核验通过（确认弹窗包含“伍羊工具箱”），点击“确定” (${okPoint.x}, ${okPoint.y})...`);
+      await control.tap(okPoint.x, okPoint.y);
+      await control.flush();
+      await new Promise(r => setTimeout(r, 2000));
+      dialogConfirmed = true;
+      break;
+    } else {
+      console.log('[卸载] 未检测到卸载确认弹窗，正在重试长按...');
+      await sendHome(control);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  if (!dialogConfirmed) {
+    throw new Error('未能触发“伍羊工具箱”卸载确认弹窗');
+  }
+
+  // 核验应用已从桌面移除
+  state.counter += 1;
+  const postObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+  const stillExists = toolBox(postObs.items);
+  if (stillExists) {
+    console.log('[卸载] 等待应用包管理器完成卸载...');
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  console.log('[卸载] “伍羊工具箱”已成功卸载！');
+  return { uninstalled: true };
+}
+
 async function main() {
   if (!process.env.YUNMOMO_TOKEN) {
     throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
@@ -373,7 +471,7 @@ async function main() {
   }
 
   console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
-  console.log('[1/5] 正在确认主屏幕就绪...');
+  console.log('[1/6] 正在确认主屏幕就绪...');
 
   const runId = String(process.env.YUNMOMO_SCRIPT_RUN_ID || ('run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)));
   const screenshotsDir = path.join(PROJECT_ROOT, 'logs', 'screenshots', runId);
@@ -389,24 +487,39 @@ async function main() {
 
   try {
     await control.connect();
-    const home = await confirmHome(phone, control, worker, directory, state, options);
 
-    console.log('[2/5] 正在桌面寻找应用“伍羊工具箱”...');
-    const found = await findApp(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      home,
-      options,
-      toolBox,
-      '伍羊工具箱',
-    );
+    // 优先就近检测：若当前桌面视口已经包含“伍羊工具箱”，直接使用，大幅提速
+    state.counter += 1;
+    const initialObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    const directBox = toolBox(initialObs.items);
+    let found;
 
-    console.log('[3/5] 正在打开“伍羊工具箱”并等待就绪...');
+    if (directBox && !clipboardToastVisible(initialObs.items)) {
+      console.log('[2/6] 当前屏幕已就绪且直达“伍羊工具箱”入口，直接进入...');
+      found = { observation: initialObs, box: directBox, direction: 'none', page: 0 };
+    } else {
+      const home = await confirmHome(phone, control, worker, directory, state, {
+        ...options,
+        homeConfirmation: { firstAttemptTimeoutMs: 2500 }
+      });
+      console.log('[2/6] 正在桌面寻找应用“伍羊工具箱”...');
+      found = await findApp(
+        phone,
+        control,
+        worker,
+        directory,
+        state,
+        home,
+        options,
+        toolBox,
+        '伍羊工具箱',
+      );
+    }
+
+    console.log('[3/6] 正在打开“伍羊工具箱”并等待就绪...');
     const opened = await tapToolAndWaitReady(phone, control, worker, directory, state, found, options);
 
+    console.log('[4/6] 正在执行数据生成并实时监控状态...');
     const generated = await clickGenerateAllAndWait(
       phone,
       control,
@@ -417,25 +530,33 @@ async function main() {
       options,
     );
 
-    console.log('[4/5] 数据生成完毕，正在快速返回主屏幕并核验...');
-    if (!generated.alreadyHome) {
-      await sendHome(control);
-      await swipeHomePage(control, 'right');
-    }
+    console.log('[5/6] 数据生成完毕，正在卸载“伍羊工具箱”...');
+    const uninstalled = await uninstallToolBox(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      options,
+    );
+
+    console.log('[6/6] 正在返回并核验主屏幕第一页...');
+    await sendHome(control);
+    await swipeHomePage(control, 'right');
     const finalHome = await confirmHome(phone, control, worker, directory, state, {
       ...options,
-      homeConfirmation: { firstAttemptTimeoutMs: 3000 }
+      homeConfirmation: { firstAttemptTimeoutMs: 2500 }
     });
     const finalAnchors = homeAnchorMatches(finalHome.items);
     homeRestored = finalAnchors.length >= 2;
-    success = generated.buttonReturned && homeRestored;
+    success = generated.buttonReturned && uninstalled.uninstalled && homeRestored;
 
     if (!success) {
-      throw new Error('执行未完成：' + (!generated.buttonReturned ? '“一键生成全部”未确认完成' : '未能成功恢复主屏'));
+      throw new Error('执行未完成：' + (!generated.buttonReturned ? '“一键生成全部”未确认完成' : !uninstalled.uninstalled ? '“伍羊工具箱”卸载未确认' : '未能成功恢复主屏'));
     }
 
-    console.log(`[5/5] 已成功恢复主屏幕 (桌面锚点: ${finalAnchors.length} 个)`);
-    console.log(`>>> 一键生成全部执行成功 OK (生成耗时: ${generated.elapsedSeconds}s)`);
+    console.log(`[核验完成] 已成功恢复主屏幕第一页 (桌面锚点: ${finalAnchors.length} 个)`);
+    console.log(`>>> 一键生成全部并卸载执行成功 OK (生成耗时: ${generated.elapsedSeconds}s)`);
   } finally {
     if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
@@ -454,6 +575,7 @@ async function main() {
 
 tapToolAndWaitReady = require('../../automation/timing').timed('workflow.generate-all.tapToolAndWaitReady', tapToolAndWaitReady);
 clickGenerateAllAndWait = require('../../automation/timing').timed('workflow.generate-all.clickGenerateAllAndWait', clickGenerateAllAndWait);
+uninstallToolBox = require('../../automation/timing').timed('workflow.generate-all.uninstallToolBox', uninstallToolBox);
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.generate-all', main);
 
 if (require.main === module) {
@@ -467,4 +589,5 @@ module.exports = {
   toolReady,
   generatingState,
   completionEvidence,
+  uninstallToolBox,
 };

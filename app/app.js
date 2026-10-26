@@ -70,6 +70,7 @@ const elements = {
 const STEPS_META = [
   { order: 1, id: 'flow-01-import-cloud-disk', name: '导入云盘', full: '01 导入云盘所有文件' },
   { order: 2, id: 'flow-02-upload-cert', name: '上传证书', full: '02 上传证书' },
+  { order: 2.1, id: 'flow-02.1-import-params', name: '导入真参', full: '02.1 导入真参' },
   { order: 3, id: 'flow-03-set-vpc-proxy', name: 'VPC 代理', full: '03 设置 VPC 代理' },
   { order: 4, id: 'flow-04-setup-environment', name: '环境配置', full: '04 环境配置' },
   { order: 5, id: 'flow-05-generate-all', name: '一键生成', full: '05 一键生成全部' },
@@ -85,6 +86,12 @@ const STATUS_LABELS = {
   failed: '执行失败',
   cancelled: '已停止，需核对'
 };
+
+function formatStepOrder(order) {
+  if (typeof order !== 'number') return String(order || '');
+  if (Number.isInteger(order)) return String(order).padStart(2, '0');
+  return '0' + order;
+}
 
 function saveDeviceProgress() {
   try {
@@ -120,14 +127,13 @@ function updateMiniStepperForDevice(deviceId) {
   if (!card) return;
   const miniStepper = card.querySelector('.device-mini-stepper');
   if (!miniStepper) return;
-  for (let i = 1; i <= 8; i++) {
-    const dot = miniStepper.querySelector(`[data-step="${i}"]`);
+  for (const meta of STEPS_META) {
+    const dot = miniStepper.querySelector(`[data-step="${meta.order}"]`);
     if (!dot) continue;
     dot.className = 'mini-step-dot';
-    const st = getStepState(deviceId, i);
+    const st = getStepState(deviceId, meta.order);
     if (st && st !== 'idle') dot.classList.add(st);
-    const meta = STEPS_META[i - 1];
-    dot.title = `${meta ? meta.name : ('步骤 ' + i)}: ${STATUS_LABELS[st] || '待执行'}`;
+    dot.title = `${meta.name}: ${STATUS_LABELS[st] || '待执行'}`;
   }
 }
 
@@ -158,7 +164,7 @@ function renderPipelineStepper() {
 
     const num = document.createElement('span');
     num.className = 'step-node-num';
-    num.textContent = String(step.order).padStart(2, '0');
+    num.textContent = formatStepOrder(step.order);
 
     const info = document.createElement('div');
     info.className = 'step-node-info';
@@ -512,15 +518,14 @@ function createDeviceCard(device) {
   const miniStepper = document.createElement('div');
   miniStepper.className = 'device-mini-stepper';
   miniStepper.dataset.deviceId = device.deviceId;
-  miniStepper.title = '01~08 初始化全流程进度';
-  for (let i = 1; i <= 8; i++) {
+  miniStepper.title = '初始化全流程进度';
+  for (const meta of STEPS_META) {
     const dot = document.createElement('span');
     dot.className = 'mini-step-dot';
-    dot.dataset.step = String(i);
-    const meta = STEPS_META[i - 1];
-    const st = getStepState(device.deviceId, i);
+    dot.dataset.step = String(meta.order);
+    const st = getStepState(device.deviceId, meta.order);
     if (st && st !== 'idle') dot.classList.add(st);
-    dot.title = `${meta ? meta.name : ('步骤 ' + i)}: ${STATUS_LABELS[st] || '待执行'}`;
+    dot.title = `${meta.name}: ${STATUS_LABELS[st] || '待执行'}`;
     miniStepper.append(dot);
   }
 
@@ -745,7 +750,7 @@ function createScriptCard(script) {
   if (script.order) {
     const order = document.createElement('span');
     order.className = 'script-order';
-    order.textContent = String(script.order).padStart(2, '0');
+    order.textContent = formatStepOrder(script.order);
     titleGroup.append(order);
   }
 

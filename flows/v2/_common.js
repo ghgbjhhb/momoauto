@@ -9,6 +9,7 @@ const timing = require('../../src/automation/timing');
 const STEPS = [
   { order: 1, name: '导入云盘所有文件v2', entry: '01-导入云盘所有文件.js', source: 'src/workflows/v2/send-cloud-files.js', confirmation: 'YUNMOMO_CONFIRM_SEND', version: 'v2' },
   { order: 2, name: '上传证书v2', entry: '02-上传证书.js', source: 'src/workflows/v2/upload-certificate.js', confirmation: 'YUNMOMO_CONFIRM_CERT_UPLOAD', version: 'v2' },
+  { order: 2.1, name: '导入真参v2', entry: '02.1-导入真参.js', source: 'src/workflows/v2/import-real-params.js', confirmation: 'YUNMOMO_CONFIRM_REAL_PARAMS', version: 'v2' },
   { order: 3, name: '设置VPC代理v2', entry: '03-设置VPC代理.js', source: 'src/workflows/v2/set-vpc-proxy.js', confirmation: 'YUNMOMO_CONFIRM_VPC_PROXY', version: 'v2' },
   { order: 4, name: '环境配置v2', entry: '04-环境配置.js', source: 'src/workflows/v2/configure-environment.js', confirmation: 'YUNMOMO_CONFIRM_ENV_CONFIG', version: 'v2' },
   { order: 5, name: '一键生成全部v2', entry: '05-一键生成全部.js', source: 'src/workflows/v2/generate-all.js', confirmation: 'YUNMOMO_CONFIRM_GENERATE_ALL', version: 'v2' },
@@ -16,6 +17,12 @@ const STEPS = [
   { order: 7, name: '高德初始化v2', entry: '07-高德初始化.js', source: 'src/workflows/v2/initialize-gaode.js', confirmation: 'YUNMOMO_CONFIRM_GAODE_INIT', version: 'v2' },
   { order: 8, name: '输入法初始化v2', entry: '08-输入法初始化.js', source: 'src/workflows/v2/initialize-input-method.js', confirmation: 'YUNMOMO_CONFIRM_INPUT_INIT', version: 'v2' },
 ];
+
+function formatStepOrder(order) {
+  if (typeof order !== 'number') return String(order || '');
+  if (Number.isInteger(order)) return String(order).padStart(2, '0');
+  return '0' + order;
+}
 
 async function runStep(order, { env = process.env, onOutput = text => process.stdout.write(text) } = {}) {
   const step = STEPS.find(item => item.order === order);
@@ -31,10 +38,11 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
   const logRel = path.relative(PROJECT_ROOT, logFile).replace(/\\/g, '/');
 
   const startTime = new Date();
+  const stepLabel = formatStepOrder(order);
   const header = [
     '================================================================================',
     `[调用唯一ID] ${runId}`,
-    `[流程步骤]   第 ${order}/8 步：${step.name}`,
+    `[流程步骤]   步骤 ${stepLabel}：${step.name}`,
     `[目标设备]   ${deviceId}`,
     `[启动时间]   ${startTime.toLocaleString('zh-CN')} (${startTime.toISOString()})`,
     `[执行脚本]   ${step.source}`,
@@ -53,7 +61,7 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
     YUNMOMO_VERIFY_ONLY: '0',
     YUNMOMO_SCRIPT_RUN_ID: runId,
   });
-  onOutput(`[调用ID: ${runId}]\n开始 ${order}/8：${step.name}，目标设备 ${deviceId}\n`);
+  onOutput(`[调用ID: ${runId}]\n开始步骤 ${stepLabel}：${step.name}，目标设备 ${deviceId}\n`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(PROJECT_ROOT, step.source), '--execute'], {
       cwd: PROJECT_ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
