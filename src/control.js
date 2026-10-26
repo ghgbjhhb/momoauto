@@ -272,25 +272,38 @@ class CloudPhoneControl extends EventEmitter {
   swipe(from, to, options = {}) {
     const duration = p.integer('durationMs', options.durationMs ?? 300, 0, 60000);
     const steps = p.integer('steps', options.steps ?? 10, 1, 1000);
+    const clamp = (val, max) => Math.min(max - 1, Math.max(0, Math.round(Number(val))));
+    const clampedFrom = {
+      x: clamp(from.x, this.screenWidth),
+      y: clamp(from.y, this.screenHeight)
+    };
+    const clampedTo = {
+      x: clamp(to.x, this.screenWidth),
+      y: clamp(to.y, this.screenHeight)
+    };
     // Validate both ends before emitting a DOWN, avoiding stuck touches on bad input.
-    for (const point of [from, to]) p.encodeTouch({ ...options, action: 0, ...point,
+    for (const point of [clampedFrom, clampedTo]) p.encodeTouch({ ...options, action: 0, ...point,
       screenWidth: this.screenWidth, screenHeight: this.screenHeight });
     return this._enqueue('_gestures', async () => {
       if (options.signal?.aborted) throw new Error('Operation aborted');
       const generation = this._generation;
-      let current = { ...from };
-      this.touch(p.ACTION.DOWN, from.x, from.y, options);
+      let current = { ...clampedFrom };
+      this.touch(p.ACTION.DOWN, clampedFrom.x, clampedFrom.y, options);
       try {
         for (let i = 1; i <= steps; i++) {
           await delay(duration / steps, options.signal);
           if (generation !== this._generation) throw new Error('Connection changed during gesture');
-          current = { x: Math.round(from.x + (to.x - from.x) * i / steps),
-            y: Math.round(from.y + (to.y - from.y) * i / steps) };
-          if (from.x !== to.x || from.y !== to.y) this.touch(p.ACTION.MOVE, current.x, current.y, options);
+          current = {
+            x: clamp(clampedFrom.x + (clampedTo.x - clampedFrom.x) * i / steps, this.screenWidth),
+            y: clamp(clampedFrom.y + (clampedTo.y - clampedFrom.y) * i / steps, this.screenHeight)
+          };
+          if (clampedFrom.x !== clampedTo.x || clampedFrom.y !== clampedTo.y) this.touch(p.ACTION.MOVE, current.x, current.y, options);
         }
       } finally {
         if (generation === this._generation && this.connected) {
-          this.touch(p.ACTION.UP, current.x, current.y, { ...options, pressure: 0, buttons: 0 });
+          const upX = clamp(current.x, this.screenWidth);
+          const upY = clamp(current.y, this.screenHeight);
+          this.touch(p.ACTION.UP, upX, upY, { ...options, pressure: 0, buttons: 0 });
         }
       }
       return this;

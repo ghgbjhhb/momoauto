@@ -190,7 +190,7 @@ async function main() {
         certificateState: finalState.certificate,
         bootloaderState: finalState.bootloader,
         successDetected: success,
-        finalHomeAnchors,
+        finalHomeAnchors: finalAnchors,
         homeRestored,
         screenshotObservations: state.counter,
         error: executionError ? { message: executionError.message, stack: executionError.stack } : null,
@@ -201,9 +201,7 @@ async function main() {
       await fs.writeFile(reportFile, content, 'utf8');
       await fs.writeFile(latestFile, content, 'utf8');
       console.log('      诊断数据已存入: .local-output/环境配置/latest.json');
-    } catch (saveErr) {
-      console.error('saveErr:', saveErr);
-    }
+    } catch {}
 
     if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {

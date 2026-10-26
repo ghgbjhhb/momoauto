@@ -275,10 +275,12 @@ async function confirmHome(phone, control, worker, directory, state, options) {
   );
   if (isConfirmedHome(home)) return reportConfirmation(home, 1);
 
-  // HOME is idempotent. A second key helps if the first frame landed while a
-  // transient clipboard toast or another browser-side overlay was visible.
+  // HOME is idempotent. If the phone is left on a secondary launcher page
+  // where the HOME key does not reset page offset, swipe right back to page 1.
   await sleep(numberOr(confirmation?.retryDelayMs, 500));
   await sendHome(control);
+  await swipeHomePage(control, 'right');
+  await sleep(500);
   home = await observeUntil(
     phone,
     worker,
@@ -296,15 +298,16 @@ async function confirmHome(phone, control, worker, directory, state, options) {
 }
 
 async function swipeHomePage(control, direction) {
-  const width = control.screenWidth;
-  const height = control.screenHeight;
-  const y = Math.round(height * 0.43);
-  const fromX = direction === 'left' ? Math.round(width * 0.82) : Math.round(width * 0.18);
-  const toX = direction === 'left' ? Math.round(width * 0.18) : Math.round(width * 0.82);
+  const width = control.screenWidth || 400;
+  const height = control.screenHeight || 720;
+  // Swipe at 65% height to touch the empty canvas area below icons, avoiding icon reordering gestures
+  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.65)));
+  const fromX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.82) : Math.round(width * 0.18)));
+  const toX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.18) : Math.round(width * 0.82)));
   await control.swipe(
     { x: fromX, y },
     { x: toX, y },
-    { durationMs: 500, steps: 12 },
+    { durationMs: 400, steps: 15 },
   );
   await control.flush();
 }
