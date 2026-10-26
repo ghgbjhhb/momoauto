@@ -126,7 +126,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     requiresCertificate: step.order === 2,
     ...(step.order === 3 ? {
       parameters: [
-        { name: 'action', label: '操作指令', choices: ['set', 'show', 'close'], defaultValue: 'set' }
+        { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
       ]
     } : {})
   })),
@@ -157,7 +157,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     requiresCertificate: step.order === 2,
     ...(step.order === 3 ? {
       parameters: [
-        { name: 'action', label: '操作指令', choices: ['set', 'show', 'close'], defaultValue: 'set' }
+        { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
       ]
     } : {})
   })),

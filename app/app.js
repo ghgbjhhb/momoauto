@@ -712,7 +712,7 @@ function startPreview() {
 }
 
 function parameterChoiceLabel(field, value) {
-  if (field.name === 'action') return ({ set: '设置/更新代理 (默认)', show: '展示当前代理 (查询)', close: '关闭设备代理' })[value] || String(value);
+  if (field.name === 'action') return ({ set: '设置新代理', show: '展示当前代理', close: '关闭代理' })[value] || String(value);
   if (field.name === 'androidVersion') return value === 'all' ? '全部版本' : 'Android ' + value;
   if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新',
     execute: '执行发送', draft: '生成并输入', watch: '1. 挂机模式 (巡查前几页)', drain: '2. 全量模式 (必须翻到底)' })[value] || String(value);
@@ -765,6 +765,7 @@ function createScriptCard(script) {
   if (script.parameters?.length) {
     const settings = document.createElement('details');
     settings.className = 'script-settings';
+    settings.open = true;
     const summary = document.createElement('summary');
     summary.innerHTML = `<span>配置参数</span><svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>`;
     settings.append(summary);
