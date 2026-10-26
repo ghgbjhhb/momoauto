@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070d17">
+  <title>登录与注册 - 云 MOMO 云手机平台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/console.css">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 30%, #0f1c2e 0%, #070d17 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+    }
+
+    .auth-container {
+      width: 100%;
+      max-width: 440px;
+      padding: 24px;
+      margin: 20px;
+    }
+
+    .auth-card {
+      background: rgba(15, 28, 46, 0.85);
+      border: 1px solid var(--line-accent);
+      border-radius: 14px;
+      padding: 36px 32px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px var(--blue-glow);
+      backdrop-filter: blur(12px);
+    }
+
+    .auth-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 16px var(--blue-glow);
+    }
+
+    .brand-icon svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .auth-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .auth-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .auth-tabs {
+      display: flex;
+      background: var(--bg-dark);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 24px;
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .auth-tab.active {
+      background: var(--blue);
+      color: #fff;
+      box-shadow: 0 2px 8px var(--blue-glow);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 42px;
+      background: var(--bg-dark);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 0 14px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px var(--blue-glow);
+    }
+
+    .auth-btn {
+      width: 100%;
+      height: 44px;
+      background: linear-gradient(135deg, var(--blue), #2b77e5);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px var(--blue-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .auth-btn:hover {
+      background: linear-gradient(135deg, var(--blue-hover), #3a85f5);
+      transform: translateY(-1px);
+    }
+
+    .auth-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .auth-alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .auth-alert.error {
+      display: block;
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid rgba(248, 81, 73, 0.35);
+      color: #ff7b72;
+    }
+
+    .auth-alert.success {
+      display: block;
+      background: rgba(46, 160, 67, 0.15);
+      border: 1px solid rgba(46, 160, 67, 0.35);
+      color: #3fb950;
+    }
+
+    .auth-footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="3"></rect>
+            <path d="M12 18h.01"></path>
+          </svg>
+        </div>
+        <div class="auth-title">云 MOMO 云手机平台</div>
+        <div class="auth-subtitle">高性能多端云控与卡密分发系统</div>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin" type="button">用户登录</button>
+        <button class="auth-tab" id="tabRegister" type="button">邮箱注册</button>
+      </div>
+
+      <div class="auth-alert" id="authAlert" role="alert"></div>
+
+      <form id="authForm" autocomplete="on">
+        <div class="form-group">
+          <label for="emailInput">电子邮箱</label>
+          <input
+            id="emailInput"
+            name="email"
+            class="form-input"
+            type="email"
+            placeholder="请输入电子邮箱，如 user@domain.com"
+            required
+            autocomplete="email"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="passwordInput">登录密码</label>
+          <input
+            id="passwordInput"
+            name="password"
+            class="form-input"
+            type="password"
+            placeholder="请输入密码 (至少 6 位)"
+            required
+            autocomplete="current-password"
+          >
+        </div>
+
+        <div class="form-group" id="confirmGroup" style="display: none;">
+          <label for="confirmPasswordInput">确认密码</label>
+          <input
+            id="confirmPasswordInput"
+            class="form-input"
+            type="password"
+            placeholder="请再次输入密码"
+            autocomplete="new-password"
+          >
+        </div>
+
+        <button class="auth-btn" id="submitBtn" type="submit">
+          <span id="btnText">立即登录</span>
+        </button>
+      </form>
+
+      <div class="auth-footer">
+        <div>管理员默认账号：<code>admin@yunmomo.local</code> / <code>admin123456</code></div>
+        <div>如需开通云机，登录后在工作台右上角【兑换卡密】即可绑定</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+    let mode = 'login'; // 'login' | 'register'
+
+    const tabLogin = document.getElementById('tabLogin');
+    const tabRegister = document.getElementById('tabRegister');
+    const confirmGroup = document.getElementById('confirmGroup');
+    const authForm = document.getElementById('authForm');
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const confirmPasswordInput = document.getElementById('confirmPasswordInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    const authAlert = document.getElementById('authAlert');
+
+    function showAlert(text, type = 'error') {
+      authAlert.textContent = text;
+      authAlert.className = `auth-alert ${type}`;
+      authAlert.style.display = 'block';
+    }
+
+    function hideAlert() {
+      authAlert.style.display = 'none';
+      authAlert.textContent = '';
+    }
+
+    function switchMode(newMode) {
+      mode = newMode;
+      hideAlert();
+      if (mode === 'login') {
+        tabLogin.classList.add('active');
+        tabRegister.classList.remove('active');
+        confirmGroup.style.display = 'none';
+        confirmPasswordInput.removeAttribute('required');
+        btnText.textContent = '立即登录';
+      } else {
+        tabRegister.classList.add('active');
+        tabLogin.classList.remove('active');
+        confirmGroup.style.display = 'block';
+        confirmPasswordInput.setAttribute('required', 'required');
+        btnText.textContent = '注册并登录';
+      }
+    }
+
+    tabLogin.addEventListener('click', () => switchMode('login'));
+    tabRegister.addEventListener('click', () => switchMode('register'));
+
+    // Check if already logged in
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok && res.user) {
+          if (res.user.role === 'admin') {
+            location.href = '/admin.html';
+          } else {
+            location.href = '/index.html';
+          }
+        }
+      })
+      .catch(() => {});
+
+    authForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      hideAlert();
+
+      const email = emailInput.value.trim().toLowerCase();
+      const password = passwordInput.value;
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        showAlert('请输入正确的邮箱格式（例如 user@domain.com）');
+        return;
+      }
+
+      if (password.length < 6) {
+        showAlert('密码长度至少需要 6 个字符');
+        return;
+      }
+
+      if (mode === 'register') {
+        const confirmPassword = confirmPasswordInput.value;
+        if (password !== confirmPassword) {
+          showAlert('两次输入的密码不一致，请核对');
+          return;
+        }
+      }
+
+      submitBtn.disabled = true;
+      btnText.textContent = mode === 'login' ? '正在登录…' : '正在注册…';
+
+      try {
+        const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+          showAlert(result.error || '请求失败，请稍后重试');
+          submitBtn.disabled = false;
+          btnText.textContent = mode === 'login' ? '立即登录' : '注册并登录';
+          return;
+        }
+
+        showAlert(mode === 'login' ? '登录成功，正在进入工作台…' : '注册成功，正在进入工作台…', 'success');
+        setTimeout(() => {
+          if (result.user?.role === 'admin') {
+            location.href = '/admin.html';
+          } else {
+            location.href = '/index.html';
+          }
+        }, 600);
+      } catch (err) {
+        showAlert('网络连接失败，请检查服务状态');
+        submitBtn.disabled = false;
+        btnText.textContent = mode === 'login' ? '立即登录' : '注册并登录';
+      }
+    });
+  </script>
+</body>
+</html>

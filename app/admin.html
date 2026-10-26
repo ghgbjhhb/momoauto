@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070d17">
+  <title>后台管理系统 - 云 MOMO 云手机平台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/console.css">
+  <style>
+    body {
+      margin: 0;
+      background: var(--bg-dark);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Admin Shell Layout */
+    .admin-shell {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 64px);
+      overflow: hidden;
+    }
+
+    /* Admin Topbar */
+    .admin-topbar {
+      height: 64px;
+      background: rgba(15, 28, 46, 0.95);
+      border-bottom: 1px solid var(--line-strong);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      backdrop-filter: blur(10px);
+      z-index: 100;
+    }
+
+    .admin-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+
+    .admin-brand-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-tag {
+      font-size: 11px;
+      padding: 2px 7px;
+      background: rgba(56, 139, 253, 0.2);
+      border: 1px solid var(--blue);
+      color: var(--blue-hover);
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .admin-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .admin-user-pill {
+      font-size: 13px;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      padding: 5px 12px;
+      border-radius: 6px;
+    }
+
+    /* Sidebar */
+    .admin-sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 10px;
+      gap: 6px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      color: var(--text-muted);
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.18s ease;
+    }
+
+    .nav-item:hover {
+      background: var(--surface-card);
+      color: var(--text);
+    }
+
+    .nav-item.active {
+      background: rgba(56, 139, 253, 0.15);
+      border-color: var(--line-accent);
+      color: var(--blue-hover);
+      font-weight: 600;
+    }
+
+    .nav-item svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Main Content Area */
+    .admin-main {
+      flex: 1;
+      height: 100%;
+      overflow-y: auto;
+      background: var(--bg-dark);
+      padding: 24px;
+      position: relative;
+    }
+
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.2s ease;
+      height: 100%;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Embed cluster iframe */
+    .cluster-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 8px;
+    }
+
+    /* Cards & Stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface-card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .stat-card-title {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .stat-card-val {
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* Data Tables */
+    .table-container {
+      background: var(--surface-card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .table-toolbar {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .table-toolbar-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .admin-table th {
+      background: rgba(7, 13, 23, 0.6);
+      color: var(--text-muted);
+      padding: 12px 18px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .admin-table td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+    }
+
+    .admin-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Badges */
+    .badge-status {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-status.active {
+      background: rgba(46, 160, 67, 0.2);
+      color: #3fb950;
+      border: 1px solid rgba(46, 160, 67, 0.4);
+    }
+
+    .badge-status.unused {
+      background: rgba(56, 139, 253, 0.2);
+      color: #58a6ff;
+      border: 1px solid rgba(56, 139, 253, 0.4);
+    }
+
+    .badge-status.used {
+      background: rgba(139, 155, 180, 0.2);
+      color: #8b9bb4;
+      border: 1px solid rgba(139, 155, 180, 0.3);
+    }
+
+    .badge-status.revoked, .badge-status.banned, .badge-status.expired {
+      background: rgba(248, 81, 73, 0.2);
+      color: #ff7b72;
+      border: 1px solid rgba(248, 81, 73, 0.4);
+    }
+
+    /* Modal */
+    .admin-modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .admin-modal-card {
+      background: var(--surface);
+      border: 1px solid var(--line-accent);
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8);
+    }
+
+    .admin-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .admin-modal-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .batch-cards-output {
+      width: 100%;
+      height: 180px;
+      background: var(--bg-dark);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      color: #00ff9d;
+      font-family: monospace;
+      font-size: 13px;
+      resize: vertical;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Topbar -->
+  <header class="admin-topbar">
+    <div class="admin-brand">
+      <div class="admin-brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="3"></rect>
+          <path d="M12 18h.01"></path>
+        </svg>
+      </div>
+      <div class="admin-brand-title">
+        <span>云 MOMO 云手机平台</span>
+        <span class="admin-tag">后台管理系统</span>
+      </div>
+    </div>
+
+    <div class="admin-topbar-right">
+      <div class="admin-user-pill" id="adminUserEmail">正在加载…</div>
+      <a class="ghost-button" href="/index.html" title="进入用户控制台">
+        <span>用户端视角</span>
+      </a>
+      <button class="ghost-button" id="adminLogoutBtn" type="button">
+        <span>退出登录</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Shell -->
+  <div class="admin-shell">
+    <!-- Sidebar Navigation -->
+    <nav class="admin-sidebar">
+      <a class="nav-item active" data-tab="cluster">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <span>设备集群与控制台</span>
+      </a>
+      <a class="nav-item" data-tab="users">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>用户管理</span>
+      </a>
+      <a class="nav-item" data-tab="cards">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span>卡密生成与分发</span>
+      </a>
+      <a class="nav-item" data-tab="pool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        <span>设备池调度映射</span>
+      </a>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="admin-main">
+      <!-- Tab 1: 设备集群运维与控制台 (收编原控制台完整功能) -->
+      <section class="tab-content active" id="tab-cluster" style="height: 100%; padding: 0;">
+        <iframe class="cluster-iframe" id="clusterIframe" src="/index.html?view=admin-embed"></iframe>
+      </section>
+
+      <!-- Tab 2: 用户管理 -->
+      <section class="tab-content" id="tab-users">
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-card-title">注册用户总数</span>
+            <span class="stat-card-val" id="statUsersCount">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-title">正常用户</span>
+            <span class="stat-card-val text-green" id="statActiveUsersCount">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-title">已封禁用户</span>
+            <span class="stat-card-val text-red" id="statBannedUsersCount">--</span>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-toolbar-title">
+              <span>用户列表</span>
+            </div>
+            <button class="ghost-button" id="refreshUsersBtn" type="button">刷新列表</button>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>用户邮箱</th>
+                <th>系统角色</th>
+                <th>账号状态</th>
+                <th>名下活跃云机</th>
+                <th>注册时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr><td colspan="6" style="text-align:center; padding:30px;">正在加载用户列表…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Tab 3: 卡密中心 -->
+      <section class="tab-content" id="tab-cards">
+        <div class="table-container" style="margin-bottom: 24px;">
+          <div class="table-toolbar">
+            <div class="table-toolbar-title">
+              <span>⚡ 批量生成卡密</span>
+            </div>
+          </div>
+          <form id="generateCardsForm" style="padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) 140px; gap: 16px; align-items: flex-end;">
+            <div class="form-field">
+              <label for="cardDurationDays">有效期天数</label>
+              <select id="cardDurationDays" class="form-input">
+                <option value="1">1 天 (天卡)</option>
+                <option value="3">3 天</option>
+                <option value="7">7 天 (周卡)</option>
+                <option value="30" selected>30 天 (月卡)</option>
+                <option value="90">90 天 (季卡)</option>
+                <option value="365">365 天 (年卡)</option>
+                <option value="0">0 天 (配合小时)</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="cardDurationHours">小时数 (可选)</label>
+              <input id="cardDurationHours" class="form-input" type="number" min="0" max="23" value="0">
+            </div>
+            <div class="form-field">
+              <label for="cardCount">生成数量 (张)</label>
+              <input id="cardCount" class="form-input" type="number" min="1" max="200" value="5">
+            </div>
+            <div class="form-field">
+              <label for="cardBatchTag">批次备注 (选填)</label>
+              <input id="cardBatchTag" class="form-input" type="text" placeholder="如 10月代理首批">
+            </div>
+            <button class="run-button" style="height: 42px; margin: 0;" type="submit">立即生成</button>
+          </form>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-toolbar-title">
+              <span>卡密列表</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <select id="cardFilterStatus" class="form-input" style="width: 130px; height: 34px;">
+                <option value="">全部状态</option>
+                <option value="unused">未使用</option>
+                <option value="used">已使用</option>
+                <option value="revoked">已作废</option>
+              </select>
+              <button class="ghost-button" id="refreshCardsBtn" type="button">刷新列表</button>
+            </div>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>卡密代码</th>
+                <th>时长</th>
+                <th>状态</th>
+                <th>批次备注</th>
+                <th>生成时间</th>
+                <th>使用用户</th>
+                <th>使用时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="cardsTableBody">
+              <tr><td colspan="8" style="text-align:center; padding:30px;">正在加载卡密列表…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Tab 4: 设备池调度 -->
+      <section class="tab-content" id="tab-pool">
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="stat-card-title">主账号总云机数</span>
+            <span class="stat-card-val" id="statPoolTotal">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-title">已出租给用户</span>
+            <span class="stat-card-val text-blue" id="statPoolAllocated">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card-title">空闲可用库存</span>
+            <span class="stat-card-val text-green" id="statPoolIdle">--</span>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-toolbar-title">
+              <span>设备池映射与租约状态</span>
+            </div>
+            <button class="ghost-button" id="refreshPoolBtn" type="button">刷新设备池</button>
+          </div>
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>云机 ID</th>
+                <th>云机名称</th>
+                <th>硬件状态</th>
+                <th>分配状态</th>
+                <th>当前租用用户</th>
+                <th>到期时间</th>
+                <th>剩余有效时长</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="poolTableBody">
+              <tr><td colspan="8" style="text-align:center; padding:30px;">正在加载设备池…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Batch Cards Result Modal -->
+  <div class="admin-modal" id="cardsResultModal" style="display: none;">
+    <div class="admin-modal-card">
+      <div class="admin-modal-header">
+        <div class="admin-modal-title">🎉 卡密生成成功</div>
+        <button class="ghost-button" id="closeCardsModalBtn" type="button">✕</button>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">已成功生成以下卡密，你可以一键复制或导出分发给用户：</p>
+      <textarea class="batch-cards-output" id="batchCardsOutput" readonly></textarea>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="outline-button" id="copyAllCardsBtn" type="button">📋 一键复制全部</button>
+        <button class="ghost-button" id="downloadCardsTxtBtn" type="button">💾 导出 TXT</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

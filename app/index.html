@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070d17">
+  <title>云 MOMO 云手机自动化控制台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/console.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="3"></rect>
+            <path d="M12 18h.01"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">云 MOMO 自动化控制台</div>
+        </div>
+      </div>
+
+      <!-- 集群快捷指标 -->
+      <div class="cluster-stats" id="clusterStats">
+        <div class="stat-item">
+          <span class="stat-dot online"></span>
+          <span class="stat-label">设备</span>
+          <strong class="stat-val" id="statTotal">--</strong>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-label">在线</span>
+          <strong class="stat-val text-green" id="statOnline">--</strong>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-label">目标</span>
+          <strong class="stat-val text-blue" id="statTarget">未选择</strong>
+        </div>
+      </div>
+
+      <div class="topbar-tools">
+        <div class="service-state" id="serviceState">
+          <span class="state-dot"></span>
+          <span class="state-text">检查服务中</span>
+        </div>
+        <div class="user-pill" id="userPill" style="display:none; font-size:13px; color:var(--text-muted); background:var(--surface); border:1px solid var(--line); padding:5px 12px; border-radius:6px;">--</div>
+        <button class="run-button redeem-open-btn" id="openRedeemModalBtn" type="button" style="height:34px; padding:0 14px; font-size:13px; margin:0; gap:6px;">
+          <span>🎟️</span>
+          <span>兑换卡密</span>
+        </button>
+        <a class="ghost-button" id="adminPortalLink" href="/admin.html" style="display:none;" title="进入后台管理系统">
+          <span>⚙️ 管理后台</span>
+        </a>
+        <button class="ghost-button" id="userLogoutBtn" type="button" style="display:none;">
+          <span>退出</span>
+        </button>
+        <details class="session-settings" id="sessionSettings" hidden>
+          <summary>会话凭据</summary>
+          <form class="session-bridge" id="sessionBridge">
+            <input id="sessionToken" type="password" autocomplete="off" placeholder="粘贴当前登录令牌 (Token)" aria-label="会话令牌">
+            <button class="ghost-button" id="connectSession" type="submit">连接</button>
+          </form>
+        </details>
+        <a class="ghost-button cloud-link" href="https://cloud.yunmomo.com/#/screen/device/ScDeviceView" target="_blank" rel="noopener">
+          <span>云端后台</span>
+          <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+        </a>
+        <button class="ghost-button refresh-btn" id="refreshDevices" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          <span>刷新设备</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="shared-activity" id="sharedActivity" role="status" aria-live="polite" hidden></div>
+
+    <main class="workspace">
+      <!-- 左侧：云手机实时集群监控 -->
+      <section class="preview-panel panel">
+        <div class="panel-heading">
+          <div class="panel-heading-left">
+            <h1 id="previewTitle">云机实时监控</h1>
+            <span class="panel-tag">LIVE</span>
+          </div>
+          <div class="live-pill" id="previewState">未连接</div>
+        </div>
+
+        <div class="preview-toolbar">
+          <span class="toolbar-label">设备画面</span>
+          <div class="toolbar-controls">
+            <label class="size-control" for="previewSize">
+              <span>画面缩放</span>
+              <input id="previewSize" aria-label="屏幕大小" type="range" min="140" max="280" step="10" value="190">
+              <output id="previewSizeValue" for="previewSize">190px</output>
+            </label>
+          </div>
+        </div>
+
+        <div class="preview-stage">
+          <div class="device-grid" id="deviceGrid">
+            <div class="loading-card">
+              <div class="spinner"></div>
+              <span>正在加载云手机集群列表…</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="preview-footer">
+          <div class="preview-summary" id="previewSummary">—</div>
+          <button class="outline-button" id="refreshPreview" type="button">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+            <span>刷新当前画面</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 右侧：自动化业务脚本面板 -->
+      <aside class="script-panel panel">
+        <div class="panel-heading compact">
+          <div class="panel-heading-left">
+            <h2>自动化工作台</h2>
+          </div>
+          <span class="panel-tag" id="workbenchTarget">未选择目标</span>
+        </div>
+
+        <div class="workbench-content">
+        <div class="script-tools">
+
+        <!-- 可视化全流程流水线步进器 (01~08 Pipeline Stepper) -->
+        <section class="pipeline-stepper-box" id="pipelineStepperBox">
+          <div class="stepper-head">
+            <div class="stepper-title-row">
+              <span class="stepper-title">初始化流程</span>
+            </div>
+            <span class="stepper-target-badge" id="stepperTargetBadge">未选择目标</span>
+          </div>
+
+          <div class="pipeline-stepper" id="pipelineStepper">
+            <!-- 8个节点由 JS 渲染 -->
+          </div>
+
+          <div class="stepper-actions">
+            <button class="run-button stepper-run-all-btn" id="stepperRunAllBtn" type="button" title="执行全流程 01–08 (V3)">
+              <span class="run-icon">▶</span>
+              <span>执行全流程 (V3)</span>
+            </button>
+            <button class="text-button reset-stepper-btn" id="resetStepperBtn" type="button" title="重置本设备进度记录">
+              重置状态
+            </button>
+          </div>
+        </section>
+
+        <!-- 脚本分组列表由 JS 智能分类渲染 -->
+        <div class="script-list" id="scriptList">
+          <div class="loading-card">
+            <div class="spinner"></div>
+            <span>正在加载业务脚本…</span>
+          </div>
+        </div>
+        </div>
+
+        <!-- MOMO AI 自动回复控制面板 (DeepSeek) -->
+        <div class="configuration-grid">
+        <section class="config-card ai-reply-card" id="aiReplyCard">
+          <div class="config-card-heading">
+            <h3>AI 自动回复</h3>
+            <span class="badge" id="aiReplyStatusBadge">待命</span>
+          </div>
+
+          <div class="ai-reply-body config-form">
+            <div class="form-field">
+              <label for="aiApiKey">DeepSeek API Key</label>
+              <input type="password" id="aiApiKey" autocomplete="off" placeholder="留空保持原有 Key" />
+            </div>
+
+            <div class="form-row">
+              <div class="form-field">
+                <label for="aiModel">模型</label>
+                <input type="text" id="aiModel" value="deepseek-chat" />
+              </div>
+              <div class="form-field">
+                <label for="aiMode">运行模式</label>
+                <select id="aiMode">
+                  <option value="draft">生成并输入</option>
+                  <option value="execute" selected>执行发送</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label for="aiSystemPrompt">系统提示词</label>
+              <textarea id="aiSystemPrompt" rows="7" placeholder="设置 AI 回复人设…"></textarea>
+            </div>
+
+            <div class="form-row form-row-contact">
+              <div class="form-field">
+                <label for="aiContactName">联系人</label>
+                <input type="text" id="aiContactName" placeholder="自动扫描未读消息" />
+              </div>
+              <div class="form-field">
+                <label for="aiMaxContacts">处理人数</label>
+                <input type="number" id="aiMaxContacts" value="1" min="1" max="5" />
+              </div>
+            </div>
+
+            <div class="config-actions">
+              <button type="button" class="outline-button" id="btnSaveAiConfig">保存配置</button>
+              <button type="button" class="outline-button" id="btnTestAiApi">测试连接</button>
+              <button type="button" class="run-button" id="btnRunAiReply">执行一次</button>
+              <button type="button" class="danger-button" id="btnCancelAiReply" hidden>取消</button>
+            </div>
+
+            <div class="result-block" id="aiReplyResultBox" hidden>
+              <h4>执行结果 / 回复草稿</h4>
+              <pre id="aiReplyResultPre"></pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- MOMO 持续监听与调度中枢控制台 -->
+        <section class="config-card momo-brain-card" id="momoBrainCard">
+          <div class="config-card-heading">
+            <h3>持续监听与调度</h3>
+            <span class="badge" id="brainStatusBadge">待命</span>
+          </div>
+
+          <div class="brain-body config-form">
+            <div class="form-row">
+              <div class="form-field">
+                <label for="brainModeSelect">中枢模式</label>
+                <select id="brainModeSelect">
+                  <option value="observe" selected>观察归档</option>
+                  <option value="draft">生成并输入</option>
+                  <option value="execute">自动执行</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="brainPollInterval">巡检间隔 / ms</label>
+                <input type="number" id="brainPollInterval" value="2000" min="500" max="30000" step="500" />
+              </div>
+            </div>
+
+            <fieldset class="automation-switches">
+              <legend>自动任务</legend>
+              <label class="switch-row" for="brainAutoReply"><span>新消息自动回复</span><input type="checkbox" id="brainAutoReply" role="switch" /></label>
+              <label class="switch-row" for="brainGreetings"><span>空闲处理招呼</span><input type="checkbox" id="brainGreetings" role="switch" /></label>
+              <label class="switch-row" for="brainBrowse"><span>空闲动态浏览</span><input type="checkbox" id="brainBrowse" role="switch" /></label>
+            </fieldset>
+
+            <div class="phase-display" id="brainPhaseDisplay" role="status">
+              状态: 待就绪 | 阶段: idle | 互斥锁: 空闲
+            </div>
+
+            <div class="config-actions brain-actions">
+              <button type="button" class="run-button" id="btnBrainStart">启动中枢</button>
+              <button type="button" class="outline-button" id="btnBrainPause" disabled>暂停</button>
+              <button type="button" class="outline-button" id="btnBrainResume" disabled>恢复</button>
+              <button type="button" class="danger-button" id="btnBrainStop" disabled>停止</button>
+              <button type="button" class="outline-button" id="btnBrainSaveConfig" title="保存调度配置">保存配置</button>
+            </div>
+
+            <div class="result-block">
+              <h4>近期事件</h4>
+              <pre id="brainEventLogPre">等待启动中枢…</pre>
+            </div>
+          </div>
+        </section>
+        </div>
+        </div>
+
+        <!-- 终端日志执行记录 -->
+        <details class="output-section" id="outputSection">
+          <summary class="output-heading">
+            <div class="output-heading-title">
+              <span class="terminal-dot"></span>
+              <span>执行日志记录</span>
+            </div>
+            <span class="output-toggle" id="outputToggle">展开</span>
+          </summary>
+          <div class="output-content">
+            <div class="output-actions">
+              <button class="danger-button stop-script-btn" id="stopScriptBtn" type="button" style="display:none; padding:3px 10px; font-size:12px; margin-right:8px; border-radius:4px;">⏹ 停止脚本</button>
+              <button class="text-button" id="copyOutputBtn" type="button">复制日志</button>
+              <span class="action-divider">|</span>
+              <button class="text-button" id="clearOutput" type="button">清空</button>
+            </div>
+            <pre class="output-box" id="outputBox">暂无执行记录。</pre>
+          </div>
+        </details>
+      </aside>
+    </main>
+  </div>
+
+  <!-- 旗舰云手机真机操作台 (Smartphone Workstation Dialog) -->
+  <dialog class="control-dialog" id="controlDialog" aria-labelledby="controlTitle">
+    <header class="control-heading">
+      <div class="control-title-wrap">
+        <div class="control-title-main">
+          <span class="control-device-badge" id="controlDeviceBadge">#--</span>
+          <h2 id="controlTitle">云手机原画控制台</h2>
+        </div>
+        <p id="controlStatus" role="status">正在建立控制连接…</p>
+      </div>
+      <div class="control-head-tools">
+        <button class="ghost-button vision-toggle-btn" id="toggleVisionBtn" type="button" title="开启/关闭 AI 视觉检测透视 (RapidOCR/控件边界)">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          <span class="btn-text">AI 视觉透视</span>
+        </button>
+        <button class="ghost-button copy-head-btn" id="copyControlIdBtn" type="button" title="复制当前云机完整 ID">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
+          <span class="btn-text">复制虚拟机 ID</span>
+        </button>
+        <button class="ghost-button close-dialog-btn" id="closeControl" type="button" aria-label="关闭手动操作">
+          <span>关闭</span>
+          <kbd>Esc</kbd>
+        </button>
+      </div>
+    </header>
+
+    <div class="control-body">
+      <!-- 左侧：拟真安卓真机框架 -->
+      <div class="phone-wrapper">
+        <div class="phone-frame">
+          <div class="phone-top-notch" aria-hidden="true">
+            <div class="phone-speaker"></div>
+            <div class="phone-camera"></div>
+          </div>
+          
+          <div class="control-stage" id="controlStage" tabindex="0" aria-label="云手机操作屏幕">
+            <canvas id="controlImage" aria-label="云手机实时画面" hidden></canvas>
+            <canvas class="vision-overlay-canvas" id="visionOverlayCanvas" hidden></canvas>
+            <div class="vision-tooltip" id="visionTooltip" hidden></div>
+            <div class="control-loading" id="controlLoading">
+              <div class="spinner"></div>
+              <span>正在获取高清解码帧…</span>
+            </div>
+          </div>
+
+          <!-- 紧贴真机底部的 Android 虚拟导航条 -->
+          <div class="phone-nav-dock">
+            <button class="phone-nav-btn" data-nav="back" type="button" title="返回 (Back)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+              <span>返回</span>
+            </button>
+            <button class="phone-nav-btn" data-nav="home" type="button" title="主页 (Home)">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5.5"/></svg>
+              <span>主页</span>
+            </button>
+            <button class="phone-nav-btn" data-nav="overview" type="button" title="最近任务 (Overview)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              <span>任务</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧：业务与运维参数面板 -->
+      <aside class="control-side-deck">
+        <!-- AI 视觉识别遥测卡片 -->
+        <div class="deck-card vision-deck-card" id="visionDeckCard" hidden>
+          <div class="deck-card-title">
+            <svg class="deck-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <span>AI 视觉识别遥测</span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">透视状态</span>
+            <span class="deck-val text-green" id="visionStatus">实时高亮中</span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">识别控件数</span>
+            <span class="deck-val"><strong class="badge-accent" id="visionCount">0 个</strong></span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">视觉引擎</span>
+            <span class="deck-val">RapidOCR (ONNX/WSL)</span>
+          </div>
+          <div class="deck-actions">
+            <button class="outline-button deck-btn" id="reinspectVisionBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>重新识别当前画面</span>
+            </button>
+          </div>
+          <div class="vision-items-list" id="visionItemsList" title="已识别控件列表（点击定位）"></div>
+        </div>
+
+        <div class="deck-card">
+          <div class="deck-card-title">
+            <svg class="deck-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            <span>云机身份与编号</span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">系统编号</span>
+            <span class="deck-val"><strong class="badge-accent" id="deckDeviceIndex">#--</strong></span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">设备备注</span>
+            <span class="deck-val" id="deckDeviceName">--</span>
+          </div>
+          <div class="deck-kv-row deck-kv-block">
+            <div class="deck-key-group">
+              <span class="deck-key">虚拟机 ID</span>
+              <span class="deck-subtext">运维排查 / 接口调用</span>
+            </div>
+            <div class="deck-val-copy-box">
+              <code id="deckDeviceId">--</code>
+              <button class="mini-copy-btn" id="deckCopyIdBtn" type="button" title="复制完整ID">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
+                <span class="copy-label">复制</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="deck-card">
+          <div class="deck-card-title">
+            <svg class="deck-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2"></rect></svg>
+            <span>画面通道与分辨率</span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">推流编码</span>
+            <span class="deck-val text-green" id="deckVideoConfig">H.264 · 720×1280 · 8.4 Mbps · 15 帧/秒上限</span>
+          </div>
+          <div class="deck-kv-row">
+            <span class="deck-key">真机分辨率</span>
+            <span class="deck-val" id="deckResolution">720 × 1280 (9:16)</span>
+          </div>
+          <div class="deck-actions">
+            <button class="outline-button deck-btn" id="refreshControl" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+              <span>强制刷新当前原画</span>
+            </button>
+          </div>
+        </div>
+
+      </aside>
+    </div>
+  </dialog>
+
+  <!-- 识别 VPC 代理弹窗 -->
+  <dialog class="vpc-dialog" id="vpcProxyDialog" aria-labelledby="vpcDialogTitle">
+    <header class="vpc-dialog-header">
+      <h2 class="vpc-dialog-title" id="vpcDialogTitle">识别vpc代理</h2>
+      <button class="ghost-button close-dialog-btn" id="closeVpcDialogBtn" type="button" aria-label="关闭">
+        <span>关闭</span>
+        <kbd>Esc</kbd>
+      </button>
+    </header>
+    <div class="vpc-dialog-body">
+      <div class="vpc-guide-box">
+        <p class="vpc-guide-notice">设置前必须添加一条，然后把添加的这条设置为本机代理</p>
+        <div class="vpc-guide-label">支持以下 5 种代理格式：</div>
+        <ol class="vpc-formats-list">
+          <li><code>线路用户名:线路密码@线路IP:线路端口</code></li>
+          <li><code>线路IP:线路端口@线路用户名:线路密码</code></li>
+          <li><code>线路IP:线路端口:线路用户名:线路密码</code></li>
+          <li><code>线路IP|线路端口|线路用户名|线路密码|线路备注</code></li>
+          <li><code>线路IP/线路端口/线路用户名/线路密码/线路备注</code></li>
+        </ol>
+      </div>
+      <div class="vpc-input-wrap">
+        <label for="vpcProxyInput" class="vpc-input-label">请粘贴或输入 VPC 代理字符串：</label>
+        <textarea id="vpcProxyInput" class="vpc-textarea" rows="4" placeholder="线路用户名:线路密码@线路IP:线路端口 或 线路IP|线路端口|线路用户名|线路密码|线路备注 等格式"></textarea>
+      </div>
+    </div>
+    <footer class="vpc-dialog-footer">
+      <button class="ghost-button" id="cancelVpcDialogBtn" type="button">取消</button>
+      <button class="run-button vpc-confirm-btn" id="confirmVpcDialogBtn" type="button">
+        <span class="run-icon">▶</span>
+        <span class="run-text">确定添加并设置</span>
+      </button>
+    </footer>
+  </dialog>
+
+  <!-- 卡密兑换模态弹窗 (Redeem Card Dialog) -->
+  <dialog class="redeem-dialog" id="redeemDialog" style="background:var(--surface); border:1px solid var(--line-accent); border-radius:12px; padding:24px; color:var(--text); width:100%; max-width:440px; box-shadow:0 16px 40px rgba(0,0,0,0.8);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+      <h3 style="margin:0; font-size:18px; color:#fff;">🎟️ 兑换卡密激活云机</h3>
+      <button class="ghost-button" id="closeRedeemModalBtn" type="button" style="padding:4px 8px;">✕</button>
+    </div>
+    <p style="font-size:13px; color:var(--text-muted); line-height:1.5; margin-bottom:16px;">
+      请输入管理员分发的卡密。兑换成功后系统将立即为您分配一台专属云手机，并开始计算有效期！
+    </p>
+    <div style="margin-bottom:16px;">
+      <label for="redeemCardInput" style="display:block; font-size:13px; color:var(--text-muted); margin-bottom:8px;">卡密代码</label>
+      <input id="redeemCardInput" type="text" placeholder="YM-XXXX-XXXX-XXXX-XXXX" style="width:100%; height:42px; background:var(--bg-dark); border:1px solid var(--line-strong); border-radius:8px; padding:0 14px; color:#00ff9d; font-family:monospace; font-size:15px; text-transform:uppercase; box-sizing:border-box;">
+    </div>
+    <div id="redeemAlert" style="display:none; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px;"></div>
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button class="ghost-button" id="cancelRedeemBtn" type="button">取消</button>
+      <button class="run-button" id="submitRedeemBtn" type="button" style="margin:0;">立即兑换</button>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/video-player.js"></script>
+  <script src="/app.js"></script>
+  <script src="/manual-control.js"></script>
+  <script src="/ai-reply.js"></script>
+  <script src="/momo-brain.js"></script>
+</body>
+</html>
+

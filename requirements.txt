@@ -1,0 +1,2 @@
+# Compatibility entry: the typing dependencies now have their own manifest.
+-r requirements/typing.txt

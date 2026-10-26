@@ -1,0 +1,1551 @@
+{
+  "total_materials": 86,
+  "materials": [
+    {
+      "filename": "微信图片_20261011171918_10_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171918_10_13.png",
+      "resolution": [
+        411,
+        838
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171918_11_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171918_11_13.png",
+      "resolution": [
+        423,
+        750
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171918_12_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171918_12_13.png",
+      "resolution": [
+        418,
+        769
+      ],
+      "detected_element_count": 4,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171918_7_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171918_7_13.png",
+      "resolution": [
+        421,
+        844
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171918_8_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171918_8_13.png",
+      "resolution": [
+        427,
+        751
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171918_9_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171918_9_13.png",
+      "resolution": [
+        429,
+        757
+      ],
+      "detected_element_count": 8,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_open_msg",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171923_13_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171923_13_13.png",
+      "resolution": [
+        434,
+        757
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171923_14_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171923_14_13.png",
+      "resolution": [
+        433,
+        768
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171923_15_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171923_15_13.png",
+      "resolution": [
+        437,
+        772
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171923_16_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171923_16_13.png",
+      "resolution": [
+        433,
+        759
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171923_17_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171923_17_13.png",
+      "resolution": [
+        432,
+        762
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171929_18_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171929_18_13.png",
+      "resolution": [
+        437,
+        767
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171929_19_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171929_19_13.png",
+      "resolution": [
+        429,
+        753
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171929_20_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171929_20_13.png",
+      "resolution": [
+        435,
+        765
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171934_21_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171934_21_13.png",
+      "resolution": [
+        429,
+        751
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171934_22_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171934_22_13.png",
+      "resolution": [
+        435,
+        757
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171934_23_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171934_23_13.png",
+      "resolution": [
+        432,
+        766
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171934_24_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171934_24_13.png",
+      "resolution": [
+        437,
+        760
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171939_25_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171939_25_13.png",
+      "resolution": [
+        429,
+        757
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171939_26_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171939_26_13.png",
+      "resolution": [
+        433,
+        756
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171939_27_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171939_27_13.png",
+      "resolution": [
+        434,
+        761
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171939_28_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171939_28_13.png",
+      "resolution": [
+        430,
+        756
+      ],
+      "detected_element_count": 4,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171944_29_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171944_29_13.png",
+      "resolution": [
+        429,
+        757
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171944_30_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171944_30_13.png",
+      "resolution": [
+        434,
+        761
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171944_31_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171944_31_13.png",
+      "resolution": [
+        433,
+        756
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171944_32_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171944_32_13.png",
+      "resolution": [
+        430,
+        756
+      ],
+      "detected_element_count": 4,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171948_33_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171948_33_13.png",
+      "resolution": [
+        429,
+        770
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "top_follow_btn"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171948_34_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171948_34_13.png",
+      "resolution": [
+        434,
+        759
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "top_follow_btn"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171948_35_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171948_35_13.png",
+      "resolution": [
+        429,
+        754
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "top_follow_btn"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171952_36_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171952_36_13.png",
+      "resolution": [
+        430,
+        753
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171952_37_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171952_37_13.png",
+      "resolution": [
+        433,
+        762
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171952_38_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171952_38_13.png",
+      "resolution": [
+        425,
+        753
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171952_39_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171952_39_13.png",
+      "resolution": [
+        436,
+        759
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171957_40_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171957_40_13.png",
+      "resolution": [
+        435,
+        757
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171957_41_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171957_41_13.png",
+      "resolution": [
+        436,
+        769
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171957_42_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171957_42_13.png",
+      "resolution": [
+        432,
+        760
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011171957_43_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011171957_43_13.png",
+      "resolution": [
+        428,
+        757
+      ],
+      "detected_element_count": 4,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172003_44_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172003_44_13.png",
+      "resolution": [
+        439,
+        763
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172003_45_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172003_45_13.png",
+      "resolution": [
+        430,
+        760
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172003_46_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172003_46_13.png",
+      "resolution": [
+        437,
+        755
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172003_47_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172003_47_13.png",
+      "resolution": [
+        436,
+        763
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172003_48_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172003_48_13.png",
+      "resolution": [
+        440,
+        762
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172007_49_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172007_49_13.png",
+      "resolution": [
+        434,
+        761
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172007_50_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172007_50_13.png",
+      "resolution": [
+        432,
+        756
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172007_51_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172007_51_13.png",
+      "resolution": [
+        432,
+        774
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172007_52_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172007_52_13.png",
+      "resolution": [
+        431,
+        754
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172007_53_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172007_53_13.png",
+      "resolution": [
+        408,
+        746
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_54_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_54_13.png",
+      "resolution": [
+        429,
+        764
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_55_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_55_13.png",
+      "resolution": [
+        439,
+        762
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_56_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_56_13.png",
+      "resolution": [
+        424,
+        739
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_57_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_57_13.png",
+      "resolution": [
+        434,
+        760
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_58_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_58_13.png",
+      "resolution": [
+        428,
+        753
+      ],
+      "detected_element_count": 8,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_59_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_59_13.png",
+      "resolution": [
+        424,
+        746
+      ],
+      "detected_element_count": 8,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172014_60_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172014_60_13.png",
+      "resolution": [
+        431,
+        769
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172020_61_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172020_61_13.png",
+      "resolution": [
+        414,
+        757
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172020_62_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172020_62_13.png",
+      "resolution": [
+        430,
+        741
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172020_63_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172020_63_13.png",
+      "resolution": [
+        430,
+        754
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172020_64_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172020_64_13.png",
+      "resolution": [
+        416,
+        742
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172027_65_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172027_65_13.png",
+      "resolution": [
+        440,
+        759
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172027_66_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172027_66_13.png",
+      "resolution": [
+        430,
+        765
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172027_67_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172027_67_13.png",
+      "resolution": [
+        432,
+        760
+      ],
+      "detected_element_count": 8,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172031_68_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172031_68_13.png",
+      "resolution": [
+        415,
+        759
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172031_69_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172031_69_13.png",
+      "resolution": [
+        432,
+        750
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172031_70_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172031_70_13.png",
+      "resolution": [
+        432,
+        760
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172035_71_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172035_71_13.png",
+      "resolution": [
+        426,
+        758
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172035_72_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172035_72_13.png",
+      "resolution": [
+        426,
+        766
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172035_73_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172035_73_13.png",
+      "resolution": [
+        435,
+        766
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172035_74_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172035_74_13.png",
+      "resolution": [
+        432,
+        762
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172035_75_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172035_75_13.png",
+      "resolution": [
+        428,
+        750
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172035_76_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172035_76_13.png",
+      "resolution": [
+        430,
+        753
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172259_79_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172259_79_13.png",
+      "resolution": [
+        429,
+        752
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172259_80_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172259_80_13.png",
+      "resolution": [
+        427,
+        764
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172259_81_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172259_81_13.png",
+      "resolution": [
+        435,
+        753
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172259_82_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172259_82_13.png",
+      "resolution": [
+        431,
+        755
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172259_83_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172259_83_13.png",
+      "resolution": [
+        429,
+        755
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172401_84_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172401_84_13.png",
+      "resolution": [
+        424,
+        740
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172401_85_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172401_85_13.png",
+      "resolution": [
+        424,
+        768
+      ],
+      "detected_element_count": 7,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172401_86_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172401_86_13.png",
+      "resolution": [
+        425,
+        756
+      ],
+      "detected_element_count": 8,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3",
+        "other_avatar_msg_4",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172450_87_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172450_87_13.png",
+      "resolution": [
+        437,
+        779
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172454_88_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172454_88_13.png",
+      "resolution": [
+        433,
+        757
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172638_89_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172638_89_13.png",
+      "resolution": [
+        431,
+        753
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172638_90_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172638_90_13.png",
+      "resolution": [
+        421,
+        754
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "blue_follow_msg"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172638_91_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172638_91_13.png",
+      "resolution": [
+        440,
+        772
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172638_92_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172638_92_13.png",
+      "resolution": [
+        436,
+        763
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172638_93_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172638_93_13.png",
+      "resolution": [
+        437,
+        762
+      ],
+      "detected_element_count": 6,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2",
+        "other_avatar_msg_3"
+      ],
+      "is_occluded": false
+    },
+    {
+      "filename": "微信图片_20261011172638_94_13.png",
+      "path": "/mnt/c/Users/Administrator/Pictures/聊天界面素材/微信图片_20261011172638_94_13.png",
+      "resolution": [
+        425,
+        755
+      ],
+      "detected_element_count": 5,
+      "detected_classes": [
+        "back_btn",
+        "header_avatar",
+        "input_box",
+        "other_avatar_msg_1",
+        "other_avatar_msg_2"
+      ],
+      "is_occluded": false
+    }
+  ]
+}

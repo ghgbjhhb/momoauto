@@ -1,0 +1,67 @@
+{
+  "hardware_info": {
+    "device": "NVIDIA GeForce RTX 3060",
+    "cuda_available": true,
+    "peak_vram_allocated_mb": 191.66
+  },
+  "dataset_info": {
+    "total_images_evaluated": 86
+  },
+  "speed_performance": {
+    "total_wall_time_s": 2.959,
+    "throughput_fps": 29.06,
+    "avg_latency_ms": 31.86,
+    "median_latency_ms": 30.34,
+    "p90_latency_ms": 34.0,
+    "p95_latency_ms": 41.15,
+    "min_latency_ms": 26.95,
+    "max_latency_ms": 89.64
+  },
+  "detection_statistics": {
+    "total_elements_detected": 488,
+    "avg_elements_per_image": 5.67,
+    "occluded_screens_detected": 0,
+    "per_class_summary": {
+      "back_btn": {
+        "detected_count": 86,
+        "detection_rate_pct": 100.0,
+        "avg_confidence": 0.9447
+      },
+      "header_avatar": {
+        "detected_count": 86,
+        "detection_rate_pct": 100.0,
+        "avg_confidence": 0.8021
+      },
+      "other_avatar_msg": {
+        "detected_count": 226,
+        "detection_rate_pct": null,
+        "avg_confidence": 0.8577
+      },
+      "self_avatar_msg": {
+        "detected_count": 0,
+        "detection_rate_pct": null,
+        "avg_confidence": 0.0
+      },
+      "input_box": {
+        "detected_count": 86,
+        "detection_rate_pct": 100.0,
+        "avg_confidence": 0.8997
+      },
+      "top_follow_btn": {
+        "detected_count": 4,
+        "detection_rate_pct": null,
+        "avg_confidence": 0.9468
+      },
+      "assistant_close_x": {
+        "detected_count": 0,
+        "detection_rate_pct": null,
+        "avg_confidence": 0.0
+      },
+      "assistant_panel": {
+        "detected_count": 0,
+        "detection_rate_pct": null,
+        "avg_confidence": 0.0
+      }
+    }
+  }
+}

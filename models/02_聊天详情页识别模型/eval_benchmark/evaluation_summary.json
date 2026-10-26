@@ -1,0 +1,16 @@
+{
+  "evaluation_date": "2026-10-14",
+  "device": "NVIDIA GeForce RTX 3060 (CUDA GPU 加速)",
+  "framework": "RapidOCR (ONNXRuntime-GPU) + OpenCV Exact Circle Fitting",
+  "total_test_images": 86,
+  "back_button_detection_rate": "100% (86/86)",
+  "header_avatar_detection_rate": "100% (86/86)",
+  "input_box_detection_rate": "100% (86/86)",
+  "input_box_mean_width": 301.56,
+  "input_box_mean_height": 57.03,
+  "total_message_avatars_detected": 226,
+  "avatar_mean_radius": 18.98,
+  "avatar_radius_std": 1.07,
+  "avatar_centering_drift_rate": "0%",
+  "anomalies_or_out_of_bounds": 0
+}

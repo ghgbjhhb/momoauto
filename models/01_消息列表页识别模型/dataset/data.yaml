@@ -1,0 +1,16 @@
+names:
+- chat_card
+- recent_block
+- banner_card
+- unread_badge
+- floating_btn
+- tab_home
+- tab_live
+- tab_msg
+- tab_universe
+- tab_more
+nc: 10
+path: "/mnt/d/AA-project/\u81EA\u52A8\u5316/models/01_\u6D88\u606F\u5217\u8868\u9875\
+  \u8BC6\u522B\u6A21\u578B/dataset"
+train: images/train
+val: images/val

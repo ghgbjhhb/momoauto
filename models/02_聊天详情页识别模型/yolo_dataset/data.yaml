@@ -1,0 +1,12 @@
+path: /mnt/d/AA-project/自动化/models/02_聊天详情页识别模型/yolo_dataset
+train: images/train
+val: images/val
+nc: 7
+names:
+- back_btn
+- avatar
+- input_box
+- top_follow_btn
+- assistant_close_x
+- assistant_panel
+- send_btn

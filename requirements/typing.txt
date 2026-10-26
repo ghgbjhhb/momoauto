@@ -1,0 +1,4 @@
+# Existing Windows typing environment: .venv-zhtyping, Python 3.14.4.
+jieba==0.42.1
+pypinyin==0.55.0
+PyAutoGUI==0.9.54

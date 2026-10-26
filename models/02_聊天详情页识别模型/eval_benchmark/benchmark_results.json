@@ -1,0 +1,8599 @@
+{
+  "微信图片_20261011171918_10_13": {
+    "resolution": [
+      411,
+      838
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          123,
+          58,
+          159
+        ],
+        "center": [
+          38,
+          141
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          349,
+          122,
+          389,
+          162
+        ],
+        "center": [
+          369,
+          142
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          652,
+          380,
+          709
+        ],
+        "center": [
+          229,
+          680
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          210,
+          52,
+          248
+        ],
+        "center": [
+          33,
+          229
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          343,
+          53,
+          383
+        ],
+        "center": [
+          33,
+          363
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          515,
+          53,
+          555
+        ],
+        "center": [
+          33,
+          535
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171918_11_13": {
+    "resolution": [
+      423,
+      750
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          10,
+          37,
+          50,
+          73
+        ],
+        "center": [
+          30,
+          55
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          343,
+          37,
+          381,
+          75
+        ],
+        "center": [
+          362,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          70,
+          566,
+          372,
+          623
+        ],
+        "center": [
+          221,
+          594
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          5,
+          106,
+          45,
+          146
+        ],
+        "center": [
+          25,
+          126
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          6,
+          339,
+          44,
+          377
+        ],
+        "center": [
+          25,
+          358
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171918_12_13": {
+    "resolution": [
+      418,
+      769
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          52,
+          55,
+          88
+        ],
+        "center": [
+          35,
+          70
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          346,
+          51,
+          386,
+          91
+        ],
+        "center": [
+          366,
+          71
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          581,
+          377,
+          638
+        ],
+        "center": [
+          226,
+          609
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          503,
+          50,
+          541
+        ],
+        "center": [
+          31,
+          522
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171918_7_13": {
+    "resolution": [
+      421,
+      844
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          125,
+          56,
+          161
+        ],
+        "center": [
+          36,
+          143
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          347,
+          124,
+          387,
+          164
+        ],
+        "center": [
+          367,
+          144
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          654,
+          378,
+          711
+        ],
+        "center": [
+          227,
+          682
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          225,
+          51,
+          263
+        ],
+        "center": [
+          32,
+          244
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          358,
+          51,
+          396
+        ],
+        "center": [
+          32,
+          377
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          425,
+          50,
+          463
+        ],
+        "center": [
+          31,
+          444
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171918_8_13": {
+    "resolution": [
+      427,
+      751
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          41,
+          57,
+          77
+        ],
+        "center": [
+          37,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          348,
+          40,
+          388,
+          80
+        ],
+        "center": [
+          368,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          570,
+          379,
+          627
+        ],
+        "center": [
+          228,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          203,
+          51,
+          241
+        ],
+        "center": [
+          32,
+          222
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          343,
+          51,
+          381
+        ],
+        "center": [
+          32,
+          362
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9979,
+        "box": [
+          108,
+          486,
+          165,
+          499
+        ],
+        "center": [
+          136,
+          492
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171918_9_13": {
+    "resolution": [
+      429,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          44,
+          59,
+          80
+        ],
+        "center": [
+          39,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          43,
+          390,
+          83
+        ],
+        "center": [
+          370,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          573,
+          381,
+          630
+        ],
+        "center": [
+          230,
+          601
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          16,
+          106,
+          54,
+          144
+        ],
+        "center": [
+          35,
+          125
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          172,
+          55,
+          212
+        ],
+        "center": [
+          35,
+          192
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          15,
+          406,
+          55,
+          446
+        ],
+        "center": [
+          35,
+          426
+        ]
+      },
+      "blue_open_msg": {
+        "class": "blue_open_msg",
+        "label": "消息·开启",
+        "confidence": 0.9997,
+        "box": [
+          310,
+          316,
+          334,
+          330
+        ],
+        "center": [
+          322,
+          323
+        ],
+        "full_text": "开启"
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9996,
+        "box": [
+          201,
+          357,
+          252,
+          370
+        ],
+        "center": [
+          226,
+          363
+        ],
+        "full_text": "关注对方可接收对方动"
+      }
+    }
+  },
+  "微信图片_20261011171923_13_13": {
+    "resolution": [
+      434,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          43,
+          58,
+          79
+        ],
+        "center": [
+          38,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          358,
+          49,
+          388,
+          79
+        ],
+        "center": [
+          373,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          572,
+          380,
+          629
+        ],
+        "center": [
+          229,
+          600
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          17,
+          178,
+          53,
+          214
+        ],
+        "center": [
+          35,
+          196
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          335,
+          50,
+          371
+        ],
+        "center": [
+          32,
+          353
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          14,
+          490,
+          50,
+          526
+        ],
+        "center": [
+          32,
+          508
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171923_14_13": {
+    "resolution": [
+      433,
+      768
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          21,
+          49,
+          61,
+          85
+        ],
+        "center": [
+          41,
+          67
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          362,
+          54,
+          392,
+          84
+        ],
+        "center": [
+          377,
+          69
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          81,
+          578,
+          383,
+          635
+        ],
+        "center": [
+          232,
+          606
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          17,
+          135,
+          55,
+          173
+        ],
+        "center": [
+          36,
+          154
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          17,
+          379,
+          49,
+          411
+        ],
+        "center": [
+          33,
+          395
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9979,
+        "box": [
+          112,
+          278,
+          169,
+          291
+        ],
+        "center": [
+          140,
+          284
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171923_15_13": {
+    "resolution": [
+      437,
+      772
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          20,
+          51,
+          60,
+          87
+        ],
+        "center": [
+          40,
+          69
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          362,
+          57,
+          390,
+          85
+        ],
+        "center": [
+          376,
+          71
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          80,
+          580,
+          382,
+          637
+        ],
+        "center": [
+          231,
+          608
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          17,
+          217,
+          55,
+          255
+        ],
+        "center": [
+          36,
+          236
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          390,
+          54,
+          428
+        ],
+        "center": [
+          35,
+          409
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171923_16_13": {
+    "resolution": [
+      433,
+      759
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          42,
+          58,
+          77
+        ],
+        "center": [
+          38,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          355,
+          44,
+          389,
+          78
+        ],
+        "center": [
+          372,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          571,
+          380,
+          628
+        ],
+        "center": [
+          229,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          426,
+          52,
+          464
+        ],
+        "center": [
+          33,
+          445
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          492,
+          55,
+          532
+        ],
+        "center": [
+          35,
+          512
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171923_17_13": {
+    "resolution": [
+      432,
+      762
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          39,
+          57,
+          75
+        ],
+        "center": [
+          37,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          41,
+          388,
+          75
+        ],
+        "center": [
+          371,
+          58
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          568,
+          379,
+          625
+        ],
+        "center": [
+          228,
+          596
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          113,
+          51,
+          151
+        ],
+        "center": [
+          32,
+          132
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          351,
+          50,
+          387
+        ],
+        "center": [
+          32,
+          369
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171929_18_13": {
+    "resolution": [
+      437,
+      767
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          23,
+          50,
+          62,
+          90
+        ],
+        "center": [
+          42,
+          70
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          356,
+          51,
+          394,
+          89
+        ],
+        "center": [
+          375,
+          70
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          83,
+          579,
+          385,
+          636
+        ],
+        "center": [
+          234,
+          607
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          18,
+          184,
+          58,
+          224
+        ],
+        "center": [
+          38,
+          204
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          18,
+          384,
+          58,
+          424
+        ],
+        "center": [
+          38,
+          404
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171929_19_13": {
+    "resolution": [
+      429,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          41,
+          56,
+          81
+        ],
+        "center": [
+          36,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          349,
+          42,
+          387,
+          80
+        ],
+        "center": [
+          368,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          570,
+          378,
+          627
+        ],
+        "center": [
+          227,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          425,
+          50,
+          463
+        ],
+        "center": [
+          31,
+          444
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          492,
+          50,
+          530
+        ],
+        "center": [
+          31,
+          511
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171929_20_13": {
+    "resolution": [
+      435,
+      765
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          21,
+          46,
+          61,
+          86
+        ],
+        "center": [
+          41,
+          66
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          47,
+          392,
+          85
+        ],
+        "center": [
+          373,
+          66
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          81,
+          575,
+          383,
+          632
+        ],
+        "center": [
+          232,
+          603
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          17,
+          123,
+          57,
+          163
+        ],
+        "center": [
+          37,
+          143
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          18,
+          317,
+          56,
+          355
+        ],
+        "center": [
+          37,
+          336
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9191,
+        "box": [
+          112,
+          98,
+          169,
+          106
+        ],
+        "center": [
+          140,
+          102
+        ],
+        "full_text": "大注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171934_21_13": {
+    "resolution": [
+      429,
+      751
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          14,
+          33,
+          54,
+          68
+        ],
+        "center": [
+          34,
+          50
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          345,
+          32,
+          385,
+          72
+        ],
+        "center": [
+          365,
+          52
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          74,
+          561,
+          376,
+          619
+        ],
+        "center": [
+          225,
+          590
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          10,
+          168,
+          48,
+          206
+        ],
+        "center": [
+          29,
+          187
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          10,
+          446,
+          48,
+          484
+        ],
+        "center": [
+          29,
+          465
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171934_22_13": {
+    "resolution": [
+      435,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          42,
+          59,
+          78
+        ],
+        "center": [
+          39,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          352,
+          45,
+          388,
+          81
+        ],
+        "center": [
+          370,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          570,
+          381,
+          628
+        ],
+        "center": [
+          230,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          16,
+          272,
+          54,
+          310
+        ],
+        "center": [
+          35,
+          291
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          337,
+          55,
+          377
+        ],
+        "center": [
+          35,
+          357
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          15,
+          494,
+          49,
+          528
+        ],
+        "center": [
+          32,
+          511
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9976,
+        "box": [
+          110,
+          174,
+          167,
+          188
+        ],
+        "center": [
+          138,
+          181
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171934_23_13": {
+    "resolution": [
+      432,
+      766
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          23,
+          45,
+          63,
+          80
+        ],
+        "center": [
+          43,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          355,
+          45,
+          393,
+          83
+        ],
+        "center": [
+          374,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          83,
+          573,
+          385,
+          631
+        ],
+        "center": [
+          234,
+          602
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          18,
+          131,
+          58,
+          171
+        ],
+        "center": [
+          38,
+          151
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          20,
+          199,
+          58,
+          237
+        ],
+        "center": [
+          39,
+          218
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          20,
+          354,
+          58,
+          392
+        ],
+        "center": [
+          39,
+          373
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171934_24_13": {
+    "resolution": [
+      437,
+      760
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          24,
+          44,
+          64,
+          80
+        ],
+        "center": [
+          44,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          42,
+          396,
+          84
+        ],
+        "center": [
+          375,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          84,
+          573,
+          385,
+          630
+        ],
+        "center": [
+          234,
+          601
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          20,
+          109,
+          58,
+          147
+        ],
+        "center": [
+          39,
+          128
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          20,
+          227,
+          58,
+          265
+        ],
+        "center": [
+          39,
+          246
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          19,
+          464,
+          59,
+          504
+        ],
+        "center": [
+          39,
+          484
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171939_25_13": {
+    "resolution": [
+      429,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          41,
+          58,
+          76
+        ],
+        "center": [
+          38,
+          58
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          40,
+          390,
+          80
+        ],
+        "center": [
+          370,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          570,
+          380,
+          627
+        ],
+        "center": [
+          229,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          180,
+          46,
+          212
+        ],
+        "center": [
+          30,
+          196
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          309,
+          52,
+          347
+        ],
+        "center": [
+          33,
+          328
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9978,
+        "box": [
+          109,
+          520,
+          166,
+          533
+        ],
+        "center": [
+          137,
+          526
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171939_26_13": {
+    "resolution": [
+      433,
+      756
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          22,
+          44,
+          62,
+          80
+        ],
+        "center": [
+          42,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          43,
+          394,
+          83
+        ],
+        "center": [
+          374,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          82,
+          573,
+          384,
+          630
+        ],
+        "center": [
+          233,
+          601
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          19,
+          184,
+          57,
+          222
+        ],
+        "center": [
+          38,
+          203
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          19,
+          356,
+          57,
+          394
+        ],
+        "center": [
+          38,
+          375
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          19,
+          423,
+          57,
+          461
+        ],
+        "center": [
+          38,
+          442
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171939_27_13": {
+    "resolution": [
+      434,
+      761
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          45,
+          58,
+          80
+        ],
+        "center": [
+          38,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          46,
+          389,
+          84
+        ],
+        "center": [
+          370,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          574,
+          380,
+          631
+        ],
+        "center": [
+          229,
+          602
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          127,
+          52,
+          165
+        ],
+        "center": [
+          33,
+          146
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          300,
+          54,
+          338
+        ],
+        "center": [
+          35,
+          319
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          471,
+          53,
+          511
+        ],
+        "center": [
+          33,
+          491
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9973,
+        "box": [
+          109,
+          97,
+          165,
+          111
+        ],
+        "center": [
+          137,
+          104
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171939_28_13": {
+    "resolution": [
+      430,
+      756
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          37,
+          59,
+          73
+        ],
+        "center": [
+          39,
+          55
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          36,
+          391,
+          76
+        ],
+        "center": [
+          371,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          566,
+          381,
+          623
+        ],
+        "center": [
+          230,
+          594
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          220,
+          55,
+          260
+        ],
+        "center": [
+          35,
+          240
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171944_29_13": {
+    "resolution": [
+      429,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          41,
+          58,
+          76
+        ],
+        "center": [
+          38,
+          58
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          40,
+          390,
+          80
+        ],
+        "center": [
+          370,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          570,
+          380,
+          627
+        ],
+        "center": [
+          229,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          180,
+          46,
+          212
+        ],
+        "center": [
+          30,
+          196
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          309,
+          52,
+          347
+        ],
+        "center": [
+          33,
+          328
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9978,
+        "box": [
+          109,
+          520,
+          166,
+          533
+        ],
+        "center": [
+          137,
+          526
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171944_30_13": {
+    "resolution": [
+      434,
+      761
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          45,
+          58,
+          80
+        ],
+        "center": [
+          38,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          46,
+          389,
+          84
+        ],
+        "center": [
+          370,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          574,
+          380,
+          631
+        ],
+        "center": [
+          229,
+          602
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          127,
+          52,
+          165
+        ],
+        "center": [
+          33,
+          146
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          300,
+          54,
+          338
+        ],
+        "center": [
+          35,
+          319
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          471,
+          53,
+          511
+        ],
+        "center": [
+          33,
+          491
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9973,
+        "box": [
+          109,
+          97,
+          165,
+          111
+        ],
+        "center": [
+          137,
+          104
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171944_31_13": {
+    "resolution": [
+      433,
+      756
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          22,
+          44,
+          62,
+          80
+        ],
+        "center": [
+          42,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          43,
+          394,
+          83
+        ],
+        "center": [
+          374,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          82,
+          573,
+          384,
+          630
+        ],
+        "center": [
+          233,
+          601
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          19,
+          184,
+          57,
+          222
+        ],
+        "center": [
+          38,
+          203
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          19,
+          356,
+          57,
+          394
+        ],
+        "center": [
+          38,
+          375
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          19,
+          423,
+          57,
+          461
+        ],
+        "center": [
+          38,
+          442
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171944_32_13": {
+    "resolution": [
+      430,
+      756
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          37,
+          59,
+          73
+        ],
+        "center": [
+          39,
+          55
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          36,
+          391,
+          76
+        ],
+        "center": [
+          371,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          566,
+          381,
+          623
+        ],
+        "center": [
+          230,
+          594
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          220,
+          55,
+          260
+        ],
+        "center": [
+          35,
+          240
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171948_33_13": {
+    "resolution": [
+      429,
+      770
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          48,
+          57,
+          84
+        ],
+        "center": [
+          37,
+          66
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          349,
+          47,
+          385,
+          83
+        ],
+        "center": [
+          367,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          577,
+          378,
+          634
+        ],
+        "center": [
+          227,
+          605
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          17,
+          259,
+          53,
+          295
+        ],
+        "center": [
+          35,
+          277
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          323,
+          51,
+          361
+        ],
+        "center": [
+          32,
+          342
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          14,
+          500,
+          50,
+          536
+        ],
+        "center": [
+          32,
+          518
+        ]
+      },
+      "top_follow_btn": {
+        "class": "top_follow_btn",
+        "label": "顶部关注按钮",
+        "confidence": 0.9995,
+        "box": [
+          278,
+          122,
+          334,
+          151
+        ],
+        "center": [
+          306,
+          136
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171948_34_13": {
+    "resolution": [
+      434,
+      759
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          49,
+          59,
+          85
+        ],
+        "center": [
+          39,
+          67
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          48,
+          387,
+          84
+        ],
+        "center": [
+          369,
+          66
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          578,
+          380,
+          635
+        ],
+        "center": [
+          229,
+          606
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          258,
+          55,
+          298
+        ],
+        "center": [
+          35,
+          278
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          20,
+          326,
+          52,
+          358
+        ],
+        "center": [
+          36,
+          342
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          16,
+          393,
+          54,
+          431
+        ],
+        "center": [
+          35,
+          412
+        ]
+      },
+      "top_follow_btn": {
+        "class": "top_follow_btn",
+        "label": "顶部关注按钮",
+        "confidence": 0.9996,
+        "box": [
+          280,
+          122,
+          337,
+          153
+        ],
+        "center": [
+          308,
+          137
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171948_35_13": {
+    "resolution": [
+      429,
+      754
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          45,
+          59,
+          81
+        ],
+        "center": [
+          39,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          352,
+          46,
+          390,
+          84
+        ],
+        "center": [
+          371,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          574,
+          380,
+          631
+        ],
+        "center": [
+          229,
+          602
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          169,
+          51,
+          205
+        ],
+        "center": [
+          33,
+          187
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          299,
+          54,
+          337
+        ],
+        "center": [
+          35,
+          318
+        ]
+      },
+      "top_follow_btn": {
+        "class": "top_follow_btn",
+        "label": "顶部关注按钮",
+        "confidence": 0.9996,
+        "box": [
+          280,
+          118,
+          336,
+          148
+        ],
+        "center": [
+          308,
+          133
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171952_36_13": {
+    "resolution": [
+      430,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          40,
+          59,
+          80
+        ],
+        "center": [
+          39,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          41,
+          389,
+          79
+        ],
+        "center": [
+          370,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          569,
+          380,
+          626
+        ],
+        "center": [
+          229,
+          597
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          177,
+          51,
+          213
+        ],
+        "center": [
+          33,
+          195
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          353,
+          55,
+          393
+        ],
+        "center": [
+          35,
+          373
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171952_37_13": {
+    "resolution": [
+      433,
+      762
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          20,
+          44,
+          60,
+          84
+        ],
+        "center": [
+          40,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          45,
+          391,
+          83
+        ],
+        "center": [
+          372,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          80,
+          573,
+          381,
+          630
+        ],
+        "center": [
+          230,
+          601
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          16,
+          139,
+          56,
+          179
+        ],
+        "center": [
+          36,
+          159
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          272,
+          56,
+          312
+        ],
+        "center": [
+          36,
+          292
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          16,
+          472,
+          56,
+          512
+        ],
+        "center": [
+          36,
+          492
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9983,
+        "box": [
+          111,
+          110,
+          168,
+          122
+        ],
+        "center": [
+          139,
+          116
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171952_38_13": {
+    "resolution": [
+      425,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          37,
+          55,
+          77
+        ],
+        "center": [
+          35,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          347,
+          38,
+          385,
+          76
+        ],
+        "center": [
+          366,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          566,
+          376,
+          623
+        ],
+        "center": [
+          225,
+          594
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          11,
+          211,
+          51,
+          251
+        ],
+        "center": [
+          31,
+          231
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          11,
+          345,
+          49,
+          383
+        ],
+        "center": [
+          30,
+          364
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          412,
+          50,
+          450
+        ],
+        "center": [
+          31,
+          431
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171952_39_13": {
+    "resolution": [
+      436,
+      759
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          36,
+          58,
+          76
+        ],
+        "center": [
+          38,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          37,
+          389,
+          75
+        ],
+        "center": [
+          370,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          565,
+          379,
+          622
+        ],
+        "center": [
+          228,
+          593
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          278,
+          53,
+          318
+        ],
+        "center": [
+          33,
+          298
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          345,
+          53,
+          385
+        ],
+        "center": [
+          33,
+          365
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171957_40_13": {
+    "resolution": [
+      435,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          21,
+          41,
+          61,
+          77
+        ],
+        "center": [
+          41,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          41,
+          392,
+          79
+        ],
+        "center": [
+          373,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          81,
+          570,
+          382,
+          627
+        ],
+        "center": [
+          231,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          17,
+          175,
+          57,
+          215
+        ],
+        "center": [
+          37,
+          195
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          18,
+          310,
+          56,
+          348
+        ],
+        "center": [
+          37,
+          329
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9987,
+        "box": [
+          112,
+          520,
+          169,
+          533
+        ],
+        "center": [
+          140,
+          526
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171957_41_13": {
+    "resolution": [
+      436,
+      769
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          25,
+          49,
+          65,
+          84
+        ],
+        "center": [
+          45,
+          66
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          357,
+          48,
+          397,
+          88
+        ],
+        "center": [
+          377,
+          68
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          85,
+          578,
+          386,
+          635
+        ],
+        "center": [
+          235,
+          606
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          21,
+          131,
+          61,
+          171
+        ],
+        "center": [
+          41,
+          151
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          21,
+          303,
+          61,
+          343
+        ],
+        "center": [
+          41,
+          323
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          21,
+          475,
+          61,
+          515
+        ],
+        "center": [
+          41,
+          495
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9978,
+        "box": [
+          116,
+          101,
+          172,
+          115
+        ],
+        "center": [
+          144,
+          108
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011171957_42_13": {
+    "resolution": [
+      432,
+      760
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          46,
+          59,
+          82
+        ],
+        "center": [
+          39,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          352,
+          46,
+          390,
+          84
+        ],
+        "center": [
+          371,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          575,
+          380,
+          632
+        ],
+        "center": [
+          229,
+          603
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          185,
+          55,
+          225
+        ],
+        "center": [
+          35,
+          205
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          358,
+          54,
+          396
+        ],
+        "center": [
+          35,
+          377
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          15,
+          424,
+          55,
+          464
+        ],
+        "center": [
+          35,
+          444
+        ]
+      }
+    }
+  },
+  "微信图片_20261011171957_43_13": {
+    "resolution": [
+      428,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          40,
+          55,
+          75
+        ],
+        "center": [
+          35,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          348,
+          40,
+          386,
+          78
+        ],
+        "center": [
+          367,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          569,
+          376,
+          626
+        ],
+        "center": [
+          225,
+          597
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          224,
+          50,
+          262
+        ],
+        "center": [
+          31,
+          243
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172003_44_13": {
+    "resolution": [
+      439,
+      763
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          39,
+          59,
+          75
+        ],
+        "center": [
+          39,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          40,
+          391,
+          78
+        ],
+        "center": [
+          372,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          568,
+          380,
+          625
+        ],
+        "center": [
+          229,
+          596
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          173,
+          55,
+          213
+        ],
+        "center": [
+          35,
+          193
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          313,
+          50,
+          347
+        ],
+        "center": [
+          33,
+          330
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          18,
+          442,
+          52,
+          476
+        ],
+        "center": [
+          35,
+          459
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172003_45_13": {
+    "resolution": [
+      430,
+      760
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          13,
+          42,
+          53,
+          78
+        ],
+        "center": [
+          33,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          346,
+          43,
+          384,
+          81
+        ],
+        "center": [
+          365,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          73,
+          571,
+          374,
+          628
+        ],
+        "center": [
+          223,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          10,
+          132,
+          44,
+          166
+        ],
+        "center": [
+          27,
+          149
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          202,
+          48,
+          238
+        ],
+        "center": [
+          30,
+          220
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          9,
+          378,
+          49,
+          418
+        ],
+        "center": [
+          29,
+          398
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9965,
+        "box": [
+          104,
+          96,
+          160,
+          110
+        ],
+        "center": [
+          132,
+          103
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172003_46_13": {
+    "resolution": [
+      437,
+      755
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          24,
+          42,
+          64,
+          78
+        ],
+        "center": [
+          44,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          357,
+          43,
+          395,
+          81
+        ],
+        "center": [
+          376,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          84,
+          571,
+          385,
+          628
+        ],
+        "center": [
+          234,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          22,
+          131,
+          60,
+          169
+        ],
+        "center": [
+          41,
+          150
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          20,
+          304,
+          58,
+          342
+        ],
+        "center": [
+          39,
+          323
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          19,
+          496,
+          59,
+          536
+        ],
+        "center": [
+          39,
+          516
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172003_47_13": {
+    "resolution": [
+      436,
+      763
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          21,
+          46,
+          61,
+          81
+        ],
+        "center": [
+          41,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          360,
+          45,
+          390,
+          75
+        ],
+        "center": [
+          375,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          81,
+          575,
+          382,
+          632
+        ],
+        "center": [
+          231,
+          603
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          18,
+          146,
+          56,
+          184
+        ],
+        "center": [
+          37,
+          165
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          18,
+          385,
+          56,
+          423
+        ],
+        "center": [
+          37,
+          404
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172003_48_13": {
+    "resolution": [
+      440,
+      762
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          23,
+          42,
+          63,
+          77
+        ],
+        "center": [
+          43,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          356,
+          43,
+          394,
+          81
+        ],
+        "center": [
+          375,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          83,
+          571,
+          384,
+          628
+        ],
+        "center": [
+          233,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          20,
+          194,
+          58,
+          232
+        ],
+        "center": [
+          39,
+          213
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          19,
+          495,
+          55,
+          531
+        ],
+        "center": [
+          37,
+          513
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.999,
+        "box": [
+          205,
+          443,
+          256,
+          456
+        ],
+        "center": [
+          230,
+          449
+        ],
+        "full_text": "关注对方可接收对方动"
+      }
+    }
+  },
+  "微信图片_20261011172007_49_13": {
+    "resolution": [
+      434,
+      761
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          42,
+          57,
+          78
+        ],
+        "center": [
+          37,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          358,
+          34,
+          396,
+          72
+        ],
+        "center": [
+          377,
+          53
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          571,
+          379,
+          628
+        ],
+        "center": [
+          228,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          136,
+          52,
+          176
+        ],
+        "center": [
+          32,
+          156
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          241,
+          52,
+          281
+        ],
+        "center": [
+          32,
+          261
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          375,
+          52,
+          415
+        ],
+        "center": [
+          32,
+          395
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          12,
+          463,
+          52,
+          503
+        ],
+        "center": [
+          32,
+          483
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172007_50_13": {
+    "resolution": [
+      432,
+      756
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          41,
+          56,
+          77
+        ],
+        "center": [
+          36,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          357,
+          33,
+          395,
+          71
+        ],
+        "center": [
+          376,
+          52
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          570,
+          378,
+          627
+        ],
+        "center": [
+          227,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          279,
+          50,
+          315
+        ],
+        "center": [
+          32,
+          297
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          433,
+          46,
+          467
+        ],
+        "center": [
+          29,
+          450
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9985,
+        "box": [
+          107,
+          247,
+          164,
+          259
+        ],
+        "center": [
+          135,
+          253
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172007_51_13": {
+    "resolution": [
+      432,
+      774
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          49,
+          59,
+          85
+        ],
+        "center": [
+          39,
+          67
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          358,
+          41,
+          396,
+          79
+        ],
+        "center": [
+          377,
+          60
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          578,
+          381,
+          635
+        ],
+        "center": [
+          230,
+          606
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          16,
+          146,
+          54,
+          184
+        ],
+        "center": [
+          35,
+          165
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          212,
+          53,
+          252
+        ],
+        "center": [
+          33,
+          232
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          16,
+          346,
+          54,
+          384
+        ],
+        "center": [
+          35,
+          365
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          13,
+          412,
+          53,
+          452
+        ],
+        "center": [
+          33,
+          432
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172007_52_13": {
+    "resolution": [
+      431,
+      754
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          37,
+          56,
+          72
+        ],
+        "center": [
+          36,
+          54
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          356,
+          28,
+          394,
+          66
+        ],
+        "center": [
+          375,
+          47
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          566,
+          378,
+          623
+        ],
+        "center": [
+          227,
+          594
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          21,
+          186,
+          51,
+          216
+        ],
+        "center": [
+          36,
+          201
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          420,
+          49,
+          456
+        ],
+        "center": [
+          31,
+          438
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172007_53_13": {
+    "resolution": [
+      408,
+      746
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          5,
+          35,
+          37,
+          71
+        ],
+        "center": [
+          21,
+          53
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          333,
+          34,
+          363,
+          64
+        ],
+        "center": [
+          348,
+          49
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          57,
+          564,
+          359,
+          621
+        ],
+        "center": [
+          208,
+          592
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          19,
+          495,
+          59,
+          535
+        ],
+        "center": [
+          39,
+          515
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.999,
+        "box": [
+          179,
+          238,
+          230,
+          251
+        ],
+        "center": [
+          204,
+          244
+        ],
+        "full_text": "关注对方可接收对方动"
+      }
+    }
+  },
+  "微信图片_20261011172014_54_13": {
+    "resolution": [
+      429,
+      764
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          43,
+          55,
+          79
+        ],
+        "center": [
+          35,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          347,
+          42,
+          387,
+          82
+        ],
+        "center": [
+          367,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          572,
+          376,
+          629
+        ],
+        "center": [
+          225,
+          600
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          11,
+          137,
+          51,
+          177
+        ],
+        "center": [
+          31,
+          157
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          11,
+          309,
+          51,
+          349
+        ],
+        "center": [
+          31,
+          329
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9986,
+        "box": [
+          106,
+          521,
+          163,
+          533
+        ],
+        "center": [
+          134,
+          527
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172014_55_13": {
+    "resolution": [
+      439,
+      762
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          20,
+          42,
+          60,
+          78
+        ],
+        "center": [
+          40,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          42,
+          391,
+          80
+        ],
+        "center": [
+          372,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          80,
+          571,
+          381,
+          628
+        ],
+        "center": [
+          230,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          16,
+          134,
+          56,
+          174
+        ],
+        "center": [
+          36,
+          154
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          17,
+          276,
+          55,
+          314
+        ],
+        "center": [
+          36,
+          295
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          16,
+          409,
+          50,
+          443
+        ],
+        "center": [
+          33,
+          426
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          19,
+          515,
+          55,
+          551
+        ],
+        "center": [
+          37,
+          533
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172014_56_13": {
+    "resolution": [
+      424,
+      739
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          8,
+          21,
+          48,
+          57
+        ],
+        "center": [
+          28,
+          39
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          339,
+          20,
+          379,
+          60
+        ],
+        "center": [
+          359,
+          40
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          68,
+          550,
+          369,
+          607
+        ],
+        "center": [
+          218,
+          578
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          5,
+          67,
+          43,
+          105
+        ],
+        "center": [
+          24,
+          86
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          6,
+          199,
+          42,
+          235
+        ],
+        "center": [
+          24,
+          217
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          8,
+          439,
+          42,
+          473
+        ],
+        "center": [
+          25,
+          456
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172014_57_13": {
+    "resolution": [
+      434,
+      760
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          40,
+          58,
+          76
+        ],
+        "center": [
+          38,
+          58
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          349,
+          39,
+          389,
+          79
+        ],
+        "center": [
+          369,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          569,
+          379,
+          626
+        ],
+        "center": [
+          228,
+          597
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          202,
+          51,
+          238
+        ],
+        "center": [
+          33,
+          220
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          19,
+          375,
+          53,
+          409
+        ],
+        "center": [
+          36,
+          392
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          14,
+          442,
+          48,
+          476
+        ],
+        "center": [
+          31,
+          459
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172014_58_13": {
+    "resolution": [
+      428,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          38,
+          57,
+          74
+        ],
+        "center": [
+          37,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          348,
+          37,
+          388,
+          77
+        ],
+        "center": [
+          368,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          567,
+          378,
+          624
+        ],
+        "center": [
+          227,
+          595
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          100,
+          50,
+          136
+        ],
+        "center": [
+          32,
+          118
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          166,
+          52,
+          206
+        ],
+        "center": [
+          32,
+          186
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          14,
+          427,
+          48,
+          461
+        ],
+        "center": [
+          31,
+          444
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          13,
+          494,
+          51,
+          532
+        ],
+        "center": [
+          32,
+          513
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9988,
+        "box": [
+          199,
+          310,
+          251,
+          323
+        ],
+        "center": [
+          225,
+          316
+        ],
+        "full_text": "关注对方可接收对方动"
+      }
+    }
+  },
+  "微信图片_20261011172014_59_13": {
+    "resolution": [
+      424,
+      746
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          39,
+          58,
+          75
+        ],
+        "center": [
+          38,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          38,
+          390,
+          78
+        ],
+        "center": [
+          370,
+          58
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          568,
+          379,
+          625
+        ],
+        "center": [
+          228,
+          596
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          119,
+          53,
+          159
+        ],
+        "center": [
+          33,
+          139
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          18,
+          187,
+          52,
+          221
+        ],
+        "center": [
+          35,
+          204
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          21,
+          322,
+          53,
+          354
+        ],
+        "center": [
+          37,
+          338
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          19,
+          387,
+          53,
+          421
+        ],
+        "center": [
+          36,
+          404
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9943,
+        "box": [
+          109,
+          91,
+          165,
+          103
+        ],
+        "center": [
+          137,
+          97
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172014_60_13": {
+    "resolution": [
+      431,
+      769
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          43,
+          57,
+          79
+        ],
+        "center": [
+          37,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          349,
+          42,
+          389,
+          82
+        ],
+        "center": [
+          369,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          572,
+          378,
+          629
+        ],
+        "center": [
+          227,
+          600
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          100,
+          51,
+          138
+        ],
+        "center": [
+          32,
+          119
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          18,
+          500,
+          48,
+          530
+        ],
+        "center": [
+          33,
+          515
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172020_61_13": {
+    "resolution": [
+      414,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          12,
+          36,
+          51,
+          72
+        ],
+        "center": [
+          31,
+          54
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          345,
+          36,
+          383,
+          74
+        ],
+        "center": [
+          364,
+          55
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          72,
+          565,
+          374,
+          622
+        ],
+        "center": [
+          223,
+          593
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          8,
+          271,
+          46,
+          309
+        ],
+        "center": [
+          27,
+          290
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          7,
+          442,
+          47,
+          482
+        ],
+        "center": [
+          27,
+          462
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172020_62_13": {
+    "resolution": [
+      430,
+      741
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          21,
+          36,
+          60,
+          72
+        ],
+        "center": [
+          40,
+          54
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          36,
+          391,
+          74
+        ],
+        "center": [
+          372,
+          55
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          81,
+          565,
+          383,
+          622
+        ],
+        "center": [
+          232,
+          593
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          18,
+          118,
+          56,
+          156
+        ],
+        "center": [
+          37,
+          137
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          290,
+          56,
+          330
+        ],
+        "center": [
+          36,
+          310
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          18,
+          425,
+          56,
+          463
+        ],
+        "center": [
+          37,
+          444
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9979,
+        "box": [
+          112,
+          261,
+          169,
+          274
+        ],
+        "center": [
+          140,
+          267
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172020_63_13": {
+    "resolution": [
+      430,
+      754
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          33,
+          54,
+          69
+        ],
+        "center": [
+          34,
+          51
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          349,
+          34,
+          387,
+          72
+        ],
+        "center": [
+          368,
+          53
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          562,
+          377,
+          619
+        ],
+        "center": [
+          226,
+          590
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          11,
+          149,
+          51,
+          189
+        ],
+        "center": [
+          31,
+          169
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          450,
+          50,
+          488
+        ],
+        "center": [
+          31,
+          469
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172020_64_13": {
+    "resolution": [
+      416,
+      742
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          13,
+          34,
+          52,
+          70
+        ],
+        "center": [
+          32,
+          52
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          347,
+          35,
+          385,
+          73
+        ],
+        "center": [
+          366,
+          54
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          73,
+          563,
+          375,
+          620
+        ],
+        "center": [
+          224,
+          591
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          75,
+          48,
+          111
+        ],
+        "center": [
+          30,
+          93
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          10,
+          192,
+          48,
+          230
+        ],
+        "center": [
+          29,
+          211
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          9,
+          430,
+          49,
+          470
+        ],
+        "center": [
+          29,
+          450
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          8,
+          498,
+          46,
+          536
+        ],
+        "center": [
+          27,
+          517
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172027_65_13": {
+    "resolution": [
+      440,
+      759
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          25,
+          42,
+          65,
+          77
+        ],
+        "center": [
+          45,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          356,
+          41,
+          396,
+          81
+        ],
+        "center": [
+          376,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          85,
+          571,
+          387,
+          628
+        ],
+        "center": [
+          236,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          24,
+          208,
+          60,
+          244
+        ],
+        "center": [
+          42,
+          226
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          20,
+          361,
+          58,
+          399
+        ],
+        "center": [
+          39,
+          380
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          21,
+          501,
+          57,
+          537
+        ],
+        "center": [
+          39,
+          519
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172027_66_13": {
+    "resolution": [
+      430,
+      765
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          42,
+          58,
+          78
+        ],
+        "center": [
+          38,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          348,
+          40,
+          390,
+          82
+        ],
+        "center": [
+          369,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          571,
+          380,
+          628
+        ],
+        "center": [
+          229,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          204,
+          52,
+          242
+        ],
+        "center": [
+          33,
+          223
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          270,
+          54,
+          308
+        ],
+        "center": [
+          35,
+          289
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          14,
+          492,
+          52,
+          530
+        ],
+        "center": [
+          33,
+          511
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172027_67_13": {
+    "resolution": [
+      432,
+      760
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          44,
+          58,
+          80
+        ],
+        "center": [
+          38,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          44,
+          390,
+          84
+        ],
+        "center": [
+          370,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          573,
+          380,
+          630
+        ],
+        "center": [
+          229,
+          601
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          21,
+          82,
+          53,
+          114
+        ],
+        "center": [
+          37,
+          98
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          317,
+          50,
+          353
+        ],
+        "center": [
+          32,
+          335
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          18,
+          455,
+          52,
+          489
+        ],
+        "center": [
+          35,
+          472
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          14,
+          518,
+          50,
+          554
+        ],
+        "center": [
+          32,
+          536
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9982,
+        "box": [
+          109,
+          220,
+          166,
+          232
+        ],
+        "center": [
+          137,
+          226
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172031_68_13": {
+    "resolution": [
+      415,
+      759
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          40,
+          55,
+          75
+        ],
+        "center": [
+          35,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          347,
+          39,
+          387,
+          79
+        ],
+        "center": [
+          367,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          569,
+          378,
+          626
+        ],
+        "center": [
+          227,
+          597
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          11,
+          274,
+          51,
+          314
+        ],
+        "center": [
+          31,
+          294
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          408,
+          51,
+          446
+        ],
+        "center": [
+          32,
+          427
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172031_69_13": {
+    "resolution": [
+      432,
+      750
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          36,
+          58,
+          72
+        ],
+        "center": [
+          38,
+          54
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          35,
+          390,
+          75
+        ],
+        "center": [
+          370,
+          55
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          565,
+          381,
+          622
+        ],
+        "center": [
+          230,
+          593
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          264,
+          55,
+          304
+        ],
+        "center": [
+          35,
+          284
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          397,
+          55,
+          437
+        ],
+        "center": [
+          35,
+          417
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9982,
+        "box": [
+          110,
+          235,
+          167,
+          248
+        ],
+        "center": [
+          138,
+          241
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172031_70_13": {
+    "resolution": [
+      432,
+      760
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          47,
+          58,
+          83
+        ],
+        "center": [
+          38,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          350,
+          46,
+          390,
+          86
+        ],
+        "center": [
+          370,
+          66
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          576,
+          381,
+          633
+        ],
+        "center": [
+          230,
+          604
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          125,
+          55,
+          165
+        ],
+        "center": [
+          35,
+          145
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          16,
+          325,
+          54,
+          363
+        ],
+        "center": [
+          35,
+          344
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          15,
+          391,
+          55,
+          431
+        ],
+        "center": [
+          35,
+          411
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          15,
+          497,
+          55,
+          537
+        ],
+        "center": [
+          35,
+          517
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172035_71_13": {
+    "resolution": [
+      426,
+      758
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          42,
+          57,
+          78
+        ],
+        "center": [
+          37,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          42,
+          387,
+          76
+        ],
+        "center": [
+          370,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          571,
+          379,
+          628
+        ],
+        "center": [
+          228,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          136,
+          51,
+          172
+        ],
+        "center": [
+          33,
+          154
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          315,
+          51,
+          353
+        ],
+        "center": [
+          32,
+          334
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          383,
+          51,
+          421
+        ],
+        "center": [
+          32,
+          402
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172035_72_13": {
+    "resolution": [
+      426,
+      766
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          50,
+          58,
+          86
+        ],
+        "center": [
+          38,
+          68
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          49,
+          389,
+          87
+        ],
+        "center": [
+          370,
+          68
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          579,
+          380,
+          636
+        ],
+        "center": [
+          229,
+          607
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          135,
+          53,
+          175
+        ],
+        "center": [
+          33,
+          155
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          503,
+          52,
+          541
+        ],
+        "center": [
+          33,
+          522
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9985,
+        "box": [
+          109,
+          280,
+          166,
+          292
+        ],
+        "center": [
+          137,
+          286
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172035_73_13": {
+    "resolution": [
+      435,
+      766
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          20,
+          47,
+          60,
+          82
+        ],
+        "center": [
+          40,
+          64
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          51,
+          389,
+          87
+        ],
+        "center": [
+          371,
+          69
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          80,
+          576,
+          382,
+          633
+        ],
+        "center": [
+          231,
+          604
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          18,
+          122,
+          54,
+          158
+        ],
+        "center": [
+          36,
+          140
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          19,
+          358,
+          53,
+          392
+        ],
+        "center": [
+          36,
+          375
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          16,
+          424,
+          56,
+          464
+        ],
+        "center": [
+          36,
+          444
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          15,
+          498,
+          55,
+          538
+        ],
+        "center": [
+          35,
+          518
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172035_74_13": {
+    "resolution": [
+      432,
+      762
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          41,
+          58,
+          77
+        ],
+        "center": [
+          38,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          44,
+          389,
+          80
+        ],
+        "center": [
+          371,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          570,
+          380,
+          627
+        ],
+        "center": [
+          229,
+          598
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          166,
+          53,
+          206
+        ],
+        "center": [
+          33,
+          186
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          264,
+          53,
+          304
+        ],
+        "center": [
+          33,
+          284
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172035_75_13": {
+    "resolution": [
+      428,
+      750
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          39,
+          57,
+          75
+        ],
+        "center": [
+          37,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          352,
+          39,
+          386,
+          73
+        ],
+        "center": [
+          369,
+          56
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          568,
+          379,
+          625
+        ],
+        "center": [
+          228,
+          596
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          121,
+          51,
+          159
+        ],
+        "center": [
+          32,
+          140
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          186,
+          52,
+          226
+        ],
+        "center": [
+          32,
+          206
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          321,
+          51,
+          359
+        ],
+        "center": [
+          32,
+          340
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172035_76_13": {
+    "resolution": [
+      430,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          36,
+          56,
+          72
+        ],
+        "center": [
+          36,
+          54
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          35,
+          387,
+          71
+        ],
+        "center": [
+          369,
+          53
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          565,
+          378,
+          622
+        ],
+        "center": [
+          227,
+          593
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          70,
+          49,
+          106
+        ],
+        "center": [
+          31,
+          88
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          414,
+          50,
+          452
+        ],
+        "center": [
+          31,
+          433
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          480,
+          50,
+          518
+        ],
+        "center": [
+          31,
+          499
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172259_79_13": {
+    "resolution": [
+      429,
+      752
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          39,
+          59,
+          75
+        ],
+        "center": [
+          39,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          356,
+          33,
+          394,
+          71
+        ],
+        "center": [
+          375,
+          52
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          568,
+          380,
+          625
+        ],
+        "center": [
+          229,
+          596
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          174,
+          52,
+          212
+        ],
+        "center": [
+          33,
+          193
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          308,
+          52,
+          346
+        ],
+        "center": [
+          33,
+          327
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172259_80_13": {
+    "resolution": [
+      427,
+      764
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          45,
+          55,
+          81
+        ],
+        "center": [
+          35,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          39,
+          391,
+          77
+        ],
+        "center": [
+          372,
+          58
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          574,
+          376,
+          631
+        ],
+        "center": [
+          225,
+          602
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          209,
+          50,
+          247
+        ],
+        "center": [
+          31,
+          228
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          382,
+          50,
+          420
+        ],
+        "center": [
+          31,
+          401
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          449,
+          50,
+          487
+        ],
+        "center": [
+          31,
+          468
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9979,
+        "box": [
+          106,
+          352,
+          163,
+          365
+        ],
+        "center": [
+          134,
+          358
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172259_81_13": {
+    "resolution": [
+      435,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          24,
+          43,
+          64,
+          79
+        ],
+        "center": [
+          44,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          362,
+          37,
+          400,
+          75
+        ],
+        "center": [
+          381,
+          56
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          84,
+          572,
+          385,
+          629
+        ],
+        "center": [
+          234,
+          600
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          20,
+          239,
+          62,
+          281
+        ],
+        "center": [
+          41,
+          260
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          20,
+          309,
+          58,
+          347
+        ],
+        "center": [
+          39,
+          328
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          20,
+          478,
+          62,
+          520
+        ],
+        "center": [
+          41,
+          499
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172259_82_13": {
+    "resolution": [
+      431,
+      755
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          39,
+          58,
+          75
+        ],
+        "center": [
+          38,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          357,
+          33,
+          395,
+          71
+        ],
+        "center": [
+          376,
+          52
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          568,
+          379,
+          625
+        ],
+        "center": [
+          228,
+          596
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          183,
+          53,
+          223
+        ],
+        "center": [
+          33,
+          203
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          14,
+          316,
+          52,
+          354
+        ],
+        "center": [
+          33,
+          335
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          382,
+          53,
+          422
+        ],
+        "center": [
+          33,
+          402
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172259_83_13": {
+    "resolution": [
+      429,
+      755
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          42,
+          56,
+          78
+        ],
+        "center": [
+          36,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          355,
+          36,
+          393,
+          74
+        ],
+        "center": [
+          374,
+          55
+        ],
+        "confidence": 0.95
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          571,
+          377,
+          628
+        ],
+        "center": [
+          226,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          230,
+          50,
+          268
+        ],
+        "center": [
+          31,
+          249
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          11,
+          386,
+          51,
+          426
+        ],
+        "center": [
+          31,
+          406
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          13,
+          493,
+          51,
+          531
+        ],
+        "center": [
+          32,
+          512
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172401_84_13": {
+    "resolution": [
+      424,
+      740
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          7,
+          28,
+          47,
+          64
+        ],
+        "center": [
+          27,
+          46
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          340,
+          28,
+          378,
+          66
+        ],
+        "center": [
+          359,
+          47
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          67,
+          557,
+          368,
+          614
+        ],
+        "center": [
+          217,
+          585
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          6,
+          237,
+          42,
+          273
+        ],
+        "center": [
+          24,
+          255
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          6,
+          448,
+          42,
+          484
+        ],
+        "center": [
+          24,
+          466
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172401_85_13": {
+    "resolution": [
+      424,
+      768
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          13,
+          52,
+          53,
+          88
+        ],
+        "center": [
+          33,
+          70
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          345,
+          51,
+          385,
+          91
+        ],
+        "center": [
+          365,
+          71
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          73,
+          581,
+          374,
+          638
+        ],
+        "center": [
+          223,
+          609
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          10,
+          194,
+          48,
+          232
+        ],
+        "center": [
+          29,
+          213
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          10,
+          260,
+          48,
+          298
+        ],
+        "center": [
+          29,
+          279
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          9,
+          326,
+          49,
+          366
+        ],
+        "center": [
+          29,
+          346
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          9,
+          432,
+          49,
+          472
+        ],
+        "center": [
+          29,
+          452
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172401_86_13": {
+    "resolution": [
+      425,
+      756
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          16,
+          42,
+          56,
+          78
+        ],
+        "center": [
+          36,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          348,
+          42,
+          386,
+          80
+        ],
+        "center": [
+          367,
+          61
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          76,
+          571,
+          377,
+          628
+        ],
+        "center": [
+          226,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          135,
+          51,
+          173
+        ],
+        "center": [
+          32,
+          154
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          309,
+          51,
+          347
+        ],
+        "center": [
+          32,
+          328
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          11,
+          375,
+          51,
+          415
+        ],
+        "center": [
+          31,
+          395
+        ]
+      },
+      "other_avatar_msg_4": {
+        "class": "other_avatar_msg_4",
+        "label": "消息·对方头像4",
+        "confidence": 0.99,
+        "box": [
+          13,
+          509,
+          51,
+          547
+        ],
+        "center": [
+          32,
+          528
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9983,
+        "box": [
+          107,
+          279,
+          164,
+          292
+        ],
+        "center": [
+          135,
+          285
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172450_87_13": {
+    "resolution": [
+      437,
+      779
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          52,
+          59,
+          88
+        ],
+        "center": [
+          39,
+          70
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          353,
+          53,
+          391,
+          91
+        ],
+        "center": [
+          372,
+          72
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          581,
+          381,
+          638
+        ],
+        "center": [
+          230,
+          609
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          14,
+          189,
+          50,
+          225
+        ],
+        "center": [
+          32,
+          207
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          399,
+          51,
+          435
+        ],
+        "center": [
+          33,
+          417
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172454_88_13": {
+    "resolution": [
+      433,
+      757
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          17,
+          42,
+          57,
+          78
+        ],
+        "center": [
+          37,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          354,
+          45,
+          388,
+          79
+        ],
+        "center": [
+          371,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          77,
+          571,
+          379,
+          628
+        ],
+        "center": [
+          228,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          149,
+          51,
+          187
+        ],
+        "center": [
+          32,
+          168
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          320,
+          52,
+          360
+        ],
+        "center": [
+          32,
+          340
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          387,
+          52,
+          427
+        ],
+        "center": [
+          32,
+          407
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172638_89_13": {
+    "resolution": [
+      431,
+      753
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          40,
+          54,
+          80
+        ],
+        "center": [
+          34,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          348,
+          41,
+          386,
+          79
+        ],
+        "center": [
+          367,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          569,
+          376,
+          626
+        ],
+        "center": [
+          225,
+          597
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          135,
+          50,
+          173
+        ],
+        "center": [
+          31,
+          154
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          307,
+          50,
+          345
+        ],
+        "center": [
+          31,
+          326
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          12,
+          486,
+          50,
+          524
+        ],
+        "center": [
+          31,
+          505
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172638_90_13": {
+    "resolution": [
+      421,
+      754
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          8,
+          37,
+          48,
+          77
+        ],
+        "center": [
+          28,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          341,
+          38,
+          379,
+          76
+        ],
+        "center": [
+          360,
+          57
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          68,
+          566,
+          369,
+          623
+        ],
+        "center": [
+          218,
+          594
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          2,
+          234,
+          44,
+          276
+        ],
+        "center": [
+          23,
+          255
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          5,
+          410,
+          43,
+          448
+        ],
+        "center": [
+          24,
+          429
+        ]
+      },
+      "blue_follow_msg": {
+        "class": "blue_follow_msg",
+        "label": "消息·关注对方",
+        "confidence": 0.9986,
+        "box": [
+          99,
+          207,
+          156,
+          219
+        ],
+        "center": [
+          127,
+          213
+        ],
+        "full_text": "关注对方，可接收对方动态更新"
+      }
+    }
+  },
+  "微信图片_20261011172638_91_13": {
+    "resolution": [
+      440,
+      772
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          20,
+          48,
+          60,
+          88
+        ],
+        "center": [
+          40,
+          68
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          355,
+          47,
+          391,
+          83
+        ],
+        "center": [
+          373,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          80,
+          577,
+          381,
+          634
+        ],
+        "center": [
+          230,
+          605
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          16,
+          180,
+          56,
+          220
+        ],
+        "center": [
+          36,
+          200
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          17,
+          248,
+          55,
+          286
+        ],
+        "center": [
+          36,
+          267
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          16,
+          431,
+          56,
+          471
+        ],
+        "center": [
+          36,
+          451
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172638_92_13": {
+    "resolution": [
+      436,
+      763
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          19,
+          43,
+          59,
+          83
+        ],
+        "center": [
+          39,
+          63
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          355,
+          48,
+          389,
+          82
+        ],
+        "center": [
+          372,
+          65
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          79,
+          572,
+          380,
+          629
+        ],
+        "center": [
+          229,
+          600
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          15,
+          243,
+          55,
+          283
+        ],
+        "center": [
+          35,
+          263
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          15,
+          376,
+          55,
+          416
+        ],
+        "center": [
+          35,
+          396
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          15,
+          514,
+          49,
+          548
+        ],
+        "center": [
+          32,
+          531
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172638_93_13": {
+    "resolution": [
+      437,
+      762
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          18,
+          42,
+          58,
+          82
+        ],
+        "center": [
+          38,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          351,
+          43,
+          389,
+          81
+        ],
+        "center": [
+          370,
+          62
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          78,
+          571,
+          379,
+          628
+        ],
+        "center": [
+          228,
+          599
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          13,
+          199,
+          53,
+          239
+        ],
+        "center": [
+          33,
+          219
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          13,
+          459,
+          51,
+          497
+        ],
+        "center": [
+          32,
+          478
+        ]
+      },
+      "other_avatar_msg_3": {
+        "class": "other_avatar_msg_3",
+        "label": "消息·对方头像3",
+        "confidence": 0.99,
+        "box": [
+          14,
+          526,
+          52,
+          564
+        ],
+        "center": [
+          33,
+          545
+        ]
+      }
+    }
+  },
+  "微信图片_20261011172638_94_13": {
+    "resolution": [
+      425,
+      755
+    ],
+    "is_occluded": false,
+    "occlusion_info": null,
+    "elements": {
+      "back_btn": {
+        "class": "back_btn",
+        "label": "返回键",
+        "box": [
+          15,
+          40,
+          55,
+          80
+        ],
+        "center": [
+          35,
+          60
+        ],
+        "confidence": 0.99
+      },
+      "header_avatar": {
+        "class": "header_avatar",
+        "label": "顶栏·对方头像",
+        "box": [
+          346,
+          39,
+          386,
+          79
+        ],
+        "center": [
+          366,
+          59
+        ],
+        "confidence": 0.99
+      },
+      "input_box": {
+        "class": "input_box",
+        "label": "输入框",
+        "box": [
+          75,
+          569,
+          376,
+          626
+        ],
+        "center": [
+          225,
+          597
+        ],
+        "confidence": 0.99
+      },
+      "other_avatar_msg_1": {
+        "class": "other_avatar_msg_1",
+        "label": "消息·对方头像1",
+        "confidence": 0.99,
+        "box": [
+          12,
+          321,
+          50,
+          359
+        ],
+        "center": [
+          31,
+          340
+        ]
+      },
+      "other_avatar_msg_2": {
+        "class": "other_avatar_msg_2",
+        "label": "消息·对方头像2",
+        "confidence": 0.99,
+        "box": [
+          12,
+          427,
+          50,
+          465
+        ],
+        "center": [
+          31,
+          446
+        ]
+      }
+    }
+  }
+}

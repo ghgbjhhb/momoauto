@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "source": "SDK original: .local-output/改机重置/第5台实机-UThe7e/before.jpg (360x640)",
+  "templates": [
+    {"id":"momo_blue","role":"app_icon","file":"momo-blue.png","referenceWidth":360,"referenceHeight":640,"crop":[284,426,334,477]},
+    {"id":"gallery","role":"home_anchor","file":"home-gallery.png","referenceWidth":360,"referenceHeight":640,"crop":[24,55,76,107]},
+    {"id":"clock","role":"home_anchor","file":"home-clock.png","referenceWidth":360,"referenceHeight":640,"crop":[111,55,162,107]},
+    {"id":"contacts","role":"home_anchor","file":"home-contacts.png","referenceWidth":360,"referenceHeight":640,"crop":[283,179,335,230]},
+    {"id":"phone_dock","role":"dock_anchor","file":"dock-phone.png","referenceWidth":360,"referenceHeight":640,"crop":[64,548,105,587]},
+    {"id":"sms_dock","role":"dock_anchor","file":"dock-sms.png","referenceWidth":360,"referenceHeight":640,"crop":[130,548,169,587]},
+    {"id":"camera_dock","role":"dock_anchor","file":"dock-camera.png","referenceWidth":360,"referenceHeight":640,"crop":[258,548,298,588]}
+  ]
+}

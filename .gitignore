@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.local.*
+coverage/
+.research/
+.local-output/
+*.tgz
+__pycache__/
+.venv-zhtyping/
+.runtime/
+midscene_run/
+scratch/

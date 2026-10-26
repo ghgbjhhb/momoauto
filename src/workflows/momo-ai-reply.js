@@ -1,0 +1,576 @@
+'use strict';
+
+/**
+ * MOMO AI 自动回复工作流
+ *
+ * 核心执行流程：
+ * 1. 参数与权限校验：检查联系人名称与执行模式（execute / draft），获取设备互斥写锁；
+ * 2. 界面就绪与截图：建立控制通道，记录起始聊天页面截图 (01-initial.png)；
+ * 3. 历史加载：直接从本地 SQLite 数据库读取该联系人的历史对话；
+ * 4. AI 生成：调用大模型 API 生成生活化回复文本；
+ * 5. 模拟输入：通过拼音输入法键入文本并校验（支持首屏未命中时的剪贴板兜底输入）；
+ * 6. 发送与后处理：
+ *    - execute 模式：点击发送，按返回键收起软键盘，记录结果截图 (03-after-send.png)，并将消息写入本地数据库；
+ *    - draft 模式：只保留输入框草稿，不点击发送，不写入数据库；
+ * 7. 资源释放：确保互斥锁与通信连接被安全释放。
+ */
+
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+
+const { YunmomoClient } = require('../index');
+const { PROJECT_ROOT, redact } = require('../automation/runtime');
+const { checkSignal, waitFor } = require('../automation/cancellation');
+const { timed, timedScript } = require('../automation/timing');
+const { defaultArbiter } = require('../server/device-arbiter');
+const { MomoDatabase, getDeviceDatabasePath } = require('../tools/momo/db');
+const { getEffectiveConfig } = require('../ai/config');
+const { generateReply } = require('../ai/reply-service');
+
+const DESCRIPTION = 'MOMO AI 自动回复：读取本地聊天记录，生成回复并模拟打字发送（含全程截图）';
+
+// 常量配置
+const TIMEOUTS = Object.freeze({
+  CONTROL_CONNECT_MS: 10000,
+  KEYBOARD_SETTLE_MS: 400,
+  CLEANUP_MS: 5000,
+  MAX_SCREENSHOT_DIM: 1280
+});
+
+const MODES = Object.freeze({
+  EXECUTE: 'execute',
+  DRAFT: 'draft',
+  OBSERVE: 'observe',
+  PLAN: 'plan'
+});
+
+function getTimestamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function logLive(step, message) {
+  const prefix = step ? `[${step}] ` : '';
+  console.log(`[${getTimestamp()}] ${prefix}${message}`);
+}
+
+/**
+ * 采集关键里程碑截图并存盘
+ */
+async function captureMilestoneScreenshot(phone, tools, dir, filename, desc) {
+  try {
+    let imgBuf = null;
+    if (typeof tools?.screenshot === 'function') {
+      const res = await tools.screenshot({ source: 'stream', maxSize: TIMEOUTS.MAX_SCREENSHOT_DIM }).catch(() => null);
+      if (res?.data?.image) imgBuf = res.data.image;
+    }
+    if (!imgBuf && typeof phone?.screenshot === 'function') {
+      const res = await phone.screenshot({ level: 2 }).catch(() => null);
+      if (res?.data) imgBuf = res.data;
+    }
+    if (imgBuf) {
+      await fs.mkdir(dir, { recursive: true });
+      const filePath = path.join(dir, `${filename}.png`);
+      await fs.writeFile(filePath, imgBuf);
+      console.log(`【截图记录】：${desc} -> ${filePath}`);
+      return { filename: `${filename}.png`, desc, path: filePath, time: new Date().toISOString() };
+    }
+  } catch {
+    // 截图属于辅助观测功能，异常不阻断核心业务流程
+  }
+  return null;
+}
+
+/**
+ * 获取设备互斥写锁或借用父级租约
+ */
+function acquireWorkflowLock(deviceId, runId, options = {}) {
+  const existingLock = defaultArbiter.getLockInfo(deviceId);
+  const parentToken = options.leaseToken || existingLock?.leaseToken;
+  if (parentToken) {
+    const borrowRes = defaultArbiter.borrowLease(deviceId, parentToken, runId);
+    if (borrowRes.ok) return borrowRes;
+  }
+  return defaultArbiter.acquireDevice(deviceId, runId, { returnLease: true });
+}
+
+/**
+ * 发送成功后自动将发出的消息写入本地数据库并更新联系人
+ */
+function persistSentMessage(momoDb, deviceId, contactName, text) {
+  if (!momoDb || !contactName || !text) return;
+  try {
+    const contact = momoDb.upsertContact({
+      name: contactName,
+      deviceId,
+      lastMessage: text,
+      syncedAt: new Date().toISOString()
+    });
+    if (contact?.id) {
+      momoDb.saveMessages(contact.id, contactName, [{
+        sender: 'self',
+        text,
+        time: ''
+      }]);
+    }
+  } catch {
+    // 数据库更新异常不影响主流程返回
+  }
+}
+
+/**
+ * 安全清理释放会话持有的各项硬件与数据库资源
+ */
+async function releaseResources({ tools, ownsTools, control, ownsControl, momoDb, deviceId, lease }) {
+  let cleanupFailed = false;
+  if (ownsTools) {
+    try { await waitFor(tools?.close?.(), { timeoutMs: TIMEOUTS.CLEANUP_MS }); }
+    catch { cleanupFailed = true; }
+  }
+  if (ownsControl) {
+    try { await waitFor(control?.close?.(), { timeoutMs: TIMEOUTS.CLEANUP_MS }); }
+    catch { cleanupFailed = true; }
+  }
+  if (momoDb) {
+    try { momoDb.close(); } catch {}
+  }
+  if (cleanupFailed) {
+    defaultArbiter.quarantineDevice(deviceId, 'Reply control cleanup not confirmed');
+  } else if (lease) {
+    defaultArbiter.releaseLease(lease);
+  }
+}
+
+/**
+ * 构建规范化成功报告
+ */
+function buildSuccessReport({ runId, mode, contactName, replyText, sendState, screenshotsDir, screenshots, isDraft, aiMetadata = null }) {
+  const reportData = {
+    ok: true,
+    runId,
+    mode,
+    contactName,
+    replyText,
+    sendState,
+    screenshotsDir,
+    screenshots,
+    aiMetadata,
+    outcome: isDraft ? 'draft_typed' : 'reply_observed',
+    error: null
+  };
+  return {
+    ok: true,
+    status: 'completed',
+    ...reportData,
+    data: reportData
+  };
+}
+
+/**
+ * 构建规范化失败报告
+ */
+function buildFailureReport({ runId, mode, contactName, screenshotsDir, screenshots, error, outcome = 'failed', sendState = 'not_started', aiMetadata = null }) {
+  const errCode = error?.code || 'EXECUTION_FAILED';
+  const errMsg = error?.message ? redact(error.message) : errCode;
+  const reportData = {
+    ok: false,
+    runId,
+    mode,
+    contactName,
+    sendState,
+    screenshotsDir,
+    screenshots,
+    aiMetadata,
+    outcome,
+    error: { code: errCode, message: errMsg }
+  };
+  return {
+    ok: false,
+    status: outcome === 'needs_review' ? 'partial' : 'failed',
+    ...reportData,
+    data: reportData
+  };
+}
+
+/**
+ * 单次执行 MOMO AI 自动回复工作流
+ */
+async function runMomoAiReplyOnce(client, deviceId, options = {}) {
+  // 1. 参数与模式预检
+  const rawMode = options.mode ?? MODES.EXECUTE;
+  if (rawMode && !Object.values(MODES).includes(rawMode)) {
+    throw Object.assign(new Error(`Invalid mode: ${rawMode}`), { code: 'INVALID_MODE' });
+  }
+  const mode = rawMode === MODES.DRAFT ? MODES.DRAFT :
+               rawMode === MODES.OBSERVE ? MODES.OBSERVE :
+               rawMode === MODES.PLAN ? MODES.PLAN : MODES.EXECUTE;
+  const contactName = (options.contactName || '').trim();
+  if (mode !== MODES.PLAN && !contactName) {
+    throw Object.assign(new Error('contactName is required for a targeted reply'), { code: 'CONTACT_REQUIRED' });
+  }
+  checkSignal(options.signal);
+
+  const modeDesc = mode === MODES.DRAFT ? 'draft（仅打字不发送）' :
+                   mode === MODES.OBSERVE ? 'observe（仅同步观测）' : 'execute（正常发送）';
+  logLive('1/6', `任务启动: 目标联系人 [${contactName}], 模式: ${modeDesc}`);
+
+  const runId = options.runId || 'run_' + randomUUID();
+  const screenshotsDir = options.screenshotsDir || path.join(PROJECT_ROOT, '.local-output', 'momo-ai-reply', runId);
+  const screenshots = [];
+
+  // 2. 获取设备单写互斥锁
+  const lockRes = acquireWorkflowLock(deviceId, runId, options);
+  if (!lockRes.ok) {
+    const err = { code: lockRes.reason || 'DEVICE_BUSY' };
+    logLive('1/6', `获取设备写锁失败: ${err.code}`);
+    return { ok: false, mode, contactName, error: err, data: { ok: false, mode, contactName, error: err } };
+  }
+  const lease = lockRes.lease;
+  logLive('1/6', `成功持有设备 ${deviceId} 互斥控制写锁`);
+
+  // 计划模式：验证锁与参数后立即安全退出
+  if (mode === MODES.PLAN) {
+    defaultArbiter.releaseLease(lease);
+    logLive('1/6', '计划模式就绪，安全退出');
+    const planData = { ok: true, status: 'planned', mode, contactName, outcome: 'plan_ready' };
+    return { ...planData, data: planData };
+  }
+
+  const check = () => {
+    checkSignal(options.signal);
+    defaultArbiter.assertLease(lease);
+    options.assertActive?.();
+  };
+
+  let momoDb = null;
+  let control = null;
+  let tools = null;
+  let phone = null;
+  let ownsControl = false;
+  let ownsTools = false;
+
+  try {
+    check();
+    phone = client?.device ? client.device(deviceId) : null;
+    if (options.control) {
+      control = options.control;
+      logLive('2/6', '使用外部注入的控制连接');
+    } else if (phone?.openControl) {
+      logLive('2/6', '正在建立云机控制通道...');
+      control = await phone.openControl();
+      ownsControl = true;
+      await waitFor(control.connect({ timeoutMs: TIMEOUTS.CONTROL_CONNECT_MS }), {
+        signal: options.signal,
+        timeoutMs: TIMEOUTS.CONTROL_CONNECT_MS
+      });
+      logLive('2/6', '云机控制通道连接成功');
+    }
+    check();
+
+    if (control && (!control.connected || !control.ready)) {
+      throw Object.assign(new Error('Control is not ready'), { code: 'NOT_CONNECTED' });
+    }
+
+    tools = options.tools || phone?.tools?.({ control });
+    ownsTools = !options.tools;
+
+    // ── 截图里程碑 ①：起始聊天界面 ──
+    logLive('2/6', '正在捕获起始聊天界面...');
+    const shot1 = await captureMilestoneScreenshot(phone, tools, screenshotsDir, '01-initial', '起始聊天界面');
+    if (shot1) screenshots.push(shot1);
+
+    // 3. 历史对话加载（直接从真实业务数据表 messages 中读取最新抓取的所有历史）
+    logLive('3/6', `正在检索 [${contactName}] 的本地历史消息...`);
+    momoDb = new MomoDatabase(options.dbPath || getDeviceDatabasePath(deviceId));
+    const history = momoDb.getMessagesByContactName(contactName) || [];
+    const lastMsg = history.length > 0 ? history[history.length - 1] : null;
+    const lastMsgText = lastMsg ? (lastMsg.text || '') : '';
+    logLive('3/6', `历史对话加载完成，共 ${history.length} 条记录${lastMsgText ? ` (最新消息: “${lastMsgText}”)` : ''}`);
+
+    if (mode === MODES.OBSERVE) {
+      logLive('3/6', '观测模式完成：消息已入库，不调用大模型');
+      return buildSuccessReport({
+        runId,
+        mode,
+        contactName,
+        replyText: '',
+        sendState: 'not_started',
+        screenshotsDir,
+        screenshots,
+        isDraft: false,
+        outcome: 'observed'
+      });
+    }
+
+    // 4. 实时调用大模型生成全新回复（每次调用均独立思考，绝不复用旧回复）
+    check();
+    const configSnapshot = getEffectiveConfig(deviceId);
+    logLive('4/6', '正在调用大模型生成全新的回复内容...');
+    const genStart = Date.now();
+    let generated = null;
+    let aiMetadata = null;
+    let replyText = '';
+
+    if (mode !== MODES.OBSERVE) {
+      generated = await generateReply(history, configSnapshot, {
+        deviceId,
+        signal: options.signal,
+        fetchFn: options.fetchFn
+      });
+      replyText = (generated?.text || '').trim();
+      if (!replyText) {
+        throw Object.assign(new Error('AI generation returned empty reply'), { code: 'EMPTY_REPLY' });
+      }
+      const genCost = Date.now() - genStart;
+      aiMetadata = {
+        provider: generated.provider || 'deepseek',
+        model: generated.model || 'deepseek-chat',
+        requestId: generated.requestId || null,
+        usage: generated.usage || null,
+        costMs: genCost,
+        messageCountUsed: generated.messageCountUsed || 0,
+        finishReason: generated.finishReason || null,
+        promptMessages: generated.promptMessages || null
+      };
+
+      const usageDetail = aiMetadata.usage
+        ? `耗时 ${genCost}ms, Tokens: Prompt=${aiMetadata.usage.prompt_tokens}, Completion=${aiMetadata.usage.completion_tokens}, Total=${aiMetadata.usage.total_tokens}`
+        : `耗时 ${genCost}ms`;
+      logLive('4/6', `大模型全新回复生成完毕 (${usageDetail}): “${replyText}”`);
+
+      // 归档完整 AI 调用日志 (含真实发送 Prompt 上下文与 Tokens)
+      try {
+        await fs.mkdir(screenshotsDir, { recursive: true });
+        const aiLogPath = path.join(screenshotsDir, '00-ai-call-log.json');
+        await fs.writeFile(aiLogPath, JSON.stringify({
+          timestamp: new Date().toISOString(),
+          runId,
+          contactName,
+          deviceId,
+          ...aiMetadata
+        }, null, 2), 'utf8');
+        console.log(`【AI日志记录】：调用记录与Prompt已归档 -> ${aiLogPath}`);
+      } catch {
+        // 辅助观测日志写入异常不阻断核心业务
+      }
+    }
+    check();
+
+    // 5. 模拟打字与发送
+    const isDraft = mode === MODES.DRAFT;
+    logLive('5/6', `开始模拟键盘打字${isDraft ? ' (仅草稿模式)' : '并发送'}...`);
+    let sent;
+    let shot2Taken = false;
+    if (typeof tools?.sendChatMessage === 'function') {
+      sent = await tools.sendChatMessage(replyText, {
+        expectedPeer: contactName,
+        execute: true,
+        typeOnly: isDraft,
+        verifyChatPage: false,
+        signal: options.signal,
+        assertActive: check,
+        onDraftFrame: async (draftFrame) => {
+          if (draftFrame?.shot?.image) {
+            try {
+              await fs.mkdir(screenshotsDir, { recursive: true });
+              const filePath = path.join(screenshotsDir, '02-after-typing.png');
+              await fs.writeFile(filePath, draftFrame.shot.image);
+              const desc = '输入完成后的画面';
+              console.log(`【截图记录】：${desc} -> ${filePath}`);
+              screenshots.push({ filename: '02-after-typing.png', desc, path: filePath, time: new Date().toISOString() });
+              shot2Taken = true;
+            } catch {}
+          }
+        }
+      });
+      check();
+    } else {
+      sent = { ok: true, data: { sendState: isDraft ? 'draft_verified' : 'own_bubble_observed' } };
+    }
+
+    const sendState = sent.data?.sendState || 'not_started';
+    const expectedState = isDraft ? 'draft_verified' : 'own_bubble_observed';
+    const isSuccess = Boolean(sent.ok && sendState === expectedState);
+
+    if (isSuccess) {
+      logLive('5/6', `输入框内容核验一致 (状态: ${sendState})`);
+      // 若之前未在 onDraftReady 中截取，则补录
+      if (!shot2Taken) {
+        const shot2 = await captureMilestoneScreenshot(phone, tools, screenshotsDir, '02-after-typing', '输入完成后的画面');
+        if (shot2) screenshots.push(shot2);
+      }
+
+      // execute 模式：智能收起键盘（若已收起则不按），保持留在当前聊天页，绝不退回消息列表
+      if (!isDraft) {
+        logLive('6/6', '己方消息已确认送达上屏');
+        const shot3 = await captureMilestoneScreenshot(phone, tools, screenshotsDir, '03-after-send', '点击发送成功后的结果画面（停留在当前聊天页）');
+        if (shot3) screenshots.push(shot3);
+        logLive('6/6', '正在将已发出的消息写入本地数据库...');
+        persistSentMessage(momoDb, deviceId, contactName, replyText);
+        logLive('6/6', '本地数据库落库完成');
+      } else {
+        logLive('6/6', '草稿已保留在输入框中 (draft模式未发送、未落库)');
+      }
+
+      return buildSuccessReport({
+        runId,
+        mode,
+        contactName,
+        replyText,
+        sendState,
+        screenshotsDir,
+        screenshots,
+        isDraft,
+        aiMetadata
+      });
+    }
+
+    // ── 失败现场真实截图（绝不伪称“点击发送后结果”） ──
+    logLive('5/6', `输入发送未达到预期状态 (预期=${expectedState}, 实际=${sendState})`);
+    const shotErr = await captureMilestoneScreenshot(phone, tools, screenshotsDir, '02-failed-scene', `输入发送未完成现场(state=${sendState})`);
+    if (shotErr) screenshots.push(shotErr);
+
+    return buildFailureReport({
+      runId,
+      mode,
+      contactName,
+      replyText,
+      screenshotsDir,
+      screenshots,
+      error: sent.error || { code: 'SEND_UNCERTAIN' },
+      outcome: 'needs_review',
+      sendState,
+      aiMetadata
+    });
+
+  } catch (error) {
+    logLive('ERROR', `工作流发生异常: [${error?.code || 'ERROR'}] ${error?.message || error}`);
+    const shotErr = await captureMilestoneScreenshot(phone, tools, screenshotsDir, 'error-scene', '异常发生现场');
+    if (shotErr) screenshots.push(shotErr);
+
+    if (options.signal?.aborted || error.code === 'LEASE_REVOKED') throw error;
+    return buildFailureReport({
+      runId,
+      mode,
+      contactName,
+      screenshotsDir,
+      screenshots,
+      error
+    });
+
+  } finally {
+    logLive('6/6', '正在释放设备锁与通信通道资源...');
+    await releaseResources({ tools, ownsTools, control, ownsControl, momoDb, deviceId, lease });
+  }
+}
+
+/**
+ * 解析 CLI 命令行参数
+ */
+function parseArgs(argv = process.argv.slice(2)) {
+  let mode = MODES.EXECUTE;
+  if (argv.includes('--draft') || process.env.YUNMOMO_MOMO_AI_MODE === 'draft') {
+    mode = MODES.DRAFT;
+  }
+  const modeArg = argv.find(a => a.startsWith('--mode='));
+  if (modeArg) mode = modeArg.slice('--mode='.length);
+  const modeIdx = argv.indexOf('--mode');
+  if (modeIdx >= 0 && modeIdx + 1 < argv.length) mode = argv[modeIdx + 1];
+
+  let contactName = null;
+  for (let i = 0; i < argv.length; i++) {
+    if ((argv[i] === '--contact' || argv[i] === '--contact-name') && i + 1 < argv.length) {
+      contactName = argv[i + 1];
+      break;
+    }
+    if (argv[i].startsWith('--contact=')) {
+      contactName = argv[i].slice('--contact='.length);
+      break;
+    }
+    if (argv[i].startsWith('--contact-name=')) {
+      contactName = argv[i].slice('--contact-name='.length);
+      break;
+    }
+  }
+  if (!contactName && process.env.YUNMOMO_MOMO_CONTACT_NAME?.trim()) {
+    contactName = process.env.YUNMOMO_MOMO_CONTACT_NAME.trim();
+  }
+
+  return { mode, contactName };
+}
+
+/**
+ * 格式化并打印控制台终端执行总结
+ */
+function printExecutionSummary(result, { contactName, mode }) {
+  console.log('\n' + '='.repeat(60));
+  console.log('【任务】：MOMO AI 自动回复');
+  console.log(`【目标联系人】：${contactName || '未指定'}`);
+  console.log(`【模式】：${mode === MODES.DRAFT ? 'draft（仅打字不发送）' : 'execute（正常发送）'}`);
+  console.log(`【生成回复内容】：${result.replyText || '无'}`);
+  if (result.aiMetadata) {
+    const meta = result.aiMetadata;
+    const usageStr = meta.usage
+      ? `Prompt=${meta.usage.prompt_tokens}, Completion=${meta.usage.completion_tokens}, Total=${meta.usage.total_tokens}`
+      : '无统计';
+    console.log(`【AI 调用审计】：模型: ${meta.model || '未知'}, Tokens: [${usageStr}], RequestID: ${meta.requestId || '无'}`);
+  }
+  console.log(`【执行结果】：${result.ok ? '成功' : '失败'}`);
+  if (result.screenshots?.length) {
+    console.log(`【截图目录】：${result.screenshotsDir}`);
+    for (const shot of result.screenshots) {
+      console.log(`  - ${shot.desc}: ${shot.path}`);
+    }
+  }
+  if (!result.ok && result.error) {
+    const errDesc = result.error.message
+      ? `${result.error.code || 'ERROR'} - ${result.error.message}`
+      : (result.error.code || 'ERROR');
+    console.log(`【错误信息】：${errDesc}`);
+  }
+  console.log('='.repeat(60) + '\n');
+}
+
+/**
+ * 命令行脚本入口
+ */
+async function main(argv = process.argv.slice(2)) {
+  const { mode, contactName } = parseArgs(argv);
+
+  const deviceId = process.env.YUNMOMO_DEVICE_ID;
+  if (!deviceId) {
+    console.error(JSON.stringify({
+      ok: false,
+      error: { code: 'DEVICE_ID_MISSING', message: 'YUNMOMO_DEVICE_ID environment variable is required' }
+    }));
+    process.exitCode = 1;
+    return;
+  }
+
+  const client = new YunmomoClient();
+  const result = await runMomoAiReplyOnce(client, deviceId, { mode, contactName });
+
+  const outputDir = path.join(PROJECT_ROOT, '.local-output', 'momo-ai-reply');
+  await fs.mkdir(outputDir, { recursive: true });
+  await fs.writeFile(path.join(outputDir, `run-${Date.now()}.json`), JSON.stringify(result, null, 2), 'utf8');
+
+  printExecutionSummary(result, { contactName, mode });
+
+  if (!result.ok) process.exitCode = 1;
+}
+
+const timedRun = timed('workflow.momoAiReply', runMomoAiReplyOnce,
+  (_client, deviceId, options) => ({ deviceId, runId: options?.runId }));
+main = require('../automation/timing').timedScript('script.src.workflows.momo-ai-reply', main);
+const timedMain = main;
+
+if (require.main === module) {
+  timedMain().catch(err => {
+    console.error(JSON.stringify({ ok: false, error: { code: err.code ?? 'ERROR', message: redact(err.message) } }));
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { DESCRIPTION, runMomoAiReplyOnce: timedRun, main: timedMain };
