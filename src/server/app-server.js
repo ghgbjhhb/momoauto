@@ -4,6 +4,7 @@
 // receiving the Yunmomo token or calling the cloud APIs directly.
 const http = require('node:http');
 const { randomUUID } = require('node:crypto');
+const fs = require('node:fs');
 const { readFile, writeFile, access } = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');

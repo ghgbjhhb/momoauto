@@ -52,6 +52,63 @@ function keyAuthLoading(items) {
   );
 }
 
+function isDesktopScreen(items) {
+  if (homeAnchorMatches(items).length >= 1) return true;
+  if (findPhrase(items, '密钥认证') || shared.appTargetBox(items)) return true;
+
+  const DESKTOP_MARKERS = [
+    '扩展服务', '设备助手', '通讯录', '相机', '图库', '文管理', '文件管理',
+    '搜狗输入法', 'QQ音乐', '电话', '铁路12306', '微信', '美团外卖',
+    '科音', '伍羊工具箱', 'MOMO陌陌', '高德地图', '支付宝', '抖音',
+    '设置', '信息', '短信'
+  ];
+  const matched = DESKTOP_MARKERS.filter(name => Boolean(findPhrase(items, name)));
+  if (matched.length >= 2) return true;
+
+  const hasDate = Boolean(findPhrase(items, '星期') || (findPhrase(items, '月') && findPhrase(items, '日')));
+  const hasTime = items.some(item => /^\d{1,2}:\d{2}$/.test(item.text.trim()));
+  if (hasDate && hasTime) return true;
+
+  return false;
+}
+
+async function ensureHomeScreen(phone, control, worker, directory, state, options) {
+  const pollMs = numberOr(options.pollMs, DEFAULT_POLL_MS);
+
+  // 1. 快速检查当前画面：如果已经在桌面，直接就绪（动态适配任意桌面分页）
+  state.counter += 1;
+  let current = await shared.screenshotAndOcr(phone, worker, directory, state.counter);
+  if (isDesktopScreen(current.items)) {
+    return current;
+  }
+
+  // 2. 如果不在桌面（处于其他应用或设置内），下发 HOME 键回主屏
+  console.log('      当前不在桌面，按 HOME 键返回主屏...');
+  await sendHome(control);
+  await shared.sleep(400);
+
+  // 3. 等待桌面就绪（最多等 4 秒）
+  current = await shared.observeUntil(
+    phone,
+    worker,
+    directory,
+    state,
+    obs => isDesktopScreen(obs.items),
+    4000,
+    pollMs,
+    'ensure-home'
+  );
+
+  if (!isDesktopScreen(current.items)) {
+    await sendHome(control);
+    await shared.sleep(500);
+    state.counter += 1;
+    current = await shared.screenshotAndOcr(phone, worker, directory, state.counter);
+  }
+
+  return current;
+}
+
 function keyAuthEvidence(items) {
   const homeLike = homeAnchorMatches(items).length >= 2;
   if (homeLike) return false;
@@ -138,13 +195,16 @@ async function main() {
   try {
     await control.connect();
 
-    console.log('[1/4] 正在连接云机控制流，确认主屏幕...');
-    const home = await confirmHome(phone, control, worker, directory, state, options);
+    console.log('[1/4] 正在检查并确认主屏幕...');
+    const home = await ensureHomeScreen(phone, control, worker, directory, state, options);
     initialAnchors = homeAnchorMatches(home.items);
-    console.log(`      主屏幕已就绪（锚点: ${initialAnchors.join('、') || '正常'}）`);
+    console.log(`      主屏幕已就绪（${initialAnchors.length >= 1 ? `锚点: ${initialAnchors.join('、')}` : '已识别到桌面'}）`);
 
     console.log('[2/4] 正在主屏定位并启动“密钥认证”...');
-    const found = await findApp(phone, control, worker, directory, state, home, options);
+    const found = await findApp(phone, control, worker, directory, state, home, {
+      ...options,
+      homeTimeoutMs: 4000,
+    });
     opened = await openKeyAuth(phone, control, worker, directory, state, found, options);
     console.log(`      已打开密钥认证页面（点击坐标: ${opened.point.x}, ${opened.point.y}）`);
 
@@ -154,10 +214,21 @@ async function main() {
     console.log(`      引导程序: ${finalState.bootloader ? '已锁定 (正常)' : '未锁定 (异常)'}`);
 
     console.log('[4/4] 退出密钥认证，恢复主屏幕...');
-    const finalHome = await confirmHome(phone, control, worker, directory, state, options);
+    await sendHome(control);
+    await shared.sleep(400);
+    const finalHome = await shared.observeUntil(
+      phone,
+      worker,
+      directory,
+      state,
+      obs => isDesktopScreen(obs.items),
+      4000,
+      options.pollMs,
+      'restore-home'
+    );
     finalAnchors = homeAnchorMatches(finalHome.items);
+    homeRestored = isDesktopScreen(finalHome.items);
     success = finalState.ok;
-    homeRestored = finalAnchors.length >= 2;
     console.log(`      主屏幕恢复${homeRestored ? '完成' : '失败'}`);
 
     if (!success) {

@@ -19,6 +19,7 @@ const {
   screenshotAndOcr,
   confirmHome,
   findApp,
+  swipeHomePage,
   tapBox,
   sendHome,
 } = require('../../automation/screen');
@@ -208,6 +209,13 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
       continue;
     }
 
+    const afterStats = statsFingerprint(last.items);
+    const statsChanged = Boolean(beforeStats && afterStats && beforeStats !== afterStats);
+    if (statsChanged && !generationStarted) {
+      generationStarted = true;
+      if (!generationStartedAt) generationStartedAt = Date.now();
+    }
+
     const isHomeScreen = homeAnchorMatches(last.items).length >= 2;
     if (generationStarted && isHomeScreen) {
       const elapsedTotal = Math.round((Date.now() - (generationStartedAt || Date.now())) / 1000);
@@ -241,13 +249,6 @@ async function clickGenerateAllAndWait(phone, control, worker, directory, state,
       }
       normalButtonStableObservations = 0;
       buttonReturnedAt = 0;
-    }
-
-    const afterStats = statsFingerprint(last.items);
-    const statsChanged = Boolean(beforeStats && afterStats && beforeStats !== afterStats);
-    if (statsChanged && !generationStarted) {
-      generationStarted = true;
-      if (!generationStartedAt) generationStartedAt = Date.now();
     }
 
     if (generationStarted && normalButton && titleVisible) {
@@ -382,13 +383,17 @@ async function main() {
       options,
     );
 
-    console.log('[4/5] 数据生成完毕，正在确认主屏幕状态...');
-    let finalHome = generated.alreadyHome ? generated.observation : await confirmHome(phone, control, worker, directory, state, options);
-    let finalAnchors = homeAnchorMatches(finalHome.items);
-    if (finalAnchors.length < 2) {
-      finalHome = await confirmHome(phone, control, worker, directory, state, options);
-      finalAnchors = homeAnchorMatches(finalHome.items);
+    console.log('[4/5] 数据生成完毕，正在快速返回主屏幕并核验...');
+    // 伍羊工具箱位于第二页，退出后会落在第二页；直接发送 HOME 并右滑至第一页，让主屏锚点一次命中，无需任何死等
+    if (!generated.alreadyHome) {
+      await sendHome(control);
+      await swipeHomePage(control, 'right');
     }
+    const finalHome = await confirmHome(phone, control, worker, directory, state, {
+      ...options,
+      homeConfirmation: { firstAttemptTimeoutMs: 3000 }
+    });
+    const finalAnchors = homeAnchorMatches(finalHome.items);
     homeRestored = finalAnchors.length >= 2;
     success = generated.buttonReturned && homeRestored;
 

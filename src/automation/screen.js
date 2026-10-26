@@ -263,24 +263,27 @@ async function confirmHome(phone, control, worker, directory, state, options) {
   if (numberOr(confirmation?.settleMs, 0) > 0) {
     await sleep(numberOr(confirmation?.settleMs, 0));
   }
+  // Fast first check: on Android, HOME takes under 1.5s to settle.
+  // If we landed on a sub-page (like Page 2) without Page 1 anchors, timeout quickly (3s)
+  // instead of stalling for 15s before attempting the swipe-right recovery!
+  const firstTimeoutMs = numberOr(confirmation?.firstAttemptTimeoutMs, 3000);
   let home = await observeUntil(
     phone,
     worker,
     directory,
     state,
     isConfirmedHome,
-    numberOr(confirmation?.firstAttemptTimeoutMs, options.homeTimeoutMs),
+    firstTimeoutMs,
     pollMs,
     'home',
   );
   if (isConfirmedHome(home)) return reportConfirmation(home, 1);
 
-  // HOME is idempotent. If the phone is left on a secondary launcher page
-  // where the HOME key does not reset page offset, swipe right back to page 1.
-  await sleep(numberOr(confirmation?.retryDelayMs, 500));
-  await sendHome(control);
+  // If first attempt didn't see Page 1 anchors (e.g. returned to Page 2 launcher),
+  // immediately swipe right to Page 1!
+  await sleep(numberOr(confirmation?.retryDelayMs, 300));
   await swipeHomePage(control, 'right');
-  await sleep(500);
+  await sleep(300);
   home = await observeUntil(
     phone,
     worker,
@@ -291,10 +294,27 @@ async function confirmHome(phone, control, worker, directory, state, options) {
     pollMs,
     'home-retry',
   );
+  if (isConfirmedHome(home)) return reportConfirmation(home, 2);
+
+  // Fallback: send HOME and swipe right if an overlay was visible
+  await sleep(300);
+  await sendHome(control);
+  await swipeHomePage(control, 'right');
+  await sleep(300);
+  home = await observeUntil(
+    phone,
+    worker,
+    directory,
+    state,
+    isConfirmedHome,
+    numberOr(confirmation?.retryTimeoutMs, options.homeTimeoutMs),
+    pollMs,
+    'home-retry-2',
+  );
   if (!isConfirmedHome(home)) {
     throw new Error('返回主页后未识别到足够的桌面锚点（至少需要两个：时钟/日历/通讯录/录音机/音乐/图库）');
   }
-  return reportConfirmation(home, 2);
+  return reportConfirmation(home, 3);
 }
 
 async function swipeHomePage(control, direction) {
