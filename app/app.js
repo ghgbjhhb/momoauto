@@ -137,8 +137,9 @@ function renderPipelineStepper() {
   if (elements.stepperTargetBadge) {
     if (target) {
       const idx = state.devices.indexOf(target) + 1;
-      elements.stepperTargetBadge.textContent = `#${String(idx).padStart(2, '0')} ${target.name}`;
-      elements.stepperTargetBadge.title = `目标云机: ${target.name} (${target.deviceId})`;
+      const ver = String(target.sdkVersion || '').toUpperCase();
+      elements.stepperTargetBadge.textContent = `#${String(idx).padStart(2, '0')} ${target.name}` + (ver ? ` [${ver}]` : '');
+      elements.stepperTargetBadge.title = `目标云机: ${target.name} (${target.deviceId})${ver ? ' · 架构版本: ' + ver : ''}`;
     } else {
       elements.stepperTargetBadge.textContent = '未选择目标';
       elements.stepperTargetBadge.title = '请在左侧选择目标云手机';
@@ -475,6 +476,15 @@ function createDeviceCard(device) {
   name.title = device.name;
 
   titleWrap.append(badge, name);
+
+  const ver = String(device.sdkVersion || '').toUpperCase();
+  if (ver) {
+    const versionTag = document.createElement('span');
+    versionTag.className = `device-version-tag ${ver.toLowerCase()}`;
+    versionTag.textContent = ver;
+    versionTag.title = `架构版本: ${ver}`;
+    titleWrap.append(versionTag);
+  }
 
   const status = document.createElement('span');
   status.className = 'device-status' + (isOnline(device) ? ' online' : '');

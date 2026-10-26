@@ -263,7 +263,8 @@ function publicDevice(record) {
     udid: String(record?.udid ?? ''),
     status: record?.status ?? null,
     online: record?.online ?? null,
-    cloudNo: record?.cloudNo ?? record?.cloudNumber ?? null
+    cloudNo: record?.cloudNo ?? record?.cloudNumber ?? null,
+    sdkVersion: record?.sdkVersion ? String(record.sdkVersion).toLowerCase() : null
   };
 }
 

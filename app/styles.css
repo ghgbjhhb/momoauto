@@ -576,6 +576,34 @@ h2 {
   white-space: nowrap;
 }
 
+/* 云机架构版本角标 (V2 / V3) */
+.device-version-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.device-version-tag.v3 {
+  color: #ff6b6b;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.2);
+}
+
+.device-version-tag.v2 {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
 /* 在线状态 */
 .device-status {
   display: inline-flex;

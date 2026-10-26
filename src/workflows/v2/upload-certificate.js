@@ -44,36 +44,29 @@ async function main() {
 
   if (reads[1].status === 'rejected') throw reads[1].reason;
   const data = reads[1].value;
-  console.log(JSON.stringify({
-    version: 'v2',
-    targetDeviceId: actualDeviceId,
-    targetDeviceIdentifier: deviceId,
-    targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-    fileName,
-    bytes: data.length,
-  }));
+  const sizeKb = (data.length / 1024).toFixed(2);
+  const deviceName = target.deviceName ?? target.name ?? 'SF';
+  const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
+
+  console.log(`[准备] 目标云机: ${deviceName} (ID: ${actualDeviceId}, 系统: ${sdkVer})`);
+  console.log(`[准备] 证书文件: ${fileName} (${sizeKb} KB)`);
 
   if (process.env.YUNMOMO_CONFIRM_CERT_UPLOAD !== 'YES' && !process.argv.includes('--execute')) {
-    console.log('预览完成；如确认上传证书，请设置 YUNMOMO_CONFIRM_CERT_UPLOAD=YES 或传入 --execute 后重跑。');
+    console.log('[提示] 当前为只读预览，未实际写入。确认上传请传入 --execute 或配置执行参数。');
     return;
   }
 
+  console.log(`[执行] 正在上传证书到云机...`);
   const result = await client.device(actualDeviceId).uploadGoogleCertificate(data, {
     fileName,
     timeoutMs: 10 * 60 * 1000,
   });
   const payload = result?.data ?? result;
   if (payload && typeof payload === 'object' && payload.success === false) {
-    throw new Error('云端返回 success=false: ' + JSON.stringify(payload));
+    throw new Error('云端处理失败: ' + (payload.message || JSON.stringify(payload)));
   }
-  console.log(JSON.stringify({
-    ok: true,
-    version: 'v2',
-    targetDeviceId: actualDeviceId,
-    fileName,
-    bytes: data.length,
-    response: payload,
-  }, null, 2));
+  const replyText = typeof payload === 'string' ? payload : (payload?.message || '上传成功');
+  console.log(`[完成] ✅ 证书上传成功！云端确认返回: ${replyText}`);
 }
 
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.upload-certificate', main);

@@ -327,6 +327,7 @@ class AuthService {
         udid: master?.udid || '',
         status: master?.status ?? null,
         online: master?.online ?? null,
+        sdkVersion: master?.sdkVersion ?? null,
         allocatedAt: alloc.allocated_at,
         expireAt: alloc.expire_at,
         remainingMs,
