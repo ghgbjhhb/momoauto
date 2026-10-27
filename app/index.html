@@ -4,28 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
-  <title>云 MOMO 云手机自动化控制台</title>
-  <link rel="stylesheet" href="/theme-a.css">
+  <title>云 MOMO 自动化控制台</title>
+  <link rel="stylesheet" href="/theme-b.css">
 </head>
 <body>
   <div class="app-shell">
-    <!-- 顶部方案对比切换条 -->
-    <div class="theme-switch-banner">
-      <div class="banner-info">
-        <span class="theme-badge">方案 A</span>
-        <span class="banner-title">当前为方案 A (Linear 极简质感风) · 点击右侧可切换对比</span>
-      </div>
-      <div>
-        <a class="switch-btn" href="/preview-b.html">
-          <span>查看方案 B (阿里云工控风)</span>
-          <span>→</span>
-        </a>
-      </div>
-    </div>
-    <!-- 顶部栏：清晰直接 -->
+    <!-- 顶部主导航栏 (纯白，50px) -->
     <header class="topbar">
       <div class="brand">
         <span class="brand-title">云 MOMO 自动化控制台</span>
+        <span class="brand-tag">极简双区版</span>
+        <div class="theme-switch-pill">
+          <span>对比：</span>
+          <a href="/preview-a.html">查看 方案 A (Linear风)</a>
+        </div>
       </div>
 
       <!-- 集群状态指示 -->
@@ -40,7 +32,7 @@
       <div class="topbar-tools">
         <div class="service-state" id="serviceState">
           <span class="state-dot"></span>
-          <span class="state-text">检查服务中</span>
+          <span class="state-text">服务正常</span>
         </div>
         <div class="user-pill" id="userPill" style="display:none;">--</div>
         <button class="action-btn" id="openRedeemModalBtn" type="button">兑换卡密</button>
@@ -60,40 +52,41 @@
 
     <div class="shared-activity" id="sharedActivity" role="status" aria-live="polite" hidden></div>
 
-    <!-- 主工作区：左侧设备列表 + 右侧工作台 -->
+    <!-- 极简双区主工作区：左侧 380px 独占真机大屏，右侧自适应指令工作台 -->
     <main class="workspace">
-      <!-- 左侧：云手机列表 -->
+      <!-- 左区：真机大屏专区 -->
       <section class="preview-panel">
         <div class="panel-header">
-          <h2 id="previewTitle">云手机列表</h2>
+          <h2 id="previewTitle">📱 云手机操作大屏</h2>
           <span class="live-pill" id="previewState">就绪</span>
         </div>
+
         <div class="preview-toolbar">
           <label class="size-control" for="previewSize">
-            <span>画面缩放</span>
-            <input id="previewSize" type="range" min="160" max="440" step="10" value="220">
-            <output id="previewSizeValue" for="previewSize">220px</output>
+            <span>画面宽度</span>
+            <input id="previewSize" type="range" min="200" max="440" step="10" value="320">
+            <output id="previewSizeValue" for="previewSize">320px</output>
           </label>
         </div>
 
         <div class="preview-stage">
           <div class="device-grid" id="deviceGrid">
-            <div class="loading-card">正在加载设备列表…</div>
+            <div class="loading-card">正在连接云机画面…</div>
           </div>
         </div>
 
         <div class="preview-footer">
           <span class="preview-summary" id="previewSummary">—</span>
-          <button class="action-btn" id="refreshPreview" type="button">刷新画面</button>
+          <button class="action-btn small" id="refreshPreview" type="button">刷新画面</button>
         </div>
       </section>
 
-      <!-- 右侧：业务工作台 -->
+      <!-- 右区：业务指令与流程工作台 -->
       <aside class="workbench-panel">
-        <!-- 工作台顶部：目标展示与两个清晰 Tab 切换 -->
+        <!-- 顶部目标指示与 Tab 切换 -->
         <div class="workbench-header">
           <div class="target-row">
-            <span class="target-label">当前目标设备：</span>
+            <span class="target-label">当前控制实例：</span>
             <strong class="target-name" id="workbenchTarget">未选择</strong>
           </div>
           <div class="workbench-tabs" id="workbenchTabs">
@@ -103,13 +96,13 @@
         </div>
 
         <div class="workbench-body">
-          <!-- Tab 1: 业务脚本与流程 (01~08 流水线 + 完整脚本列表) -->
+          <!-- Tab 1: 业务脚本与流程 -->
           <div class="tab-pane active" id="tabPaneFlow">
-            <!-- 01~08 初始化全流程模块 -->
+            <!-- 01~08 初始化流水线模块 (单排直观横向平铺) -->
             <section class="pipeline-box" id="pipelineStepperBox">
               <div class="pipeline-header">
                 <div class="pipeline-title-group">
-                  <span class="pipeline-title">初始化流程 (01~08)</span>
+                  <span class="pipeline-title">初始化流水线 (01~08)</span>
                   <span class="stepper-target-badge" id="stepperTargetBadge">未选择目标</span>
                 </div>
                 <div class="pipeline-actions">
@@ -122,15 +115,15 @@
               <div class="pipeline-stepper" id="pipelineStepper"></div>
             </section>
 
-            <!-- 脚本分类列表 (V2 架构、V3 架构、MOMO 业务) -->
+            <!-- 脚本分类列表 (V2、V3、MOMO业务) -->
             <div class="script-list-container">
               <div class="script-list" id="scriptList">
-                <div class="loading-card">正在加载脚本…</div>
+                <div class="loading-card">正在加载脚本清单…</div>
               </div>
             </div>
           </div>
 
-          <!-- Tab 2: AI 与持续调度 (DeepSeek API + MOMO Brain) -->
+          <!-- Tab 2: AI 与持续调度 -->
           <div class="tab-pane" id="tabPaneAi">
             <div class="config-grid">
               <!-- AI 自动回复 -->
@@ -235,7 +228,7 @@
           </div>
         </div>
 
-        <!-- 底部日志终端：直接呈现，朴实易读 -->
+        <!-- 底部日志终端：纯白工控日志框，清爽高对比度 -->
         <div class="terminal-container">
           <div class="terminal-bar">
             <span class="terminal-label">执行日志</span>
@@ -251,12 +244,12 @@
     </main>
   </div>
 
-  <!-- 旗舰云手机原画独立操作台 -->
+  <!-- 旗舰云手机原画独立控制台 -->
   <dialog class="control-dialog" id="controlDialog" aria-labelledby="controlTitle">
     <header class="control-heading">
       <div class="control-title-wrap">
         <span class="control-device-badge" id="controlDeviceBadge">#--</span>
-        <h2 id="controlTitle">云手机原画控制台</h2>
+        <h2 id="controlTitle">云手机实例远程控制台</h2>
         <span id="controlStatus" role="status">正在建立连接…</span>
       </div>
       <div class="control-head-tools">
@@ -296,7 +289,7 @@
       <button class="action-btn small" id="closeVpcDialogBtn" type="button">✕</button>
     </div>
     <div class="vpc-dialog-body">
-      <p style="margin:0 0 8px; font-size:12px; color:#94a3b8;">请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
+      <p style="margin:0 0 8px; font-size:12px; color:#595959;">请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
       <textarea id="vpcRawInput" class="vpc-textarea" placeholder="在此粘贴代理信息…" rows="4"></textarea>
     </div>
     <div class="vpc-dialog-footer">
@@ -308,12 +301,12 @@
   <!-- 卡密兑换弹窗 -->
   <dialog class="redeem-dialog" id="redeemDialog">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <h3 style="margin:0; font-size:16px; color:#fff;">兑换卡密激活云机</h3>
+      <h3 style="margin:0; font-size:16px; color:#1f1f1f;">兑换卡密激活云机</h3>
       <button class="action-btn small" id="closeRedeemModalBtn" type="button">✕</button>
     </div>
     <div style="margin-bottom:14px;">
-      <label for="redeemCardInput" style="display:block; font-size:12px; color:#94a3b8; margin-bottom:6px;">卡密代码</label>
-      <input id="redeemCardInput" type="text" placeholder="YM-XXXX-XXXX-XXXX-XXXX" style="width:100%; height:36px; background:#0b0f19; border:1px solid #334155; border-radius:6px; padding:0 10px; color:#38bdf8; font-family:monospace; font-size:13px; box-sizing:border-box;">
+      <label for="redeemCardInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">卡密代码</label>
+      <input id="redeemCardInput" type="text" placeholder="YM-XXXX-XXXX-XXXX-XXXX" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-family:monospace; font-size:13px; box-sizing:border-box;">
     </div>
     <div id="redeemAlert" style="display:none; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px;"></div>
     <div style="display:flex; justify-content:flex-end; gap:8px;">
@@ -324,7 +317,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- 脚本加载 -->
+  <!-- 核心交互脚本 -->
   <script src="/video-player.js"></script>
   <script src="/app.js"></script>
   <script src="/manual-control.js"></script>
