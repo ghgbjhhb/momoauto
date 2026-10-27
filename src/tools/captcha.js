@@ -120,7 +120,7 @@ function getImageDimensions(buffer) {
  * @param {string} [options.apiKey] 显式传入 API Key（可选，默认自动读取配置）
  * @param {string} [options.endpoint] 接口地址（默认 https://api.deepseek.com）
  * @param {string} [options.model] 模型名（默认 deepseek-flash）
- * @param {number} [options.timeoutMs] 超时毫秒（默认 25000）
+ * @param {number} [options.timeoutMs] 超时毫秒（默认 60000）
  */
 async function solveCaptcha(imageInput, options = {}) {
   const started = Date.now();
@@ -199,16 +199,17 @@ async function solveCaptcha(imageInput, options = {}) {
 
   const endpoint = (options.endpoint || 'https://api.deepseek.com').replace(/\/+$/, '');
   const model = options.model || 'deepseek-flash';
-  const timeoutMs = options.timeoutMs || 25000;
+  const timeoutMs = options.timeoutMs || 60000;
 
   // 3. 构建精准视觉提示词
   const prompt = `你是一个专业的图形验证码视觉识别引擎。当前图片是一张“按顺序依次点击”的图标点选类验证码。
 【关键识别规范】：
 1. 观察右上角/顶部提示栏中的参考图标，它们是严格按照“从左到右”的顺序排列的点击顺序（第1个、第2个、第3个...）。
-   - 注意：仔细辨别每个图标的细节（例如带有十字的药箱/工具箱、日历、方向盘/船舵等）。
+   - 常见图标包括：餐具/锅/碗/勺、数码电器/音箱/相机/收音机、学士帽/毕业帽、文具/书籍、生活用品等。仔细辨别内部细节。
 2. 在下方混淆图片中按完全相同的顺序，逐一找到对应图标：
-   - 核心难点：下方大图中的目标图标可能会发生颜色改变、尺寸缩放，甚至角度旋转（例如正立的图标被旋转了45度呈菱形）。请仔细对比图标核心图案（如中心十字、线框结构等），切勿漏判或误判！
-   - 同时注意排除未在顶部出现的干扰项图标。
+   - 先观察大图里所有候选彩色图标（如黄色、蓝色、橙色、粉色等）的几何轮廓与内部线条细节；
+   - 核心难点：下方大图中的目标图标可能会发生颜色改变、尺寸缩放，甚至角度旋转（例如正立的图标被旋转了45度呈菱形）。请仔细对比图标核心图案（如中心轮廓、提手、流苏、扬声器圆环等线框结构），切勿漏判或误判！
+   - 必须通过严谨的特征对比，明确排除未在顶部出现的干扰项图标（大图中的干扰线框绝不点击）。
 3. 返回每个目标在整张输入图片中的归一化点击中心坐标 (x, y)，取值范围 0.0 ~ 1.0（图片左上角为 0,0，右下角为 1,1）。
 4. 给出底部“确定”按钮的中心归一化坐标。
 
