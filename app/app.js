@@ -152,6 +152,13 @@ function renderPipelineStepper() {
     }
   }
 
+  if (elements.stepperRunAllBtn) {
+    const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
+    const labelSpan = elements.stepperRunAllBtn.querySelector('span:last-child');
+    if (labelSpan) labelSpan.textContent = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
+    elements.stepperRunAllBtn.title = isV2 ? '执行全流程 01–08 (V2)' : '执行全流程 01–08 (V3)';
+  }
+
   elements.pipelineStepper.replaceChildren();
   for (const step of STEPS_META) {
     const status = target ? getStepState(target.deviceId, step.order) : 'idle';
@@ -181,6 +188,9 @@ function renderPipelineStepper() {
 
     const indicator = document.createElement('span');
     indicator.className = 'step-node-indicator';
+    if (status === 'completed') indicator.innerHTML = '<span class="status-icon-check">✓</span>';
+    else if (status === 'running') indicator.innerHTML = '<span class="status-icon-pulse"></span>';
+    else if (status === 'failed') indicator.innerHTML = '<span class="status-icon-fail">✕</span>';
 
     node.append(num, info, indicator);
 
@@ -737,8 +747,8 @@ function createScriptCard(script) {
   card.dataset.scriptId = script.id;
   if (script.batch) card.classList.add('script-hero-card');
 
-  const isSingleChoice = script.parameters?.length === 1 && script.parameters[0].choices;
-  if (script.parameters?.length && !isSingleChoice) card.classList.add('script-card-has-params');
+  const isSingleInline = script.parameters?.length === 1 && !script.parameters[0].multiline;
+  if (script.parameters?.length && !isSingleInline) card.classList.add('script-card-has-params');
   if (script.destructive) card.classList.add('script-card-destructive');
 
   const head = document.createElement('div');
@@ -770,7 +780,7 @@ function createScriptCard(script) {
 
   card.append(head);
 
-  if (script.parameters?.length && !isSingleChoice) {
+  if (script.parameters?.length && !isSingleInline) {
     const settings = document.createElement('details');
     settings.className = 'script-settings';
     settings.open = true;
@@ -812,21 +822,34 @@ function createScriptCard(script) {
   const actions = document.createElement('div');
   actions.className = 'script-actions';
 
-  // 单一选择参数（如 VPC 代理操作）直接内联展示在执行按钮左侧，保持紧凑整齐
-  if (isSingleChoice) {
+  // 单一参数（如 VPC 代理操作选择、或真参输入）直接内联展示在执行按钮左侧，保持整齐一致
+  if (isSingleInline) {
     const field = script.parameters[0];
-    const select = document.createElement('select');
-    select.className = 'script-inline-select';
-    select.dataset.parameter = field.name;
-    select.setAttribute('aria-label', field.label);
-    for (const value of field.choices) {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = parameterChoiceLabel(field, value);
-      select.append(option);
+    if (field.choices) {
+      const select = document.createElement('select');
+      select.className = 'script-inline-select';
+      select.dataset.parameter = field.name;
+      select.setAttribute('aria-label', field.label);
+      for (const value of field.choices) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = parameterChoiceLabel(field, value);
+        select.append(option);
+      }
+      select.value = field.defaultValue ?? '';
+      actions.append(select);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'script-inline-input';
+      input.dataset.parameter = field.name;
+      input.setAttribute('aria-label', field.label);
+      input.title = `${field.label}: ${field.defaultValue ?? ''}`;
+      input.value = field.defaultValue ?? '';
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+      actions.append(input);
     }
-    select.value = field.defaultValue ?? '';
-    actions.append(select);
   }
 
   const activeRun = state.activeRun?.scriptId === script.id ? state.activeRun : null;
@@ -1497,9 +1520,12 @@ if (elements.stepperRunAllBtn) {
       showToast('请先选择一台目标云机');
       return;
     }
-    const flowAll = state.scripts.find(s => s.id === 'flow-all' || s.batch === true);
+    const target = currentDevice();
+    const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
+    const targetId = isV2 ? 'flow-all-v2' : 'flow-all';
+    const flowAll = state.scripts.find(s => s.id === targetId) || state.scripts.find(s => s.id === 'flow-all' || s.batch === true);
     if (!flowAll) {
-      showToast('未找到全流程自动化脚本 (V3)');
+      showToast(`未找到全流程自动化脚本 (${isV2 ? 'V2' : 'V3'})`);
       return;
     }
     const card = elements.scriptList.querySelector(`[data-script-id="${flowAll.id}"]`);
