@@ -21,6 +21,7 @@ const { defaultArbiter } = require('./device-arbiter');
 const { BrainManager } = require('../brain/manager');
 const { activeRuns } = require('./ai-reply-routes');
 const { getAuthService } = require('./auth/service');
+const authGuard = require('./auth/guard');
 const authService = getAuthService();
 const { getSmsService } = require('./sms/service');
 const { extractDeviceInfo } = require('../workflows/v2/import-real-params');
@@ -924,12 +925,33 @@ function getCloudDiskFiles(dirName) {
   return files;
 }
 
+// 页面大量使用内联 script 与 onclick 属性，script-src 只能放宽到 unsafe-inline；
+// 但 object/base/form-action/frame-ancestors 仍收紧，配合同源-only 的 Host/Origin 校验阻断点击劫持与外链注入。
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob: data:",
+    "connect-src 'self' ws://127.0.0.1:* ws://localhost:* wss://127.0.0.1:* wss://localhost:*",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'"
+  ].join('; ')
+};
+
 function json(response, status, value, headers = {}) {
   const body = JSON.stringify(value);
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
+    ...SECURITY_HEADERS,
     ...headers
   });
   response.end(body);
@@ -953,7 +975,7 @@ async function staticFile(response, pathname) {
     response.writeHead(200, {
       'Content-Type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
-      'X-Content-Type-Options': 'nosniff'
+      ...SECURITY_HEADERS
     });
     response.end(data);
   } catch {
@@ -1042,7 +1064,7 @@ async function handler(request, response) {
       const duration = Date.now() - reqStart;
       const status = response.statusCode;
       const userTag = currentUser ? `[${currentUser.email}]` : '[guest]';
-      const logLine = `${reqMethod} ${reqUrl} -> ${status} (${duration}ms) ${userTag}`;
+      const logLine = `${reqMethod} ${authGuard.redact(reqUrl)} -> ${status} (${duration}ms) ${userTag}`;
 
       // 忽略日志自轮询等无意义的噪音请求
       if (reqUrl.includes('/api/client-logs') || reqUrl.includes('/api/server-logs')) {
@@ -1082,23 +1104,62 @@ async function handler(request, response) {
     }
 
     // --- 认证与会话 API ---
+    const authClientIp = authGuard.clientIp(request);
+    const rejectBruteForce = (waitSeconds) => {
+      json(response, 429, {
+        ok: false,
+        error: `尝试过于频繁，请 ${Math.max(1, Math.ceil(waitSeconds / 60))} 分钟后再试`,
+        retryAfterSeconds: waitSeconds
+      }, { 'Retry-After': String(waitSeconds) });
+    };
+
     if (request.method === 'POST' && url.pathname === '/api/auth/register') {
       const body = await readJsonBody(request);
-      const result = authService.register(body?.email, body?.password);
-      json(response, 200, { ok: true, user: result.user, token: result.token }, {
-        'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
-      });
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/api/auth/login') {
-      const body = await readJsonBody(request);
+      const waitSeconds = authGuard.inspect(body?.email, authClientIp);
+      if (waitSeconds > 0) { rejectBruteForce(waitSeconds); return; }
       try {
-        const result = authService.login(body?.email, body?.password);
+        const result = await authService.register(body?.email, body?.password);
+        authGuard.registerSuccess(result.user?.email);
         json(response, 200, { ok: true, user: result.user, token: result.token }, {
           'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
         });
       } catch (err) {
+        authGuard.registerFailure(body?.email, authClientIp);
+        json(response, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/auth/login') {
+      const body = await readJsonBody(request);
+      const waitSeconds = authGuard.inspect(body?.email, authClientIp);
+      if (waitSeconds > 0) { rejectBruteForce(waitSeconds); return; }
+      try {
+        const result = await authService.login(body?.email, body?.password);
+        authGuard.registerSuccess(result.user?.email || body?.email);
+        json(response, 200, { ok: true, user: result.user, token: result.token }, {
+          'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
+        });
+      } catch (err) {
+        authGuard.registerFailure(body?.email, authClientIp);
         json(response, 401, { ok: false, error: err.message });
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/auth/change-password') {
+      if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
+      const body = await readJsonBody(request);
+      const waitSeconds = authGuard.inspect(user.email, authClientIp);
+      if (waitSeconds > 0) { rejectBruteForce(waitSeconds); return; }
+      try {
+        await authService.changePassword(user.id, body?.currentPassword, body?.newPassword);
+        authGuard.registerSuccess(user.email);
+        // 改密已递增令牌版本，旧 cookie 立即失效，强制在所有设备上重新登录
+        json(response, 200, { ok: true, message: '密码已更新，请重新登录' }, {
+          'Set-Cookie': 'ym_auth_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+        });
+      } catch (err) {
+        authGuard.registerFailure(user.email, authClientIp);
+        json(response, 400, { ok: false, error: err.message });
       }
       return;
     }
@@ -1183,6 +1244,8 @@ async function handler(request, response) {
     }
     if (request.method === 'POST' && url.pathname === '/api/user/redeem') {
       if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
+      const waitSeconds = authGuard.inspect(user.email, authClientIp, 'redeem');
+      if (waitSeconds > 0) { rejectBruteForce(waitSeconds); return; }
       try {
         const body = await readJsonBody(request);
         const master = await listDevices();
@@ -1191,8 +1254,10 @@ async function handler(request, response) {
           cardCode: body?.cardCode,
           masterDevices: master
         });
+        authGuard.registerSuccess(user.email, 'redeem');
         json(response, 200, { ok: true, result });
       } catch (err) {
+        authGuard.registerFailure(user.email, authClientIp, 'redeem');
         console.warn(`[User Redeem Failed] user=${user.username || user.id} reason=${err.message}`);
         json(response, 400, { ok: false, error: '兑换失败，请联系客服', detail: err.message });
       }

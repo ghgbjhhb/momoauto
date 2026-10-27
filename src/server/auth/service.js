@@ -7,13 +7,29 @@ function generateSalt() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-function hashPassword(password, salt) {
-  return crypto.scryptSync(password, salt, 64).toString('hex');
+// WebSocket 握手带不了 Authorization 头，只有这几个升级端点允许用查询串传长期令牌。
+const WS_TOKEN_PATHS = ['/api/control', '/api/video'];
+
+const SCRYPT_KEYLEN = 64;
+
+// 仅供启动期一次性建号使用：此刻没有并发请求，阻塞可接受。
+function hashPasswordSync(password, salt) {
+  return crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
 }
 
-function verifyPassword(password, salt, expectedHash) {
-  const actualHash = hashPassword(password, salt);
-  const actualBuf = Buffer.from(actualHash, 'hex');
+// 请求路径必须走异步派生：同步 scrypt 单次约数十毫秒纯 CPU，
+// 会冻结整台控制台的事件循环（包括正在推流的视频与手动控制通道）。
+function hashPassword(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, SCRYPT_KEYLEN, (error, derived) => {
+      if (error) reject(error);
+      else resolve(derived.toString('hex'));
+    });
+  });
+}
+
+async function verifyPassword(password, salt, expectedHash) {
+  const actualBuf = Buffer.from(await hashPassword(password, salt), 'hex');
   const expectedBuf = Buffer.from(expectedHash, 'hex');
   if (actualBuf.length !== expectedBuf.length) return false;
   return crypto.timingSafeEqual(actualBuf, expectedBuf);
@@ -52,9 +68,11 @@ class AuthService {
   initDefaultAdmin() {
     if (this.db.countAdmins() === 0) {
       const email = 'admin@yunmomo.local';
-      const password = process.env.ADMIN_INITIAL_PASSWORD || 'admin123456';
+      // 不再使用固定弱口令：这类凭据一旦出现在源码里，就会被前端自动登录、
+      // 登录页预填等"便利"逻辑复用，等价于给所有访客发了管理员。
+      const password = process.env.ADMIN_INITIAL_PASSWORD || crypto.randomBytes(12).toString('base64url');
       const salt = generateSalt();
-      const hash = hashPassword(password, salt);
+      const hash = hashPasswordSync(password, salt);
       this.db.createUser({
         id: 'admin_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16),
         email,
@@ -63,7 +81,8 @@ class AuthService {
         role: 'admin',
         status: 'active'
       });
-      console.log(`[AuthService] 默认超级管理员已初始化: ${email} / ${password}`);
+      console.log(`[AuthService] 初始超级管理员已创建: ${email}`);
+      console.log(`[AuthService] 一次性初始口令（仅本次启动显示，请登录后立即在后台改密）: ${password}`);
     }
   }
 
@@ -105,7 +124,7 @@ class AuthService {
   }
 
   // --- User Operations ---
-  register(email, password) {
+  async register(email, password) {
     email = String(email || '').trim().toLowerCase();
     password = String(password || '');
 
@@ -123,7 +142,7 @@ class AuthService {
     }
 
     const salt = generateSalt();
-    const hash = hashPassword(password, salt);
+    const hash = await hashPassword(password, salt);
     const userId = 'usr_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
 
     const user = this.db.createUser({
@@ -135,14 +154,14 @@ class AuthService {
       status: 'active'
     });
 
-    const token = this.signToken({ sub: user.id, email: user.email, role: user.role });
+    const token = this.signToken({ sub: user.id, email: user.email, role: user.role, tv: user.token_version || 0 });
     return {
       user: { id: user.id, email: user.email, role: user.role, status: user.status },
       token
     };
   }
 
-  login(email, password) {
+  async login(email, password) {
     email = String(email || '').trim().toLowerCase();
     password = String(password || '');
 
@@ -154,16 +173,33 @@ class AuthService {
       throw new Error('该账号已被管理员封禁，无法登录');
     }
 
-    const ok = verifyPassword(password, user.password_salt, user.password_hash);
+    const ok = await verifyPassword(password, user.password_salt, user.password_hash);
     if (!ok) {
       throw new Error('邮箱或密码不正确');
     }
 
-    const token = this.signToken({ sub: user.id, email: user.email, role: user.role });
+    const token = this.signToken({ sub: user.id, email: user.email, role: user.role, tv: user.token_version || 0 });
     return {
       user: { id: user.id, email: user.email, role: user.role, status: user.status },
       token
     };
+  }
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = this.db.getUserById(userId);
+    if (!user) throw new Error('用户不存在');
+    newPassword = String(newPassword || '');
+    if (newPassword.length < 8) throw new Error('新密码长度至少需要 8 位');
+
+    const ok = await verifyPassword(String(currentPassword || ''), user.password_salt, user.password_hash);
+    if (!ok) throw new Error('当前密码不正确');
+
+    const salt = generateSalt();
+    const hash = await hashPassword(newPassword, salt);
+    // 同步提升令牌版本号：改密前签发的所有 token 立即失效，否则被盗用的会话能在改密后继续存活 7 天。
+    const tokenVersion = this.db.bumpUserTokenVersion(user.id);
+    this.db.updateUserPassword(user.id, hash, salt);
+    return { id: user.id, email: user.email, role: user.role, tokenVersion };
   }
 
   getUserFromRequest(request) {
@@ -181,11 +217,13 @@ class AuthService {
       if (match) token = decodeURIComponent(match[1]);
     }
 
-    // Check URL query: ?token=...
+    // Check URL query: ?token=... （仅限 WebSocket 握手，见 WS_TOKEN_PATHS）
     if (!token) {
       try {
         const url = new URL(request.url, 'http://' + (request.headers.host || '127.0.0.1'));
-        token = url.searchParams.get('token') || '';
+        if (WS_TOKEN_PATHS.some(prefix => url.pathname.startsWith(prefix))) {
+          token = url.searchParams.get('token') || '';
+        }
       } catch {}
     }
 
@@ -196,6 +234,8 @@ class AuthService {
 
     const user = this.db.getUserById(payload.sub);
     if (!user || user.status === 'banned') return null;
+    // 令牌版本号不一致 => 该 token 早于最近一次改密签发，立即失效
+    if ((payload.tv || 0) !== (user.token_version || 0)) return null;
 
     return {
       id: user.id,

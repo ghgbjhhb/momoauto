@@ -1922,8 +1922,7 @@ function initTerminalTabs() {
 
   if (elements.tabTerminalSystem) {
     elements.tabTerminalSystem.addEventListener('click', () => {
-      const isEmbed = location.search.includes('view=admin-embed');
-      const isAdmin = state.currentUser?.role === 'admin' || isEmbed;
+      const isAdmin = state.currentUser?.role === 'admin';
       if (!isAdmin) return;
       activeTerminalTab = 'system';
       elements.tabTerminalSystem.classList.add('active');
@@ -2077,33 +2076,15 @@ async function checkAuth() {
   try {
     const savedToken = localStorage.getItem('yunmomo.auth_token');
     const headers = savedToken ? { 'Authorization': `Bearer ${savedToken}` } : {};
-    let res = await fetch('/api/auth/me', { headers });
-    let data = await res.json();
-    if (!data.ok || !data.user) {
-      // 自动尝试以默认超管免密静默登录，无需用户手动打断体验
-      try {
-        const autoRes = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'admin@yunmomo.local', password: 'admin123456' })
-        });
-        const autoData = await autoRes.json();
-        if (autoData.ok && autoData.user) {
-          data = autoData;
-          if (autoData.token) {
-            try { localStorage.setItem('yunmomo.auth_token', autoData.token); } catch {}
-          }
-        }
-      } catch {}
-    } else if (data.token) {
-      try { localStorage.setItem('yunmomo.auth_token', data.token); } catch {}
-    }
+    const res = await fetch('/api/auth/me', { headers });
+    const data = await res.json();
     if (!data.ok || !data.user) {
       if (!isEmbed) location.href = '/login.html';
       return null;
     }
     state.currentUser = data.user;
-    const isAdmin = data.user.role === 'admin' || isEmbed;
+    // 角色只允许来自服务端响应，URL 查询串不能作为授权依据
+    const isAdmin = data.user.role === 'admin';
     if (elements.tabTerminalSystem) {
       elements.tabTerminalSystem.style.display = isAdmin ? 'inline-flex' : 'none';
     }
