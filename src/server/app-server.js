@@ -1623,21 +1623,49 @@ async function handler(request, response) {
       }
     }
 
-    if (url.pathname.startsWith('/api/momo-brain/')) {
+    // --- 云机自动化路由（AI 回复 / 调度中枢）：默认全部要求登录并按设备归属授权 ---
+    if (url.pathname.startsWith('/api/momo-brain/') || url.pathname.startsWith('/api/ai-reply/')) {
       let bodyJson = null;
       if (request.method === 'POST') {
         bodyJson = await readJsonBody(request);
       }
-      const handled = handleMomoBrainRoutes(request, response, url, bodyJson, brainManager());
-      if (handled) return;
-    }
-    if (url.pathname.startsWith('/api/ai-reply/')) {
-      let bodyJson = null;
-      if (request.method === 'POST') {
-        bodyJson = await readJsonBody(request);
+      if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
+
+      const deviceId = String(bodyJson?.deviceId || url.searchParams.get('deviceId') || '').trim();
+      if (deviceId && !authService.canAccessDevice(user, deviceId)) {
+        json(response, 403, { ok: false, error: '无该设备的访问权限' });
+        return;
       }
-      const handled = handleAiReplyRoutes(request, response, url, bodyJson, client());
-      if (handled) return;
+
+      // 这三处写入作用于全局配置或消耗共享 API 额度，普通用户改动会波及其他人，仅管理员可操作
+      const isGlobalWrite = request.method === 'POST' && (
+        url.pathname === '/api/momo-brain/config'
+        || url.pathname === '/api/ai-reply/settings'
+        || url.pathname === '/api/ai-reply/test'
+      );
+      // 不带 deviceId 的 status 返回全部云机的调度状态，属于跨用户信息
+      const isAggregateRead = url.pathname === '/api/momo-brain/status' && !deviceId;
+      if ((isGlobalWrite || isAggregateRead) && user.role !== 'admin') {
+        json(response, 403, { ok: false, error: '无管理员访问权限' });
+        return;
+      }
+
+      // runId 里含联系人聊天记录，必须按任务创建时的设备归属复检，避免越权读取或取消他人任务
+      if (url.pathname.startsWith('/api/ai-reply/runs/')) {
+        const runRecord = activeRuns.get(url.pathname.split('/')[4]);
+        if (runRecord && !authService.canAccessDevice(user, runRecord.deviceId)) {
+          json(response, 403, { ok: false, error: '无该任务的访问权限' });
+          return;
+        }
+      }
+
+      if (url.pathname.startsWith('/api/momo-brain/')) {
+        const handled = handleMomoBrainRoutes(request, response, url, bodyJson, brainManager());
+        if (handled) return;
+      } else {
+        const handled = handleAiReplyRoutes(request, response, url, bodyJson, client());
+        if (handled) return;
+      }
     }
     if (request.method === 'GET' && url.pathname.startsWith('/api/')) {
       if (url.pathname === '/api/status') {

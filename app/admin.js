@@ -303,6 +303,60 @@ if (adminLogoutBtn) {
   });
 }
 
+// 修改当前账号密码
+const adminPasswordBtn = document.getElementById('adminPasswordBtn');
+const adminPasswordModal = document.getElementById('adminPasswordModal');
+if (adminPasswordBtn && adminPasswordModal) {
+  const currentInput = document.getElementById('pwdCurrentInput');
+  const newInput = document.getElementById('pwdNewInput');
+  const confirmInput = document.getElementById('pwdConfirmInput');
+  const errorBox = document.getElementById('pwdModalError');
+  const okBtn = document.getElementById('pwdModalOkBtn');
+  const cancelBtn = document.getElementById('pwdModalCancelBtn');
+
+  const closePasswordModal = () => {
+    adminPasswordModal.style.display = 'none';
+    [currentInput, newInput, confirmInput].forEach(input => { if (input) input.value = ''; });
+    if (errorBox) errorBox.textContent = '';
+  };
+
+  adminPasswordBtn.addEventListener('click', () => {
+    adminPasswordModal.style.display = 'flex';
+    if (currentInput) currentInput.focus();
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', closePasswordModal);
+
+  if (okBtn) {
+    okBtn.addEventListener('click', async () => {
+      const currentPassword = currentInput?.value || '';
+      const newPassword = newInput?.value || '';
+      if (newPassword.length < 8) {
+        if (errorBox) errorBox.textContent = '新密码长度至少需要 8 位';
+        return;
+      }
+      if (newPassword !== confirmInput?.value) {
+        if (errorBox) errorBox.textContent = '两次输入的新密码不一致';
+        return;
+      }
+      okBtn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '密码修改失败');
+        showToast('密码已更新，即将跳转到登录页…', 'success');
+        setTimeout(() => { location.href = '/login.html'; }, 1200);
+      } catch (err) {
+        if (errorBox) errorBox.textContent = err.message;
+        okBtn.disabled = false;
+      }
+    });
+  }
+}
+
 // 3. Users Management
 async function loadUsers() {
   if (!usersTableBody) return;

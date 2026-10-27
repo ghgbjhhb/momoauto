@@ -683,6 +683,9 @@
       <a class="admin-top-btn" href="/" target="_blank" title="打开普通用户端控制台页面">
         <span>用户控制台 ↗</span>
       </a>
+      <button class="admin-top-btn" id="adminPasswordBtn" type="button" title="修改当前管理员账号的登录密码">
+        <span>修改密码</span>
+      </button>
       <button class="admin-top-btn danger" id="adminLogoutBtn" type="button">
         <span>退出登录</span>
       </button>
@@ -1218,6 +1221,33 @@
       <div style="display: flex; justify-content: flex-end; gap: 10px;">
         <button class="btn-action-sm" id="confirmModalCancelBtn" type="button" style="padding: 6px 16px; height: 32px; font-size: 13px;">取消</button>
         <button class="btn-action-sm danger" id="confirmModalOkBtn" type="button" style="padding: 6px 18px; height: 32px; font-size: 13px; background: #ff4d4f; color: #fff; border: 1px solid #ff4d4f; font-weight: 600;">确认作废</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 修改登录密码 -->
+  <div class="admin-modal" id="adminPasswordModal" style="display: none;">
+    <div class="admin-modal-card" style="max-width: 420px; padding: 22px;">
+      <h3 style="font-size: 16px; font-weight: 700; color: #1f1f1f; margin: 0 0 6px 0;">修改登录密码</h3>
+      <p style="font-size: 12.5px; color: #8c8c8c; margin: 0 0 16px 0; line-height: 1.5;">新密码至少 8 位。保存后所有设备上的旧登录状态立即失效，需用新密码重新登录。</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="form-field">
+          <label for="pwdCurrentInput">当前密码</label>
+          <input class="form-input" type="password" id="pwdCurrentInput" autocomplete="current-password" placeholder="请输入当前登录密码">
+        </div>
+        <div class="form-field">
+          <label for="pwdNewInput">新密码</label>
+          <input class="form-input" type="password" id="pwdNewInput" autocomplete="new-password" placeholder="至少 8 位">
+        </div>
+        <div class="form-field">
+          <label for="pwdConfirmInput">确认新密码</label>
+          <input class="form-input" type="password" id="pwdConfirmInput" autocomplete="new-password" placeholder="再次输入新密码">
+        </div>
+        <div id="pwdModalError" style="font-size: 12.5px; color: #ff4d4f; min-height: 16px;"></div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
+        <button class="btn-action-sm" id="pwdModalCancelBtn" type="button" style="padding: 6px 16px; height: 32px; font-size: 13px;">取消</button>
+        <button class="btn-action-sm" id="pwdModalOkBtn" type="button" style="padding: 6px 18px; height: 32px; font-size: 13px; background: #1677ff; color: #fff; border: 1px solid #1677ff; font-weight: 600;">保存新密码</button>
       </div>
     </div>
   </div>
