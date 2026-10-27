@@ -25,7 +25,20 @@
 
   if (!els.card || !els.btnStart) return;
 
+  function notify(msg, type = 'info') {
+    if (typeof window.showToast === 'function') {
+      window.showToast(msg);
+    } else {
+      console.log(`[Brain][${type}] ${msg}`);
+    }
+  }
+
   function getSelectedDeviceId() {
+    if (window.YunMomo?.store?.getSelectedDeviceId) {
+      const id = window.YunMomo.store.getSelectedDeviceId();
+      if (id) return id;
+    }
+    if (window.state?.selectedDeviceId) return window.state.selectedDeviceId;
     if (typeof window.getSelectedDeviceId === 'function') {
       const id = window.getSelectedDeviceId();
       if (id) return id;
@@ -85,11 +98,14 @@
       if (data.ok && data.config) {
         currentBrainRevision = data.config.revision;
         setBadge('配置已保存', 'normal');
+        notify('巡检调度配置已保存');
       } else {
-        alert(data.error?.message || '保存失败');
+        setBadge('保存失败', 'error');
+        notify(data.error?.message || '保存失败', 'error');
       }
     } catch (err) {
-      alert('保存出错: ' + err.message);
+      setBadge('保存出错', 'error');
+      notify('保存出错: ' + err.message, 'error');
     }
   }
 
@@ -150,7 +166,7 @@
   async function postAction(actionPath) {
     const devId = getSelectedDeviceId();
     if (!devId) {
-      alert('请先选择目标云机');
+      notify('请先选择目标云机', 'warning');
       return;
     }
     try {
@@ -163,7 +179,7 @@
       if (!response.ok || !data.ok) throw new Error(data.error?.message || '操作失败');
       if (devId === getSelectedDeviceId()) pollStatus();
     } catch (err) {
-      alert('操作失败: ' + err.message);
+      notify('操作失败: ' + err.message, 'error');
     }
   }
 
@@ -173,7 +189,9 @@
   els.btnResume?.addEventListener('click', () => postAction('/api/momo-brain/resume'));
   els.btnStop?.addEventListener('click', () => postAction('/api/momo-brain/stop'));
 
-  window.addEventListener('device:selected', () => { selectionEpoch++; loadBrainConfig(); pollStatus(); });
+  const handleDeviceChange = () => { selectionEpoch++; loadBrainConfig(); pollStatus(); };
+  window.addEventListener('device:selected', handleDeviceChange);
+  window.YunMomo?.store?.on?.('device:selected', handleDeviceChange);
   loadBrainConfig();
   pollStatus();
   statusPollTimer = setInterval(pollStatus, 2000);

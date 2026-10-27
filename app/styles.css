@@ -1089,6 +1089,13 @@ body {
   cursor: pointer;
   font-weight: 600;
   color: var(--text-muted);
+  user-select: none;
+  margin-bottom: 6px;
+}
+
+.script-settings svg,
+.dropdown-arrow {
+  display: none !important;
 }
 
 .script-settings label {

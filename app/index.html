@@ -25,7 +25,7 @@
       </div>
 
       <div class="topbar-tools">
-        <span id="serviceState" hidden></span>
+        <span id="serviceState" hidden><span class="state-text"></span></span>
         <div class="user-pill" id="userPill" style="display:none;">--</div>
         <button class="action-btn" id="openRedeemModalBtn" type="button">兑换卡密</button>
         <a class="action-btn" id="adminPortalLink" href="/admin.html" style="display:none;">管理后台</a>
@@ -206,34 +206,42 @@
           </div>
         </div>
 
-        <!-- 底部日志终端：纯白工控日志框，清爽高对比度 -->
+        <!-- 底部日志终端：纯白工控日志框，清爽高对比度，支持脚本日志与系统诊断双视图 -->
         <div class="terminal-container">
           <div class="terminal-bar">
-            <span class="terminal-label">执行日志</span>
+            <div class="terminal-tabs">
+              <button type="button" class="terminal-tab-btn active" id="tabTerminalScript">业务脚本日志</button>
+              <button type="button" class="terminal-tab-btn" id="tabTerminalSystem">
+                系统运行日志
+                <span class="terminal-badge" id="systemLogBadge" style="display:none;">0</span>
+              </button>
+            </div>
             <div class="terminal-actions">
               <button class="danger-button" id="stopScriptBtn" type="button" style="display:none;">⏹ 停止脚本</button>
+              <button class="action-btn small" id="diagReportBtn" type="button" title="一键复制系统环境与错误诊断包">📋 诊断报告</button>
               <button class="action-btn small" id="copyOutputBtn" type="button">复制日志</button>
               <button class="action-btn small" id="clearOutput" type="button">清空</button>
             </div>
           </div>
           <pre class="terminal-box" id="outputBox">暂无执行记录。</pre>
+          <pre class="terminal-box" id="systemLogBox" style="display:none;">暂无系统日志。</pre>
         </div>
       </aside>
     </main>
   </div>
 
-  <!-- 旗舰云手机原画独立控制台 -->
-  <dialog class="control-dialog" id="controlDialog" aria-labelledby="controlTitle">
-    <header class="control-heading">
+  <!-- 旗舰云手机原画独立控制台 (非模态可拖拽浮窗) -->
+  <aside class="control-window control-dialog" id="controlDialog" aria-labelledby="controlTitle" hidden>
+    <header class="control-heading" id="controlHeading">
       <div class="control-title-wrap">
         <span class="control-device-badge" id="controlDeviceBadge">#--</span>
         <h2 id="controlTitle">云手机实例远程控制台</h2>
         <span id="controlStatus" role="status">正在建立连接…</span>
       </div>
       <div class="control-head-tools">
-        <button class="action-btn" id="toggleVisionBtn" type="button">AI 视觉透视</button>
-        <button class="action-btn" id="copyControlIdBtn" type="button">复制虚拟机 ID</button>
-        <button class="action-btn" id="closeControl" type="button">关闭 (Esc)</button>
+        <button class="action-btn small" id="toggleVisionBtn" type="button" title="切换 AI 视觉透视">视觉</button>
+        <button class="action-btn small" id="copyControlIdBtn" type="button" title="复制虚拟机 ID">复制ID</button>
+        <button class="control-close-btn" id="closeControl" type="button" title="关闭窗口 (Esc)" aria-label="关闭窗口">✕</button>
       </div>
     </header>
 
@@ -258,7 +266,7 @@
         </div>
       </div>
     </div>
-  </dialog>
+  </aside>
 
   <!-- VPC 代理弹窗 -->
   <dialog class="vpc-dialog" id="vpcDialog" aria-labelledby="vpcDialogTitle">
@@ -296,6 +304,7 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- 核心交互脚本 -->
+  <script src="/logger.js"></script>
   <script src="/video-player.js"></script>
   <script src="/app.js"></script>
   <script src="/manual-control.js"></script>

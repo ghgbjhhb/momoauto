@@ -905,11 +905,42 @@ async function inspectVision(deviceId) {
   }
 }
 
+async function appendServerLog(level, message, details = '') {
+  try {
+    const logsDir = path.join(PROJECT_ROOT, 'logs');
+    await fs.promises.mkdir(logsDir, { recursive: true });
+    const logLine = `[Server ${level.toUpperCase()}] ${new Date().toISOString()} ${message}${details ? ' ' + details : ''}\n`;
+    await fs.promises.appendFile(path.join(logsDir, 'server.log'), logLine, 'utf8');
+  } catch {}
+}
+
 async function handler(request, response) {
+  const reqStart = Date.now();
+  const reqMethod = request.method;
+  const reqUrl = request.url;
+  const isApi = typeof reqUrl === 'string' && reqUrl.startsWith('/api/');
+  let currentUser = null;
+
+  if (isApi) {
+    response.on('finish', () => {
+      const duration = Date.now() - reqStart;
+      const status = response.statusCode;
+      const userTag = currentUser ? `[${currentUser.email}]` : '[guest]';
+      const logLine = `${reqMethod} ${reqUrl} -> ${status} (${duration}ms) ${userTag}`;
+
+      if (status >= 400) {
+        console.error(`[API ERROR] ${logLine}`);
+        appendServerLog('ERROR', logLine);
+      } else if (!reqUrl.includes('/api/client-logs')) {
+        console.log(`[API] ${logLine}`);
+      }
+    });
+  }
+
   try {
     if (!allowedRequest(request)) { json(response, 403, { ok: false, error: '仅允许本地控制台同源访问' }); return; }
     const url = new URL(request.url, 'http://' + (request.headers.host || HOST));
-    const user = authService.getUserFromRequest(request);
+    const user = currentUser = authService.getUserFromRequest(request);
 
     function requireAdmin(res) {
       if (!user || user.role !== 'admin') {
@@ -930,10 +961,14 @@ async function handler(request, response) {
     }
     if (request.method === 'POST' && url.pathname === '/api/auth/login') {
       const body = await readJsonBody(request);
-      const result = authService.login(body?.email, body?.password);
-      json(response, 200, { ok: true, user: result.user, token: result.token }, {
-        'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
-      });
+      try {
+        const result = authService.login(body?.email, body?.password);
+        json(response, 200, { ok: true, user: result.user, token: result.token }, {
+          'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
+        });
+      } catch (err) {
+        json(response, 401, { ok: false, error: err.message });
+      }
       return;
     }
     if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
@@ -947,6 +982,46 @@ async function handler(request, response) {
         json(response, 200, { ok: false, user: null });
       } else {
         json(response, 200, { ok: true, user });
+      }
+      return;
+    }
+
+    // --- 客户端日志与远程诊断遥测 API ---
+    if (request.method === 'POST' && url.pathname === '/api/client-logs') {
+      const body = await readJsonBody(request);
+      const level = String(body?.level || 'info').toUpperCase();
+      const message = String(body?.message || '');
+      const details = body?.details ? (typeof body.details === 'string' ? body.details : JSON.stringify(body.details)) : '';
+      const userTag = user ? `[${user.email}]` : '[guest]';
+      const logLine = `[Client ${level}] ${new Date().toISOString()} ${userTag} ${message} ${details}\n`;
+      try {
+        const clientLogDir = path.join(PROJECT_ROOT, 'logs');
+        await fs.promises.mkdir(clientLogDir, { recursive: true });
+        await fs.promises.appendFile(path.join(clientLogDir, 'client.log'), logLine, 'utf8');
+      } catch {}
+      console.log(`[ClientLog] ${level} ${userTag}: ${message}`);
+      json(response, 200, { ok: true });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/client-logs') {
+      try {
+        const logPath = path.join(PROJECT_ROOT, 'logs', 'client.log');
+        const content = await fs.promises.readFile(logPath, 'utf8');
+        const lines = content.trim().split('\n').filter(Boolean).slice(-100);
+        json(response, 200, { ok: true, logs: lines });
+      } catch {
+        json(response, 200, { ok: true, logs: [] });
+      }
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/server-logs') {
+      try {
+        const logPath = path.join(PROJECT_ROOT, 'logs', 'server.log');
+        const content = await fs.promises.readFile(logPath, 'utf8');
+        const lines = content.trim().split('\n').filter(Boolean).slice(-100);
+        json(response, 200, { ok: true, logs: lines });
+      } catch {
+        json(response, 200, { ok: true, logs: [] });
       }
       return;
     }
@@ -1230,8 +1305,11 @@ async function handler(request, response) {
     await staticFile(response, url.pathname);
   } catch (error) {
     const message = redact(error?.message || error);
-    json(response, errorStatus({ message, status: error.status }), { ok: false, error: message,
-      ...(error?.name === 'StreamScreenshotError' ? { code: error.code } : {}), ...(error.timing || {}) });
+    const status = errorStatus({ message, status: error?.status });
+    console.error(`[API UNHANDLED] ${request.method} ${request.url} -> ${status}:`, error);
+    appendServerLog('ERROR', `UNHANDLED ${request.method} ${request.url} -> ${status}: ${message}`, error?.stack || '');
+    json(response, status, { ok: false, error: message,
+      ...(error?.name === 'StreamScreenshotError' ? { code: error.code } : {}), ...(error?.timing || {}) });
   }
 }
 

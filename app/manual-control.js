@@ -1,13 +1,21 @@
-'use strict';
+(function (window) {
+  'use strict';
+
+  const getEl = id => document.getElementById(id);
+  const showToast = (...args) => (window.showToast || console.log)(...args);
+  const selectDevice = (...args) => (window.selectDevice || (() => {}))(...args);
+  const currentDevice = (...args) => (window.currentDevice || (() => null))(...args);
+  const externalScriptForDevice = (...args) => (window.externalScriptForDevice || (() => null))(...args);
+  const requestAllPreviews = (...args) => (window.requestAllPreviews || (() => {}))(...args);
+  const stopPreview = (...args) => (window.stopPreview || (() => {}))(...args);
+  const requestJson = (...args) => (window.requestJson || (async (u, o) => (await fetch(u, o)).json()))(...args);
+  const getElements = () => window.elements || {};
 
 const manual = {
+  targetDeviceId: '',
   socket: null,
   ready: false,
   player: null,
-  previewPlayer: null,
-  previewCanvas: null,
-  previewParent: null,
-  previewNextSibling: null,
   retryTimer: null,
   retryAttempt: 0,
   videoRetryTimer: null,
@@ -30,16 +38,40 @@ const manual = {
   visionImageWidth: 720,
   visionImageHeight: 1280
 };
-const dialog = byId('controlDialog'), surface = byId('controlStage'), controlImage = byId('controlImage');
-const controlStatus = byId('controlStatus'), controlLoading = byId('controlLoading');
-const toggleVisionBtn = byId('toggleVisionBtn');
-const visionCanvas = byId('visionOverlayCanvas');
-const visionTooltip = byId('visionTooltip');
-const visionDeckCard = byId('visionDeckCard');
-const visionStatus = byId('visionStatus');
-const visionCount = byId('visionCount');
-const reinspectVisionBtn = byId('reinspectVisionBtn');
-const visionItemsList = byId('visionItemsList');
+
+function getActiveDeviceId() {
+  return manual.targetDeviceId || (window.YunMomo?.store?.getSelectedDeviceId ? window.YunMomo.store.getSelectedDeviceId() : null) || window.state?.manualDeviceId || window.state?.selectedDeviceId || currentDevice()?.deviceId || '';
+}
+
+function stopManualInput() {
+  clearTimeout(manual.retryTimer);
+  manual.retryTimer = null;
+  manual.retryAttempt = 0;
+  clearInterval(manual.inputWatchdogTimer);
+  manual.inputWatchdogTimer = null;
+  manual.ready = false;
+  manual.pointer = null;
+  manual.inputErrorCode = '';
+  if (manual.socket) {
+    try {
+      if (manual.socket.readyState === WebSocket.OPEN) {
+        manual.socket.send(JSON.stringify({ type: 'release' }));
+      }
+      manual.socket.close(1000, 'Manual input stopped');
+    } catch {}
+    manual.socket = null;
+  }
+}
+const dialog = getEl('controlDialog'), surface = getEl('controlStage'), controlImage = getEl('controlImage');
+const controlStatus = getEl('controlStatus'), controlLoading = getEl('controlLoading');
+const toggleVisionBtn = getEl('toggleVisionBtn');
+const visionCanvas = getEl('visionOverlayCanvas');
+const visionTooltip = getEl('visionTooltip');
+const visionDeckCard = getEl('visionDeckCard');
+const visionStatus = getEl('visionStatus');
+const visionCount = getEl('visionCount');
+const reinspectVisionBtn = getEl('reinspectVisionBtn');
+const visionItemsList = getEl('visionItemsList');
 
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]);
@@ -47,39 +79,46 @@ function escapeHtml(str) {
 
 function sendInput(message) {
   if (document.hidden && message.type !== 'release') return false;
-  if (manual.socket?.readyState !== WebSocket.OPEN || (!manual.ready && message.type !== 'release')) return false;
-  const frameAt = latestControlFrameAt();
-  if (message.type !== 'release' && (!frameAt || Date.now() - frameAt > 6000)) {
-    releaseManual(); showToast('画面尚未就绪或已过时，请等待最新原图'); return false;
+  if (manual.socket?.readyState !== WebSocket.OPEN || (!manual.ready && message.type !== 'release')) {
+    if (message.type !== 'release' && !manual.ready) {
+      showToast('触控通道连接中，请稍候…');
+    }
+    return false;
   }
-  if (manual.socket.bufferedAmount > 32768) { manual.socket.close(); manual.ready = false; controlStatus.textContent = '输入连接积压，已停止，请重新打开'; return false; }
-  manual.socket.send(JSON.stringify(message)); return true;
+  if (manual.socket.bufferedAmount > 32768) {
+    manual.socket.close();
+    manual.ready = false;
+    controlStatus.textContent = '输入连接积压，已重置';
+    return false;
+  }
+  manual.socket.send(JSON.stringify(message));
+  return true;
 }
 
 function releaseManual() {
   sendInput({ type: 'release' }); manual.pointer = null;
 }
 
+function isControlOpen() {
+  const win = dialog || getEl('controlDialog');
+  return Boolean(win && !win.hidden && !win.hasAttribute('hidden') && win.style.display !== 'none');
+}
+
 function captureManual() {
-  if (!dialog.open || document.hidden) return;
+  if (!isControlOpen() || document.hidden) return;
   if (!manual.socket || manual.socket.readyState === WebSocket.CLOSED || manual.socket.readyState === WebSocket.CLOSING) {
     startManualInput();
   }
-  const player = manual.previewPlayer && !manual.previewPlayer.closed
-    ? manual.previewPlayer : manual.player;
-  if (player && !player.closed) player.refresh();
+  if (manual.player && !manual.player.closed) manual.player.refresh();
   else startManualVideo();
 }
 
 function activeControlCanvas() {
-  return manual.previewCanvas || controlImage;
+  return controlImage;
 }
 
 function latestControlFrameAt() {
-  const previewFrameAt = manual.previewPlayer && !manual.previewPlayer.closed
-    ? manual.previewPlayer.stats?.frameAt || 0
-    : 0;
-  return Math.max(manual.frameAt || 0, previewFrameAt);
+  return manual.frameAt || manual.player?.stats?.frameAt || 0;
 }
 
 function getImageDisplayGeometry() {
@@ -104,7 +143,7 @@ function clearVisionCanvas() {
 }
 
 function renderVisionOverlay() {
-  if (!visionCanvas || !manual.visionActive || !dialog.open) return;
+  if (!visionCanvas || !manual.visionActive || !isControlOpen()) return;
   const dpr = window.devicePixelRatio || 1;
   const sw = surface.clientWidth;
   const sh = surface.clientHeight;
@@ -230,35 +269,22 @@ function renderVisionItemsList() {
 }
 
 async function inspectVisionCurrentFrame() {
-  if (!dialog.open || !state.manualDeviceId) return;
+  const deviceId = getActiveDeviceId();
+  if (!isControlOpen() || !deviceId) return;
   if (manual.visionLoading) return;
   manual.visionLoading = true;
   const generation = manual.generation;
-  if (visionStatus) {
-    visionStatus.textContent = 'RapidOCR 识别中…';
-    visionStatus.className = 'deck-val text-cyan';
-  }
   try {
-    const res = await requestJson('/api/vision-inspect?deviceId=' + encodeURIComponent(state.manualDeviceId));
-    if (!dialog.open || !manual.visionActive || generation !== manual.generation) return;
+    const res = await requestJson('/api/vision-inspect?deviceId=' + encodeURIComponent(deviceId));
+    if (!isControlOpen() || !manual.visionActive || generation !== manual.generation) return;
     manual.visionItems = res.items || [];
     manual.visionImageWidth = res.width || manual.width || 720;
     manual.visionImageHeight = res.height || manual.height || 1280;
-    if (visionStatus) {
-      visionStatus.textContent = '透视已就绪';
-      visionStatus.className = 'deck-val text-green';
-    }
-    if (visionCount) {
-      visionCount.textContent = `${manual.visionItems.length} 个`;
-    }
     renderVisionOverlay();
     renderVisionItemsList();
+    showToast(`AI 视觉识别完成：共 ${manual.visionItems.length} 个控件`);
   } catch (error) {
-    if (!dialog.open || !manual.visionActive) return;
-    if (visionStatus) {
-      visionStatus.textContent = '识别失败: ' + error.message;
-      visionStatus.className = 'deck-val text-red';
-    }
+    if (!isControlOpen() || !manual.visionActive) return;
     showToast('AI 视觉识别失败: ' + error.message);
   } finally {
     manual.visionLoading = false;
@@ -269,10 +295,6 @@ function setVisionActive(active) {
   manual.visionActive = active;
   if (toggleVisionBtn) toggleVisionBtn.classList.toggle('active', active);
   if (visionCanvas) visionCanvas.hidden = !active;
-  if (visionDeckCard) {
-    visionDeckCard.hidden = !active;
-    visionDeckCard.style.display = active ? 'flex' : 'none';
-  }
   if (!active) {
     manual.visionItems = [];
     manual.hoveredItem = null;
@@ -333,100 +355,151 @@ function handleVisionPointerMove(event) {
 }
 
 function updateDeckTelemetry(device) {
-  const index = state.devices.indexOf(device) + 1;
-  const badgeText = '#' + String(index).padStart(2, '0');
-  const badgeEl = byId('controlDeviceBadge');
+  const devices = window.state?.devices || [];
+  const index = devices.indexOf(device) + 1;
+  const badgeText = '#' + String(index > 0 ? index : 1).padStart(2, '0');
+  const badgeEl = getEl('controlDeviceBadge');
   if (badgeEl) badgeEl.textContent = badgeText;
-  const titleEl = byId('controlTitle');
-  if (titleEl) titleEl.textContent = `${device.name} · 原画操作台`;
-  const deckIdx = byId('deckDeviceIndex');
-  if (deckIdx) deckIdx.textContent = `${badgeText} 云手机`;
-  const deckName = byId('deckDeviceName');
-  if (deckName) deckName.textContent = device.name;
-  const deckId = byId('deckDeviceId');
-  if (deckId) deckId.textContent = device.deviceId;
-  const deckRes = byId('deckResolution');
-  if (deckRes) deckRes.textContent = `${manual.width || 720} × ${manual.height || 1280} (9:16)`;
-}
-
-function takePreviewCanvas(device) {
-  const player = state.previewPlayers.get(device.deviceId);
-  const source = player?.canvas;
-  if (!player || player.closed || !source?.width || !source?.height) return null;
-  return { player, canvas: source, parent: source.parentElement, nextSibling: source.nextSibling };
-}
-
-function restorePreviewCanvas() {
-  const canvas = manual.previewCanvas;
-  if (!canvas) return;
-  canvas.classList.remove('control-preview-image');
-  const currentCard = [...elements.deviceGrid.querySelectorAll('.device-card')]
-    .find(card => card.dataset.deviceId === state.manualDeviceId);
-  const parent = manual.previewParent?.isConnected
-    ? manual.previewParent
-    : currentCard?.querySelector('.device-screen');
-  const before = parent === manual.previewParent && manual.previewNextSibling?.parentNode === parent
-    ? manual.previewNextSibling
-    : parent?.querySelector('.screen-hover-hint');
-  if (parent) parent.insertBefore(canvas, before || null);
-  else canvas.remove();
-  manual.previewPlayer = null;
-  manual.previewCanvas = null;
-  manual.previewParent = null;
-  manual.previewNextSibling = null;
+  const titleEl = getEl('controlTitle');
+  if (titleEl) titleEl.textContent = `${device.name || '云手机'} · 原画操作台`;
 }
 
 function openManualControl(device) {
-  if (!state.tokenConfigured) { showToast('网页登录态未就绪'); return; }
-  if (state.runningScript) { showToast('当前脚本执行中，请等待结束再手动操作'); return; }
-  const externalRun = externalScriptForDevice(device.deviceId);
-  if (externalRun) { showToast(`${device.name} 正在另一个网页执行「${externalRun.title}」`); return; }
-  if (dialog.open) return;
-  const preview = takePreviewCanvas(device);
-  selectDevice(device.deviceId); state.manualDeviceId = device.deviceId;
-  manual.generation++; manual.ready = false; manual.pointer = null; manual.frameAt = 0;
-  manual.previewPlayer = preview?.player || null;
-  manual.previewCanvas = preview?.canvas || null;
-  manual.previewParent = preview?.parent || null;
-  manual.previewNextSibling = preview?.nextSibling || null;
-  manual.width = preview?.canvas.width || 0; manual.height = preview?.canvas.height || 0;
-  if (manual.previewCanvas) {
-    const hasFrame = Boolean(manual.previewPlayer.stats?.frameAt);
-    manual.previewCanvas.classList.add('control-preview-image');
-    manual.previewCanvas.hidden = !hasFrame;
-    surface.insertBefore(manual.previewCanvas, controlImage);
-    controlImage.hidden = true;
-    controlImage.style.display = 'none';
-    controlLoading.hidden = hasFrame;
-    controlLoading.style.display = hasFrame ? 'none' : 'flex';
-    if (!hasFrame) controlLoading.innerHTML = '<div class="spinner"></div><span>正在载入实时画面…</span>';
-  } else {
-    controlLoading.innerHTML = '<div class="spinner"></div><span>正在读取原画…</span>';
-    controlLoading.hidden = false;
-    controlLoading.style.display = 'flex';
-    controlImage.hidden = true;
-    controlImage.style.display = 'none';
-  }
+  try {
+    if (!device) {
+      device = currentDevice() || window.state?.devices?.[0];
+    }
+    if (!device) {
+      showToast('未选择云手机');
+      return;
+    }
+    if (!window.state?.tokenConfigured) {
+      showToast('网页登录态未就绪');
+      return;
+    }
+    if (window.state?.runningScript) {
+      showToast('当前脚本执行中，请等待结束再手动操作');
+      return;
+    }
+    const externalRun = externalScriptForDevice(device.deviceId);
+    if (externalRun) {
+      showToast(`${device.name} 正在另一个网页执行「${externalRun.title}」`);
+      return;
+    }
+    const dlg = dialog || getEl('controlDialog');
+    if (!dlg) {
+      showToast('控制台组件未就绪');
+      return;
+    }
 
-  updateDeckTelemetry(device);
-  controlStatus.textContent = manual.previewCanvas
-    ? '保持当前画面连接，正在接通触控…'
-    : '正在建立 SDK 控制连接…';
-  dialog.showModal(); surface.focus();
-  startManualInput();
-  if (!manual.previewCanvas) startManualVideo();
+    // 若当前浮窗已打开且为同一设备，仅聚焦并确保通道通畅
+    if (manual.targetDeviceId === device.deviceId && isControlOpen()) {
+      surface?.focus();
+      if (!manual.socket || manual.socket.readyState === WebSocket.CLOSED) {
+        startManualInput();
+      }
+      return;
+    }
+
+    window.AppLogger?.info('ManualControl', `打开放大操作云机控制台 [${device.name}] (${device.deviceId})`);
+
+    // 切换设备或重新打开时，优雅重置已有连接，避免触发伪关闭事件
+    stopManualInput();
+    stopManualVideo();
+
+    manual.targetDeviceId = device.deviceId;
+    selectDevice(device.deviceId);
+    if (window.state) window.state.manualDeviceId = device.deviceId;
+
+    manual.generation++;
+    manual.ready = false;
+    manual.pointer = null;
+    manual.frameAt = 0;
+
+    // 优先复制左侧已有画面快照，秒速上屏，零等待无黑屏
+    const previewPlayer = window.state?.previewPlayers?.get(device.deviceId);
+    const prevCanvas = previewPlayer?.canvas;
+    if (prevCanvas && prevCanvas.width && prevCanvas.height) {
+      try {
+        controlImage.width = prevCanvas.width;
+        controlImage.height = prevCanvas.height;
+        const ctx = controlImage.getContext('2d');
+        ctx.drawImage(prevCanvas, 0, 0);
+        controlImage.hidden = false;
+        controlImage.style.display = 'block';
+        controlLoading.hidden = true;
+        controlLoading.style.display = 'none';
+        manual.width = prevCanvas.width;
+        manual.height = prevCanvas.height;
+      } catch {}
+    } else {
+      controlLoading.innerHTML = '<div class="spinner"></div><span>正在载入实时画面…</span>';
+      controlLoading.hidden = false;
+      controlLoading.style.display = 'flex';
+      controlImage.hidden = true;
+      controlImage.style.display = 'none';
+    }
+
+    updateDeckTelemetry(device);
+    controlStatus.textContent = '正在建立控制连接…';
+
+    // 浮窗显示与位置自适应
+    dlg.hidden = false;
+    dlg.removeAttribute('hidden');
+    dlg.setAttribute('open', '');
+    dlg.style.display = 'flex';
+
+    const rect = dlg.getBoundingClientRect();
+    if (!dlg.style.left || rect.width === 0 || rect.right < 50 || rect.left > window.innerWidth - 50) {
+      const winW = 384;
+      const winH = Math.min(window.innerHeight - 40, 720);
+      const left = Math.max(16, Math.round((window.innerWidth - winW) / 2));
+      const top = Math.max(16, Math.round((window.innerHeight - winH) / 2));
+      dlg.style.position = 'fixed';
+      dlg.style.margin = '0';
+      dlg.style.left = left + 'px';
+      dlg.style.top = top + 'px';
+    }
+
+    surface?.focus();
+    startManualInput();
+    startManualVideo();
+  } catch (err) {
+    window.AppLogger?.error('ManualControl', '打开放大操作控制台失败: ' + err.message, { stack: err.stack });
+    showToast('打开控制台失败: ' + err.message);
+  }
 }
+window.openManualControl = openManualControl;
 
 function startManualInput() {
-  if (!dialog.open || (manual.socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(manual.socket.readyState))) return;
-  clearTimeout(manual.retryTimer); manual.retryTimer = null;
+  if (!isControlOpen()) return;
+  if (manual.socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(manual.socket.readyState)) return;
+
+  const deviceId = getActiveDeviceId();
+  if (!deviceId) {
+    controlStatus.textContent = '未选择有效云手机';
+    return;
+  }
+  manual.targetDeviceId = deviceId;
+  if (window.state) window.state.manualDeviceId = deviceId;
+
+  clearTimeout(manual.retryTimer);
+  manual.retryTimer = null;
   const generation = ++manual.inputGeneration;
-  manual.ready = false; manual.inputErrorCode = ''; manual.pointer = null;
+  manual.ready = false;
+  manual.inputErrorCode = '';
+  manual.pointer = null;
   manual.lastInputMessageAt = Date.now();
+
   const url = new URL('/api/control-input', location.href);
   url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.searchParams.set('deviceId', state.manualDeviceId);
-  url.searchParams.set('pageId', state.pageId);
+  url.searchParams.set('deviceId', deviceId);
+  url.searchParams.set('pageId', window.state?.pageId || '');
+  try {
+    const token = localStorage.getItem('yunmomo.auth_token');
+    if (token) url.searchParams.set('token', token);
+  } catch {}
+
   const socket = manual.socket = new WebSocket(url);
   socket.onmessage = event => {
     if (generation !== manual.inputGeneration || manual.socket !== socket) return;
@@ -435,28 +508,22 @@ function startManualInput() {
     try { message = JSON.parse(event.data); } catch { return; }
     if (message.type === 'size' || message.type === 'ready') {
       if (manual.width && (manual.width !== message.width || manual.height !== message.height)) {
-        releaseManual(); manual.frameAt = 0;
+        releaseManual();
+        manual.frameAt = 0;
       }
-      manual.width = message.width; manual.height = message.height;
-      const deckRes = byId('deckResolution');
-      if (deckRes) deckRes.textContent = `${manual.width} × ${manual.height} (9:16)`;
+      manual.width = message.width;
+      manual.height = message.height;
     }
     if (message.type === 'ready') {
-      manual.ready = true; manual.retryAttempt = 0;
+      manual.ready = true;
+      manual.retryAttempt = 0;
       manual.maxFps = message.maxFps;
       controlStatus.textContent = `手动控制已就绪 · 画面最高 ${manual.maxFps || 30} 帧/秒`;
-      const config = byId('deckVideoConfig');
-      if (config) {
-        const bounds = message.bounds || {};
-        const dimensions = bounds.width && bounds.height ? `${bounds.width}×${bounds.height}` : '尺寸自适应';
-        const bitrate = Number(message.bitrate);
-        const rate = Number.isFinite(bitrate) && bitrate > 0 ? `${(bitrate / 1000000).toFixed(1)} Mbps` : '码率自适应';
-        config.textContent = `H.264 · ${dimensions} · ${rate} · ${manual.maxFps || 30} 帧/秒上限`;
-        config.title = Number.isFinite(bitrate) && bitrate > 0 ? `${bitrate.toLocaleString('zh-CN')} bit/s` : '';
-      }
     } else if (message.type === 'error') {
       manual.inputErrorCode = message.code || '';
-      if (message.code === 'INPUT_FAILED') { manual.ready = false; releaseManual(); }
+      if (message.code === 'INPUT_FAILED') {
+        releaseManual();
+      }
       controlStatus.textContent = message.message;
       showToast(message.message);
     } else if (message.type === 'input_reset') {
@@ -465,18 +532,25 @@ function startManualInput() {
     }
   };
   socket.onerror = () => {
-    if (generation === manual.inputGeneration && dialog.open) controlStatus.textContent = '触控连接中断，正在恢复…';
+    if (generation === manual.inputGeneration && isControlOpen()) {
+      controlStatus.textContent = '触控连接中断，正在恢复…';
+    }
   };
   socket.onclose = () => {
     if (generation !== manual.inputGeneration || manual.socket !== socket) return;
-    clearInterval(manual.inputWatchdogTimer); manual.inputWatchdogTimer = null;
-    manual.ready = false; manual.pointer = null; manual.socket = null;
-    if (!dialog.open || !CloudVideoPlayer.canReconnect(manual.inputErrorCode)) return;
+    clearInterval(manual.inputWatchdogTimer);
+    manual.inputWatchdogTimer = null;
+    manual.ready = false;
+    manual.pointer = null;
+    manual.socket = null;
+    if (!isControlOpen() || !CloudVideoPlayer.canReconnect(manual.inputErrorCode)) return;
     controlStatus.textContent = '正在恢复触控连接…';
     const delay = Math.min(30000, 1500 * 2 ** Math.min(manual.retryAttempt++, 5));
     manual.retryTimer = setTimeout(() => {
       manual.retryTimer = null;
-      if (generation === manual.inputGeneration && dialog.open) startManualInput();
+      if (generation === manual.inputGeneration && isControlOpen()) {
+        startManualInput();
+      }
     }, delay);
   };
   manual.inputWatchdogTimer = setInterval(() => {
@@ -487,68 +561,80 @@ function startManualInput() {
 }
 
 function startManualVideo() {
-  if (!dialog.open || (manual.player && !manual.player.closed)) return;
-  clearTimeout(manual.videoRetryTimer); manual.videoRetryTimer = null;
+  if (!isControlOpen()) return;
+  if (manual.player && !manual.player.closed) return;
+
+  const deviceId = getActiveDeviceId();
+  if (!deviceId) return;
+  manual.targetDeviceId = deviceId;
+  if (window.state) window.state.manualDeviceId = deviceId;
+
+  clearTimeout(manual.videoRetryTimer);
+  manual.videoRetryTimer = null;
   const generation = ++manual.videoGeneration;
   manual.frameAt = 0;
-  const player = manual.player = new CloudVideoPlayer({ canvas: controlImage,
-    deviceId: state.manualDeviceId,
+
+  const player = manual.player = new CloudVideoPlayer({
+    canvas: controlImage,
+    deviceId: deviceId,
     onMessage(message) {
       if (generation !== manual.videoGeneration) return;
       if ((message.type === 'size' || message.type === 'ready') && message.width && message.height) {
-        manual.width = message.width; manual.height = message.height;
-        const deckRes = byId('deckResolution');
-        if (deckRes) deckRes.textContent = `${manual.width} × ${manual.height} (9:16)`;
+        manual.width = message.width;
+        manual.height = message.height;
       }
     },
     onFrame({ width, height, frameAt }) {
-      if (generation !== manual.videoGeneration || !dialog.open) return;
+      if (generation !== manual.videoGeneration || !isControlOpen()) return;
       manual.videoRetryAttempt = 0;
       manual.frameAt = frameAt;
-      controlLoading.hidden = true; controlLoading.style.display = 'none';
-      manual.width = width; manual.height = height;
-      if (!manual.previewCanvas) {
-        controlImage.hidden = false;
-        controlImage.style.display = 'block';
-      }
+      controlLoading.hidden = true;
+      controlLoading.style.display = 'none';
+      manual.width = width;
+      manual.height = height;
+      controlImage.hidden = false;
+      controlImage.style.display = 'block';
       if (manual.visionActive) renderVisionOverlay();
     },
     onError(error) {
       if (generation !== manual.videoGeneration) return;
       manual.frameAt = 0;
       controlLoading.textContent = error.message;
-      controlLoading.hidden = false; controlLoading.style.display = 'flex';
+      controlLoading.hidden = false;
+      controlLoading.style.display = 'flex';
     },
     onClose(code) {
-      if (generation !== manual.videoGeneration) return;
-      manual.frameAt = 0; manual.player = null;
-      if (!dialog.open || !CloudVideoPlayer.canReconnect(code)) return;
+      if (generation !== manual.videoGeneration || manual.player !== player) return;
+      manual.frameAt = 0;
+      manual.player = null;
+      if (!isControlOpen() || !CloudVideoPlayer.canReconnect(code)) return;
       controlStatus.textContent = '正在恢复投屏画面…';
       controlLoading.textContent = controlStatus.textContent;
-      controlLoading.hidden = false; controlLoading.style.display = 'flex';
+      controlLoading.hidden = false;
+      controlLoading.style.display = 'flex';
       const delay = Math.min(30000, 1500 * 2 ** Math.min(manual.videoRetryAttempt++, 5));
       manual.videoRetryTimer = setTimeout(() => {
         manual.videoRetryTimer = null;
-        if (generation === manual.videoGeneration && dialog.open) startManualVideo();
+        if (generation === manual.videoGeneration && isControlOpen()) {
+          startManualVideo();
+        }
       }, delay);
     }
   });
 }
 
 function stopManualVideo() {
-  clearTimeout(manual.retryTimer); manual.retryTimer = null; manual.retryAttempt = 0;
-  clearTimeout(manual.videoRetryTimer); manual.videoRetryTimer = null; manual.videoRetryAttempt = 0;
-  clearInterval(manual.inputWatchdogTimer); manual.inputWatchdogTimer = null;
-  releaseManual(); manual.inputGeneration++; manual.videoGeneration++;
-  manual.generation++;
-  manual.socket?.close();
-  manual.socket = null;
-  manual.player?.close(); manual.player = null;
-  manual.ready = false; manual.frameAt = 0; manual.inputErrorCode = '';
+  clearTimeout(manual.videoRetryTimer);
+  manual.videoRetryTimer = null;
+  manual.videoRetryAttempt = 0;
+  if (manual.player) {
+    try { manual.player.close(); } catch {}
+    manual.player = null;
+  }
 }
 
 function bindCopyBtn(btnId, getText) {
-  const btn = byId(btnId);
+  const btn = getEl(btnId);
   if (!btn) return;
   btn.addEventListener('click', () => {
     const text = getText();
@@ -567,41 +653,111 @@ function bindCopyBtn(btnId, getText) {
   });
 }
 
-bindCopyBtn('copyControlIdBtn', () => state.manualDeviceId || (currentDevice()?.deviceId));
-bindCopyBtn('deckCopyIdBtn', () => state.manualDeviceId || (currentDevice()?.deviceId));
+bindCopyBtn('copyControlIdBtn', () => window.state.manualDeviceId || (currentDevice()?.deviceId));
+bindCopyBtn('deckCopyIdBtn', () => window.state.manualDeviceId || (currentDevice()?.deviceId));
 
-dialog.addEventListener('close', () => {
+function closeManualControl() {
   setVisionActive(false);
+  stopManualInput();
   stopManualVideo();
-  restorePreviewCanvas();
-  state.manualDeviceId = '';
+  manual.targetDeviceId = '';
+  if (window.state) window.state.manualDeviceId = '';
   controlImage.hidden = true;
   controlImage.style.display = 'none';
-  requestAllPreviews();
-  elements.deviceGrid.querySelector('.selected')?.focus();
-});
-
-window.addEventListener('device-preview:closed', event => {
-  if (!dialog.open || event.detail?.deviceId !== state.manualDeviceId ||
-      event.detail?.player !== manual.previewPlayer || !manual.previewCanvas) return;
-  const canvas = manual.previewCanvas;
   try {
-    controlImage.width = canvas.width;
-    controlImage.height = canvas.height;
-    controlImage.getContext('2d', { alpha: false }).drawImage(canvas, 0, 0);
-    controlImage.hidden = false;
-    controlImage.style.display = 'block';
-  } catch { /* The read-only modal stream can still render its own canvas. */ }
-  restorePreviewCanvas();
-  manual.frameAt = 0;
-  controlStatus.textContent = '正在恢复投屏画面…';
-  controlLoading.textContent = controlStatus.textContent;
-  controlLoading.hidden = false; controlLoading.style.display = 'flex';
-  startManualVideo();
+    const dlg = dialog || getEl('controlDialog');
+    if (dlg) {
+      dlg.hidden = true;
+      dlg.setAttribute('hidden', '');
+      dlg.removeAttribute('open');
+      dlg.style.display = 'none';
+      if (typeof dlg.close === 'function') {
+        try { dlg.close(); } catch {}
+      }
+    }
+  } catch {}
+  requestAllPreviews();
+  (getElements().deviceGrid || getEl('deviceGrid'))?.querySelector('.selected')?.focus();
+}
+window.closeManualControl = closeManualControl;
+
+dialog.addEventListener('close', () => {
+  if (!manual.targetDeviceId && !window.state?.manualDeviceId) return;
+  closeManualControl();
 });
 
-byId('closeControl').addEventListener('click', () => dialog.close());
-byId('refreshControl').addEventListener('click', captureManual);
+const closeCtrl = getEl('closeControl');
+if (closeCtrl) closeCtrl.addEventListener('click', closeManualControl);
+
+// 支持标题栏全屏任意拖拽 (Draggable Floating Window)
+const heading = getEl('controlHeading');
+if (heading && dialog) {
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let initialLeft = 0, initialTop = 0;
+
+  heading.addEventListener('pointerdown', event => {
+    // 忽略标题栏上的功能按钮点击（如关闭 ✕、复制ID、视觉透视等）
+    if (event.target.closest('button, a, input, select')) return;
+    if (event.button !== 0) return;
+
+    isDragging = true;
+    heading.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    startX = event.clientX;
+    startY = event.clientY;
+
+    const rect = dialog.getBoundingClientRect();
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    dialog.style.left = initialLeft + 'px';
+    dialog.style.top = initialTop + 'px';
+    dialog.style.margin = '0';
+    dialog.style.position = 'fixed';
+
+    const onPointerMove = e => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      let newLeft = initialLeft + dx;
+      let newTop = initialTop + dy;
+
+      const maxLeft = Math.max(0, window.innerWidth - (dialog.offsetWidth || 384));
+      const maxTop = Math.max(0, window.innerHeight - (dialog.offsetHeight || 600));
+
+      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+      newTop = Math.max(0, Math.min(newTop, maxTop));
+
+      dialog.style.left = newLeft + 'px';
+      dialog.style.top = newTop + 'px';
+    };
+
+    const onPointerUp = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      heading.style.cursor = 'grab';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  });
+}
+
+// 支持按 Esc 键关闭悬浮窗
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && isControlOpen()) {
+    closeManualControl();
+  }
+});
+
+const refreshCtrl = getEl('refreshControl');
+if (refreshCtrl) refreshCtrl.addEventListener('click', captureManual);
 if (toggleVisionBtn) {
   toggleVisionBtn.addEventListener('click', () => {
     setVisionActive(!manual.visionActive);
@@ -612,16 +768,25 @@ if (reinspectVisionBtn) {
     inspectVisionCurrentFrame();
   });
 }
-for (const button of dialog.querySelectorAll('[data-nav]')) button.addEventListener('click', () => { sendInput({ type: 'nav', key: button.dataset.nav }); surface.focus(); });
-
+for (const button of dialog.querySelectorAll('[data-nav]')) {
+  button.addEventListener('click', event => {
+    event.stopPropagation();
+    const rawKey = button.dataset.nav;
+    const key = rawKey === 'task' ? 'overview' : rawKey;
+    sendInput({ type: 'nav', key });
+    surface.focus();
+  });
+}
 
 function normalizedPoint(event, clamp = false) {
   const image = activeControlCanvas();
-  if (!manual.ready || image.hidden || !latestControlFrameAt()) return null;
-  const rect = image.getBoundingClientRect();
-  const scale = Math.min(rect.width / image.width, rect.height / image.height);
-  if (manual.width && Math.abs((image.width / image.height) / (manual.width / manual.height) - 1) > 0.05) { releaseManual(); return null; }
-  const width = image.width * scale, height = image.height * scale;
+  const targetEl = (image && !image.hidden) ? image : surface;
+  const rect = targetEl.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const imgW = (image && image.width) || manual.width || 720;
+  const imgH = (image && image.height) || manual.height || 1280;
+  const scale = Math.min(rect.width / imgW, rect.height / imgH);
+  const width = imgW * scale, height = imgH * scale;
   const x = (event.clientX - rect.left - (rect.width - width) / 2) / width;
   const y = (event.clientY - rect.top - (rect.height - height) / 2) / height;
   if (!clamp && (x < 0 || y < 0 || x > 1 || y > 1)) return null;
@@ -629,18 +794,25 @@ function normalizedPoint(event, clamp = false) {
 }
 surface.addEventListener('pointerdown', event => {
   if (event.button !== 0 || manual.pointer !== null) return;
-  const point = normalizedPoint(event); if (!point) return;
-  event.preventDefault(); surface.focus();
-  if (sendInput({ type: 'touch', action: 'down', ...point })) { manual.pointer = event.pointerId; surface.setPointerCapture(event.pointerId); }
+  const point = normalizedPoint(event);
+  if (!point) return;
+  event.preventDefault();
+  surface.focus();
+  if (sendInput({ type: 'touch', action: 'down', ...point })) {
+    manual.pointer = event.pointerId;
+    try { surface.setPointerCapture(event.pointerId); } catch {}
+  }
 });
 surface.addEventListener('pointermove', event => {
   if (manual.pointer === null) {
     if (manual.visionActive) handleVisionPointerMove(event);
     return;
   }
-  if (event.pointerId !== manual.pointer || performance.now() - manual.lastMove < 20) return;
-  const point = normalizedPoint(event, true); if (!point) return;
-  manual.lastMove = performance.now(); sendInput({ type: 'touch', action: 'move', ...point });
+  if (event.pointerId !== manual.pointer || performance.now() - manual.lastMove < 16) return;
+  const point = normalizedPoint(event, true);
+  if (!point) return;
+  manual.lastMove = performance.now();
+  sendInput({ type: 'touch', action: 'move', ...point });
 });
 surface.addEventListener('pointerleave', () => {
   if (manual.visionActive) {
@@ -655,8 +827,14 @@ window.addEventListener('resize', () => {
 surface.addEventListener('pointerup', event => {
   if (event.pointerId !== manual.pointer) return;
   const point = normalizedPoint(event, true);
-  if (point) sendInput({ type: 'touch', action: 'up', ...point }); else releaseManual();
-  manual.pointer = null; if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
+  if (point) sendInput({ type: 'touch', action: 'up', ...point });
+  else releaseManual();
+  manual.pointer = null;
+  try {
+    if (surface.hasPointerCapture(event.pointerId)) {
+      surface.releasePointerCapture(event.pointerId);
+    }
+  } catch {}
 });
 surface.addEventListener('pointercancel', releaseManual);
 surface.addEventListener('lostpointercapture', releaseManual);
@@ -681,21 +859,21 @@ window.addEventListener('pagehide', () => { stopManualVideo(); stopPreview(); })
 document.addEventListener('visibilitychange', () => {
   // Keep video transports alive in the background, but never keep held input.
   if (document.hidden) { releaseManual(); manual.frameAt = 0; }
-  else if (dialog.open) captureManual(); else requestAllPreviews();
+  else if (isControlOpen()) captureManual(); else requestAllPreviews();
 });
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;
-  if (dialog.open) captureManual(); else requestAllPreviews();
+  if (isControlOpen()) captureManual(); else requestAllPreviews();
 });
 window.addEventListener('online', () => {
-  if (dialog.open) captureManual(); else requestAllPreviews();
+  if (isControlOpen()) captureManual(); else requestAllPreviews();
 });
 
-const previewSize = byId('previewSize');
-try { const stored = Number(localStorage.getItem('yunmomo.previewWidth')); if (stored >= 140 && stored <= 500 && stored % 10 === 0) previewSize.value = String(stored); } catch { /* Storage can be disabled. */ }
-function resizePreviews() {
-  document.documentElement.style.setProperty('--device-width', previewSize.value + 'px');
-  byId('previewSizeValue').textContent = previewSize.value;
-  try { localStorage.setItem('yunmomo.previewWidth', previewSize.value); } catch { /* Size preference is optional. */ }
+const previewSize = getEl('previewSize');
+if (previewSize) {
+  previewSize.value = '340';
+  document.documentElement.style.setProperty('--device-width', '340px');
+  try { localStorage.removeItem('yunmomo.previewWidth'); } catch {}
 }
-previewSize.addEventListener('input', resizePreviews); resizePreviews();
+
+})(window);

@@ -24,12 +24,15 @@
 
   class CloudVideoPlayer {
     static canReconnect(code) {
-      return !['DEVICE_BUSY', 'VIDEO_LIMIT', 'VIEWER_LIMIT', 'VIDEO_CLOSED',
+      return !['DEVICE_FORBIDDEN', 'UNAUTHORIZED', 'DEVICE_BUSY', 'VIDEO_LIMIT', 'VIEWER_LIMIT', 'VIDEO_CLOSED',
         'VIDEO_DECODER_UNSUPPORTED', 'VIDEO_CODEC_UNSUPPORTED', 'INPUT_BACKPRESSURE'].includes(code);
     }
 
     constructor({ canvas, deviceId, interactive = false, onMessage = () => {}, onFrame = () => {},
       onError = () => {}, onClose = () => {} }) {
+      if (!deviceId || typeof deviceId !== 'string') {
+        throw new Error('CloudVideoPlayer: 缺少有效 deviceId');
+      }
       this.canvas = canvas;
       this.onMessage = onMessage;
       this.onFrame = onFrame;
@@ -46,6 +49,10 @@
       const url = new URL(interactive ? '/api/control' : '/api/video', location.href);
       url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       url.searchParams.set('deviceId', deviceId);
+      try {
+        const token = localStorage.getItem('yunmomo.auth_token');
+        if (token) url.searchParams.set('token', token);
+      } catch {}
       this.socket = new WebSocket(url);
       this.socket.binaryType = 'arraybuffer';
       this.lastMessageAt = Date.now();

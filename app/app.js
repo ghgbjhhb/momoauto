@@ -24,48 +24,98 @@ const state = {
 };
 
 const byId = id => document.getElementById(id);
-const elements = {
-  serviceState: byId('serviceState'),
-  sharedActivity: byId('sharedActivity'),
-  serviceText: byId('serviceState').querySelector('.state-text'),
-  sessionBridge: byId('sessionBridge'),
-  sessionSettings: byId('sessionSettings'),
-  sessionToken: byId('sessionToken'),
-  connectSession: byId('connectSession'),
-  refreshDevices: byId('refreshDevices'),
-  previewTitle: byId('previewTitle'),
-  previewState: byId('previewState'),
-  deviceGrid: byId('deviceGrid'),
-  previewSummary: byId('previewSummary'),
-  refreshPreview: byId('refreshPreview'),
-  pipelineStepperBox: byId('pipelineStepperBox'),
-  pipelineStepper: byId('pipelineStepper'),
-  stepperTargetBadge: byId('stepperTargetBadge'),
-  stepperRunAllBtn: byId('stepperRunAllBtn'),
-  resetStepperBtn: byId('resetStepperBtn'),
-  scriptList: byId('scriptList'),
-  outputSection: byId('outputSection'),
-  outputToggle: byId('outputToggle'),
-  outputBox: byId('outputBox'),
-  clearOutput: byId('clearOutput'),
-  copyOutputBtn: byId('copyOutputBtn'),
-  stopScriptBtn: byId('stopScriptBtn'),
-  statTotal: byId('statTotal'),
-  statOnline: byId('statOnline'),
-  statTarget: byId('statTarget'),
-  workbenchTarget: byId('workbenchTarget'),
-  toast: byId('toast'),
-  userPill: byId('userPill'),
-  openRedeemModalBtn: byId('openRedeemModalBtn'),
-  adminPortalLink: byId('adminPortalLink'),
-  userLogoutBtn: byId('userLogoutBtn'),
-  redeemDialog: byId('redeemDialog'),
-  closeRedeemModalBtn: byId('closeRedeemModalBtn'),
-  cancelRedeemBtn: byId('cancelRedeemBtn'),
-  submitRedeemBtn: byId('submitRedeemBtn'),
-  redeemCardInput: byId('redeemCardInput'),
-  redeemAlert: byId('redeemAlert')
+window.byId = byId;
+window.state = state;
+
+// 统一应用状态与事件总线 (Unified App Hub)
+const eventBus = new EventTarget();
+const AppStore = {
+  get state() { return state; },
+  getSelectedDeviceId() { return state.selectedDeviceId || state.devices[0]?.deviceId || ''; },
+  setSelectedDeviceId(id) { selectDevice(id); },
+  getManualDeviceId() { return state.manualDeviceId || ''; },
+  setManualDeviceId(id) {
+    state.manualDeviceId = id || '';
+    eventBus.dispatchEvent(new CustomEvent('manual:changed', { detail: { deviceId: id } }));
+  },
+  getCurrentDevice() { return currentDevice(); },
+  getDevices() { return state.devices || []; },
+  on(event, handler) { eventBus.addEventListener(event, handler); },
+  off(event, handler) { eventBus.removeEventListener(event, handler); },
+  emit(event, detail) { eventBus.dispatchEvent(new CustomEvent(event, { detail })); }
 };
+
+window.YunMomo = {
+  store: AppStore,
+  state: state,
+  eventBus: eventBus,
+  api: {
+    requestJson,
+    showToast,
+    copyToClipboard
+  }
+};
+
+// 动态安全元素访问代理，避免由于脚本加载时序导致 null 引用
+const elements = new Proxy({
+  serviceState: null,
+  sharedActivity: null,
+  serviceText: null,
+  sessionBridge: null,
+  sessionSettings: null,
+  sessionToken: null,
+  connectSession: null,
+  refreshDevices: null,
+  previewTitle: null,
+  previewState: null,
+  deviceGrid: null,
+  previewSummary: null,
+  refreshPreview: null,
+  pipelineStepperBox: null,
+  pipelineStepper: null,
+  stepperTargetBadge: null,
+  stepperRunAllBtn: null,
+  resetStepperBtn: null,
+  scriptList: null,
+  outputSection: null,
+  outputToggle: null,
+  outputBox: null,
+  systemLogBox: null,
+  tabTerminalScript: null,
+  tabTerminalSystem: null,
+  systemLogBadge: null,
+  diagReportBtn: null,
+  clearOutput: null,
+  copyOutputBtn: null,
+  stopScriptBtn: null,
+  statTotal: null,
+  statOnline: null,
+  statTarget: null,
+  workbenchTarget: null,
+  toast: null,
+  userPill: null,
+  openRedeemModalBtn: null,
+  adminPortalLink: null,
+  userLogoutBtn: null,
+  redeemDialog: null,
+  closeRedeemModalBtn: null,
+  cancelRedeemBtn: null,
+  submitRedeemBtn: null,
+  redeemCardInput: null,
+  redeemAlert: null
+}, {
+  get(target, prop) {
+    if (prop === 'serviceText') {
+      return byId('serviceState')?.querySelector?.('.state-text') || byId('serviceState');
+    }
+    const cached = target[prop];
+    if (cached && cached.isConnected) return cached;
+    const el = byId(prop);
+    if (el) target[prop] = el;
+    return el;
+  }
+});
+window.elements = elements;
 
 const STEPS_META = [
   { order: 1, id: 'flow-01-import-cloud-disk', name: '导入云盘', full: '01 导入云盘所有文件' },
@@ -154,8 +204,10 @@ function renderPipelineStepper() {
 
   if (elements.stepperRunAllBtn) {
     const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
+    const label = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
     const labelSpan = elements.stepperRunAllBtn.querySelector('span:last-child');
-    if (labelSpan) labelSpan.textContent = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
+    if (labelSpan) labelSpan.textContent = label;
+    else elements.stepperRunAllBtn.textContent = label;
     elements.stepperRunAllBtn.title = isV2 ? '执行全流程 01–08 (V2)' : '执行全流程 01–08 (V3)';
   }
 
@@ -191,17 +243,21 @@ function renderPipelineStepper() {
     node.append(num, info, indicator);
 
     const triggerStep = () => {
-      if (!currentDevice()) {
+      const dev = currentDevice();
+      if (!dev) {
         showToast('请先选择一台云机');
         return;
       }
-      const script = state.scripts.find(s => s.order === step.order);
+      const isV2 = String(dev.sdkVersion || '').toLowerCase() === 'v2';
+      const targetVer = isV2 ? 'v2' : 'v3';
+      const script = state.scripts.find(s => s.order === step.order && (s.category === targetVer || s.version === targetVer || s.id.endsWith('-' + targetVer)))
+        || state.scripts.find(s => s.order === step.order);
       if (script) {
         const card = elements.scriptList.querySelector(`[data-script-id="${script.id}"]`);
         const btn = card?.querySelector('.run-button');
         executeScript(script, btn, card);
       } else {
-        showToast(`未找到步骤 ${step.order} 对应的执行脚本`);
+        showToast(`未找到步骤 ${step.order} 对应的 ${targetVer.toUpperCase()} 执行脚本`);
       }
     };
 
@@ -248,8 +304,13 @@ function fallbackCopy(text, successToast) {
 }
 window.copyToClipboard = copyToClipboard;
 
-async function requestJson(url, options) {
-  const response = await fetch(url, options);
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem('yunmomo.auth_token');
+  const headers = new Headers(options.headers || {});
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const response = await fetch(url, { ...options, headers });
   let payload = null;
   try {
     payload = await response.json();
@@ -292,9 +353,13 @@ function updateScriptRunControls(run) {
 }
 
 function setService(kind, text) {
-  elements.serviceState.classList.remove('ready', 'error');
-  if (kind) elements.serviceState.classList.add(kind);
-  elements.serviceText.textContent = text;
+  if (elements.serviceState) {
+    elements.serviceState.classList.remove('ready', 'error');
+    if (kind) elements.serviceState.classList.add(kind);
+  }
+  if (elements.serviceText) {
+    elements.serviceText.textContent = text;
+  }
 }
 
 let toastTimer;
@@ -454,6 +519,7 @@ function selectDevice(deviceId) {
   renderPreviewSummary();
   renderPipelineStepper();
   updateSharedRunControls();
+  requestAllPreviews(); // 切换选中云机时即刻建立投屏，释放未选中机型闲置占用
   window.dispatchEvent(new CustomEvent('device:selected', { detail: { deviceId } }));
 }
 
@@ -478,7 +544,7 @@ function createDeviceCard(device) {
 
   // 卡片头部：系统编号徽章 + 设备名称 + 在线呼吸灯状态
   const header = document.createElement('div');
-  header.className = 'device-card-head';
+  header.className = 'device-card-head device-card-header';
 
   const titleWrap = document.createElement('div');
   titleWrap.className = 'device-title-wrap';
@@ -504,7 +570,7 @@ function createDeviceCard(device) {
   }
 
   const status = document.createElement('span');
-  status.className = 'device-status' + (isOnline(device) ? ' online' : '');
+  status.className = 'device-status device-status-pill' + (isOnline(device) ? ' online' : '');
   status.innerHTML = `<span class="status-dot"></span><span class="status-label">${isOnline(device) ? '在线' : '连接中'}</span>`;
 
   header.append(titleWrap, status);
@@ -514,12 +580,12 @@ function createDeviceCard(device) {
   if (device.expireAt) {
     expireBar = document.createElement('div');
     expireBar.className = 'device-expire-bar';
-    expireBar.style.cssText = 'padding: 5px 10px; font-size: 11px; background: rgba(56, 139, 253, 0.12); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; border-radius: 4px; margin: 4px 6px;';
+    expireBar.style.cssText = 'padding: 6px 12px; font-size: 12.5px; background: #e6f4ff; border: 1px solid #91caff; display: flex; align-items: center; justify-content: space-between; border-radius: 4px; margin: 6px 10px;';
     const remainingText = device.remainingText || '计算中…';
     const expireDateStr = new Date(device.expireAt).toLocaleDateString();
     expireBar.innerHTML = `
-      <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:#fff;">${expireDateStr}</strong></span>
-      <span style="color:var(--cyan); font-weight:600;">剩余 ${remainingText}</span>
+      <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:var(--text-title);">${expireDateStr}</strong></span>
+      <span style="color:#0958d9; font-weight:600;">剩余 ${remainingText}</span>
     `;
     expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
   }
@@ -546,15 +612,26 @@ function createDeviceCard(device) {
   screen.setAttribute('aria-label', `放大操作 ${numBadgeText} (${device.name})`);
   screen.tabIndex = 0;
   screen.title = '点击进入真机控制台操作';
+  function launchControl() {
+    window.AppLogger?.info('ManualControl', `点击触发放大操作云机 [${device.name}] (${device.deviceId})`);
+    if (typeof window.openManualControl === 'function') {
+      window.openManualControl(device);
+    } else if (typeof openManualControl === 'function') {
+      openManualControl(device);
+    } else {
+      showToast('控制台组件加载中，请稍候');
+    }
+  }
+
   screen.addEventListener('click', event => {
     event.stopPropagation();
-    openManualControl(device);
+    launchControl();
   });
   screen.addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       event.stopPropagation();
-      openManualControl(device);
+      launchControl();
     }
   });
 
@@ -581,7 +658,7 @@ function createDeviceCard(device) {
   operateBtn.title = '放大并进入全屏控制台操作';
   operateBtn.addEventListener('click', event => {
     event.stopPropagation();
-    openManualControl(device);
+    launchControl();
   });
 
   // 底部业务工具条：解决“数字看着没什么用”的问题，集成一键复制虚拟机 ID
@@ -638,34 +715,112 @@ function createDeviceCard(device) {
   return card;
 }
 
+function updateDeviceCard(card, device, index) {
+  const numBadgeText = '#' + String(index + 1).padStart(2, '0');
+  const badge = card.querySelector('.device-num-badge');
+  if (badge && badge.textContent !== numBadgeText) badge.textContent = numBadgeText;
+
+  const name = card.querySelector('.device-name');
+  if (name && name.textContent !== device.name) {
+    name.textContent = device.name;
+    name.title = device.name;
+  }
+
+  const status = card.querySelector('.device-status');
+  if (status) {
+    const online = isOnline(device);
+    status.className = 'device-status device-status-pill' + (online ? ' online' : '');
+    const label = status.querySelector('.status-label');
+    if (label) label.textContent = online ? '在线' : '连接中';
+  }
+
+  let expireBar = card.querySelector('.device-expire-bar');
+  if (device.expireAt) {
+    const remainingText = device.remainingText || '计算中…';
+    const expireDateStr = new Date(device.expireAt).toLocaleDateString();
+    if (!expireBar) {
+      expireBar = document.createElement('div');
+      expireBar.className = 'device-expire-bar';
+      expireBar.style.cssText = 'padding: 6px 12px; font-size: 12.5px; background: #e6f4ff; border: 1px solid #91caff; display: flex; align-items: center; justify-content: space-between; border-radius: 4px; margin: 6px 10px;';
+      const head = card.querySelector('.device-card-head');
+      if (head && head.nextSibling) card.insertBefore(expireBar, head.nextSibling);
+      else card.prepend(expireBar);
+    }
+    expireBar.innerHTML = `
+      <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:var(--text-title);">${expireDateStr}</strong></span>
+      <span style="color:#0958d9; font-weight:600;">剩余 ${remainingText}</span>
+    `;
+    expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
+  } else if (expireBar) {
+    expireBar.remove();
+  }
+
+  updateMiniStepperForDevice(device.deviceId);
+}
+
 function renderDeviceGrid() {
-  stopPreview();
-  elements.deviceGrid.replaceChildren();
+  const grid = elements.deviceGrid;
+  if (!grid) return;
 
   if (!state.devices.length) {
+    stopPreview();
+    grid.replaceChildren();
     const empty = document.createElement('div');
     empty.className = 'loading-card empty-user-devices';
-    empty.style.cssText = 'padding: 40px 20px; text-align: center; border: 1px dashed var(--line-accent); border-radius: 12px; margin: 20px;';
+    empty.style.cssText = 'padding: 40px 20px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; margin: 20px; background: #ffffff;';
     empty.innerHTML = `
       <div style="font-size: 36px; margin-bottom: 12px;">📱</div>
-      <div style="font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 8px;">您名下暂无已分配的云手机</div>
-      <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">请点击顶部的【🎟️ 兑换卡密】输入管理员提供的卡密，立即激活分配专属云机！</div>
+      <div style="font-size: 16px; font-weight: 600; color: var(--text-title); margin-bottom: 8px;">您名下暂无已分配的云手机</div>
+      <div style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 18px;">请点击顶部的【兑换卡密】输入管理员提供的卡密，立即激活分配专属云机！</div>
       <button class="run-button" id="emptyRedeemBtn" type="button" style="margin: 0 auto; display: inline-flex;">立即兑换卡密</button>
     `;
     const btn = empty.querySelector('#emptyRedeemBtn');
     if (btn) btn.onclick = () => elements.openRedeemModalBtn?.click();
-    elements.deviceGrid.append(empty);
+    grid.append(empty);
     renderPreviewSummary();
     renderPipelineStepper();
     return;
   }
 
+  // 清除空状态指示
+  grid.querySelector('.empty-user-devices')?.remove();
+  grid.querySelector('.loading-card')?.remove();
+
   if (!state.devices.some(device => device.deviceId === state.selectedDeviceId)) {
     state.selectedDeviceId = state.devices[0].deviceId;
   }
-  for (const device of state.devices) {
-    elements.deviceGrid.append(createDeviceCard(device));
+
+  const existingCards = new Map();
+  for (const card of grid.querySelectorAll('.device-card')) {
+    existingCards.set(card.dataset.deviceId, card);
   }
+
+  const currentIds = new Set(state.devices.map(d => d.deviceId));
+
+  // 释放已被删除的设备卡片及其实例
+  for (const [id, card] of existingCards) {
+    if (!currentIds.has(id)) {
+      const player = state.previewPlayers.get(id);
+      if (player) {
+        state.previewPlayers.delete(id);
+        player.close();
+      }
+      card.remove();
+      existingCards.delete(id);
+    }
+  }
+
+  // 就地增量更新已有卡片，避免销毁画布及硬件解码器
+  state.devices.forEach((device, index) => {
+    let card = existingCards.get(device.deviceId);
+    if (!card) {
+      card = createDeviceCard(device);
+      grid.append(card);
+    } else {
+      updateDeviceCard(card, device, index);
+    }
+  });
+
   renderSelectedDevice();
   renderPreviewSummary();
   renderPipelineStepper();
@@ -683,7 +838,7 @@ function stopPreview() {
 }
 
 function requestDevicePreview(device, card) {
-  if (state.previewPlayers.has(device.deviceId) || state.manualDeviceId) return;
+  if (state.previewPlayers.has(device.deviceId)) return;
   const image = card.querySelector('.device-screen-image');
   const placeholder = card.querySelector('.device-screen-placeholder');
   const status = card.querySelector('.device-status');
@@ -713,7 +868,7 @@ function requestDevicePreview(device, card) {
       if (!code) placeholder.textContent = '画面已暂停';
       card.classList.add('preview-error'); status.textContent = '待刷新'; status.classList.remove('online');
       renderPreviewSummary();
-      if (!state.manualDeviceId && CloudVideoPlayer.canReconnect(code)) {
+      if (CloudVideoPlayer.canReconnect(code)) {
         state.previewRetry.set(device.deviceId, setTimeout(() => {
           if (card.isConnected) requestDevicePreview(device, card);
         }, 3000));
@@ -724,10 +879,21 @@ function requestDevicePreview(device, card) {
 }
 
 function requestAllPreviews() {
-  if (!state.tokenConfigured || !state.devices.length || state.manualDeviceId) return;
-  for (const card of elements.deviceGrid.querySelectorAll('.device-card')) {
-    const device = state.devices.find(item => item.deviceId === card.dataset.deviceId);
-    if (device) requestDevicePreview(device, card);
+  if (!state.tokenConfigured || !state.devices.length) return;
+  const targetId = state.selectedDeviceId || state.devices[0]?.deviceId;
+
+  // 释放非当前选中云机的视频流解码占用，节省客户端 GPU/CPU 与网络带宽
+  for (const [id, player] of state.previewPlayers) {
+    if (id !== targetId) {
+      state.previewPlayers.delete(id);
+      player.close();
+    }
+  }
+
+  const selectedCard = elements.deviceGrid.querySelector(`.device-card[data-device-id="${targetId}"]`);
+  const selectedDevice = state.devices.find(d => d.deviceId === targetId);
+  if (selectedCard && selectedDevice) {
+    requestDevicePreview(selectedDevice, selectedCard);
   }
 }
 
@@ -736,6 +902,15 @@ function startPreview() {
   if (!state.devices.length || !state.tokenConfigured) return;
   requestAllPreviews();
 }
+
+window.copyToClipboard = copyToClipboard;
+window.requestJson = requestJson;
+window.showToast = showToast;
+window.currentDevice = currentDevice;
+window.externalScriptForDevice = externalScriptForDevice;
+window.selectDevice = selectDevice;
+window.stopPreview = stopPreview;
+window.requestAllPreviews = requestAllPreviews;
 
 function parameterChoiceLabel(field, value) {
   if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
@@ -795,7 +970,7 @@ function createScriptCard(script) {
     settings.className = 'script-settings';
     settings.open = true;
     const summary = document.createElement('summary');
-    summary.innerHTML = `<span>配置参数</span><svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>`;
+    summary.textContent = '配置参数';
     settings.append(summary);
 
     for (const field of script.parameters) {
@@ -1102,12 +1277,6 @@ function writeOutput(title, lines, meta = {}) {
 
   elements.outputBox.textContent = header + '\n' + cleanLines.join('\n');
   if (elements.outputSection) elements.outputSection.open = true;
-  const dock = byId('terminalDock');
-  if (dock && dock.classList.contains('minimized')) {
-    dock.classList.remove('minimized');
-    const toggleIcon = byId('terminalToggleIcon');
-    if (toggleIcon) toggleIcon.textContent = '▼';
-  }
   elements.outputBox.scrollTop = elements.outputBox.scrollHeight;
 }
 
@@ -1132,11 +1301,11 @@ function cleanScriptLines(stdout, stderr) {
 }
 
 function promptVpcProxyDialog() {
-  const dialog = document.getElementById('vpcProxyDialog');
-  const input = document.getElementById('vpcProxyInput');
+  const dialog = document.getElementById('vpcDialog') || document.getElementById('vpcProxyDialog');
+  const input = document.getElementById('vpcRawInput') || document.getElementById('vpcProxyInput');
   const closeBtn = document.getElementById('closeVpcDialogBtn');
-  const cancelBtn = document.getElementById('cancelVpcDialogBtn');
-  const confirmBtn = document.getElementById('confirmVpcDialogBtn');
+  const cancelBtn = document.getElementById('cancelVpcBtn') || document.getElementById('cancelVpcDialogBtn');
+  const confirmBtn = document.getElementById('confirmVpcBtn') || document.getElementById('confirmVpcDialogBtn');
 
   if (!dialog || !input) return Promise.resolve(null);
 
@@ -1185,7 +1354,12 @@ function promptVpcProxyDialog() {
     dialog.addEventListener('keydown', onKeyDown);
 
     input.value = '';
-    dialog.showModal();
+    try {
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    } catch {
+      dialog.setAttribute('open', '');
+    }
     setTimeout(() => input.focus(), 50);
   });
 }
@@ -1253,25 +1427,23 @@ async function executeScript(script, button, card) {
     elements.stopScriptBtn.disabled = false;
     elements.stopScriptBtn.textContent = '⏹ 停止脚本';
   }
-  const activeTag = byId('terminalActiveTag');
-  const activeText = byId('terminalActiveText');
-  if (activeTag && activeText) {
-    activeTag.hidden = false;
-    activeText.textContent = script.title;
-  }
   if (button) {
     button.disabled = false;
     button.classList.add('run-button-stop');
     button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止执行</span>`;
   }
   if (card) card.classList.add('running');
+  window.AppLogger?.info('Script', `启动执行脚本 [${script.title}] (目标设备: ${targetId}, 运行ID: ${scriptRunId})`);
   writeOutput('正在执行：' + script.title, [], { runId: scriptRunId });
 
+  let isPollingOutput = false;
   const outputPollTimer = setInterval(async () => {
     if (!state.activeRun || state.activeRun.id !== scriptRunId) {
       clearInterval(outputPollTimer);
       return;
     }
+    if (isPollingOutput) return;
+    isPollingOutput = true;
     try {
       const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
       if (live.ok) {
@@ -1284,7 +1456,8 @@ async function executeScript(script, button, card) {
         }
       }
     } catch { /* 轮询异常静默忽略 */ }
-  }, 100);
+    finally { isPollingOutput = false; }
+  }, 300);
 
   if (script.order >= 1 && script.order <= 8) {
     setStepState(targetId, script.order, 'running');
@@ -1324,7 +1497,7 @@ async function executeScript(script, button, card) {
       if (privateInput) privateInput.value = '';
     }
     if (result.ok) {
-      const vpcInput = document.getElementById('vpcProxyInput');
+      const vpcInput = document.getElementById('vpcRawInput') || document.getElementById('vpcProxyInput');
       if (vpcInput) vpcInput.value = '';
     }
 
@@ -1350,8 +1523,15 @@ async function executeScript(script, button, card) {
       }
     }
 
-    if (result.cancelled) showToast('脚本已停止，请核对设备状态');
-    else if (!result.ok) showToast('脚本执行失败，请查看执行记录');
+    if (result.cancelled) {
+      window.AppLogger?.warn('Script', `脚本已人为中断 [${script.title}] (运行ID: ${scriptRunId})`);
+      showToast('脚本已停止，请核对设备状态');
+    } else if (!result.ok) {
+      window.AppLogger?.error('Script', `脚本执行未达成目标 [${script.title}] (运行ID: ${scriptRunId})`);
+      showToast('脚本执行失败，请查看执行记录');
+    } else {
+      window.AppLogger?.info('Script', `脚本执行成功达成 [${script.title}] (运行ID: ${scriptRunId})`);
+    }
     requestAllPreviews();
   } catch (error) {
     if (state.activeRun && state.activeRun.id !== scriptRunId) return;
@@ -1388,6 +1568,7 @@ async function executeScript(script, button, card) {
       `调用编号：${scriptRunId}`,
       state.activeRun?.logFile ? `原始日志：${state.activeRun.logFile}` : ''
     ], { runId: scriptRunId });
+    window.AppLogger?.error('Script', `脚本执行异常失败 [${script.title}]: ${displayMsg}`, { runId: scriptRunId, error: error.message });
     showToast(displayMsg);
   } finally {
     clearInterval(outputPollTimer);
@@ -1406,8 +1587,6 @@ async function executeScript(script, button, card) {
       }
       if (card) card.classList.remove('running');
     }
-    const activeTag = byId('terminalActiveTag');
-    if (activeTag) activeTag.hidden = true;
     loadSharedRuntimeState();
   }
 }
@@ -1519,23 +1698,8 @@ elements.refreshPreview.addEventListener('click', () => {
   requestAllPreviews();
 });
 
-elements.clearOutput.addEventListener('click', () => {
-  elements.outputBox.textContent = '暂无执行记录。';
-});
-
 if (elements.stopScriptBtn) {
   elements.stopScriptBtn.addEventListener('click', stopRunningScript);
-}
-
-if (elements.copyOutputBtn) {
-  elements.copyOutputBtn.addEventListener('click', () => {
-    const text = elements.outputBox.textContent || '';
-    if (!text || text === '暂无执行记录。' || text.startsWith('暂无执行记录')) {
-      showToast('暂无执行日志可复制');
-      return;
-    }
-    copyToClipboard(text, '已复制终端日志到剪贴板');
-  });
 }
 
 if (elements.outputSection && elements.outputToggle) {
@@ -1577,6 +1741,106 @@ function initTabs() {
     if (savedTab !== 'flow' && savedTab !== 'ai') savedTab = 'flow';
   } catch {}
   switchTab(savedTab);
+}
+
+function initTerminalTabs() {
+  let activeTerminalTab = 'script'; // 'script' | 'system'
+
+  function updateSystemLogView() {
+    if (!elements.systemLogBox) return;
+    const logs = window.AppLogger ? window.AppLogger.getLogs() : [];
+    if (!logs.length) {
+      elements.systemLogBox.textContent = '暂无系统日志。';
+      return;
+    }
+    const lines = logs.map(item => {
+      const d = item.details ? ' ' + (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
+      return `[${item.time}] [${item.level}] [${item.tag}] ${item.message}${d}`;
+    });
+    elements.systemLogBox.textContent = lines.join('\n');
+    elements.systemLogBox.scrollTop = elements.systemLogBox.scrollHeight;
+  }
+
+  function updateBadge() {
+    if (!elements.systemLogBadge || !window.AppLogger) return;
+    const count = window.AppLogger.getErrorCount();
+    elements.systemLogBadge.textContent = String(count);
+    elements.systemLogBadge.style.display = count > 0 ? 'inline-flex' : 'none';
+  }
+
+  if (window.AppLogger) {
+    window.AppLogger.subscribe(() => {
+      updateBadge();
+      if (activeTerminalTab === 'system') {
+        updateSystemLogView();
+      }
+    });
+    updateBadge();
+  }
+
+  if (elements.tabTerminalScript) {
+    elements.tabTerminalScript.addEventListener('click', () => {
+      activeTerminalTab = 'script';
+      elements.tabTerminalScript.classList.add('active');
+      elements.tabTerminalSystem?.classList.remove('active');
+      if (elements.outputBox) elements.outputBox.style.display = 'block';
+      if (elements.systemLogBox) elements.systemLogBox.style.display = 'none';
+    });
+  }
+
+  if (elements.tabTerminalSystem) {
+    elements.tabTerminalSystem.addEventListener('click', () => {
+      activeTerminalTab = 'system';
+      elements.tabTerminalSystem.classList.add('active');
+      elements.tabTerminalScript?.classList.remove('active');
+      if (elements.outputBox) elements.outputBox.style.display = 'none';
+      if (elements.systemLogBox) {
+        elements.systemLogBox.style.display = 'block';
+        updateSystemLogView();
+      }
+    });
+  }
+
+  if (elements.diagReportBtn) {
+    elements.diagReportBtn.addEventListener('click', () => {
+      const report = window.AppLogger?.exportDiagnostics() || '{}';
+      copyToClipboard(report, '已复制完整系统诊断包到剪贴板，可直接发送技术支持排查');
+    });
+  }
+
+  if (elements.clearOutput) {
+    elements.clearOutput.addEventListener('click', () => {
+      if (activeTerminalTab === 'system') {
+        window.AppLogger?.clear();
+        updateSystemLogView();
+        updateBadge();
+        showToast('已清空系统运行日志');
+      } else {
+        if (elements.outputBox) elements.outputBox.textContent = '暂无执行记录。';
+        showToast('已清空脚本执行日志');
+      }
+    });
+  }
+
+  if (elements.copyOutputBtn) {
+    elements.copyOutputBtn.addEventListener('click', () => {
+      if (activeTerminalTab === 'system') {
+        const text = elements.systemLogBox?.textContent || '';
+        if (!text || text === '暂无系统日志。') {
+          showToast('暂无系统日志可复制');
+          return;
+        }
+        copyToClipboard(text, '已复制系统运行日志到剪贴板');
+      } else {
+        const text = elements.outputBox?.textContent || '';
+        if (!text || text === '暂无执行记录。' || text.startsWith('暂无执行记录')) {
+          showToast('暂无执行日志可复制');
+          return;
+        }
+        copyToClipboard(text, '已复制脚本执行日志到剪贴板');
+      }
+    });
+  }
 }
 
 if (elements.stepperRunAllBtn) {
@@ -1672,23 +1936,28 @@ if (elements.submitRedeemBtn) {
 async function checkAuth() {
   const isEmbed = location.search.includes('view=admin-embed');
   try {
-    let res = await fetch('/api/auth/me');
+    const savedToken = localStorage.getItem('yunmomo.auth_token');
+    const headers = savedToken ? { 'Authorization': `Bearer ${savedToken}` } : {};
+    let res = await fetch('/api/auth/me', { headers });
     let data = await res.json();
     if (!data.ok || !data.user) {
-      // 本机环境 (127.0.0.1 / localhost) 自动尝试以默认超管免密静默登录，无需用户手动打断体验
-      if (['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)) {
-        try {
-          const autoRes = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'admin@yunmomo.local', password: 'admin123456' })
-          });
-          const autoData = await autoRes.json();
-          if (autoData.ok && autoData.user) {
-            data = autoData;
+      // 自动尝试以默认超管免密静默登录，无需用户手动打断体验
+      try {
+        const autoRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'admin@yunmomo.local', password: 'admin123456' })
+        });
+        const autoData = await autoRes.json();
+        if (autoData.ok && autoData.user) {
+          data = autoData;
+          if (autoData.token) {
+            try { localStorage.setItem('yunmomo.auth_token', autoData.token); } catch {}
           }
-        } catch {}
-      }
+        }
+      } catch {}
+    } else if (data.token) {
+      try { localStorage.setItem('yunmomo.auth_token', data.token); } catch {}
     }
     if (!data.ok || !data.user) {
       if (!isEmbed) location.href = '/login.html';
@@ -1713,13 +1982,27 @@ async function checkAuth() {
 }
 
 async function init() {
-  await checkAuth();
-  await loadStatus();
-  await loadScripts();
-  if (state.tokenConfigured) await loadDevices();
-  renderPipelineStepper();
-  await loadSharedRuntimeState();
+  window.AppLogger?.info('Init', '正在启动控制台工作台前端...');
   initTabs();
+  initTerminalTabs();
+  try {
+    await checkAuth();
+    window.AppLogger?.info('Auth', `登录用户就绪: ${state.currentUser?.email || '未知'}`);
+    await loadStatus();
+    await loadScripts();
+    window.AppLogger?.info('Scripts', `已加载自动化业务脚本 ${state.scripts.length} 个`);
+    if (state.tokenConfigured) {
+      await loadDevices();
+      window.AppLogger?.info('Devices', `已同步云机实例 ${state.devices.length} 台`);
+    }
+    renderPipelineStepper();
+    await loadSharedRuntimeState();
+    window.AppLogger?.info('Init', '控制台工作台初始化全部完成，就绪待命');
+  } catch (fatalErr) {
+    window.AppLogger?.error('Fatal', '控制台初始化异常中断: ' + fatalErr.message, { stack: fatalErr.stack });
+    showToast('控制台初始化异常: ' + fatalErr.message);
+    if (elements.tabTerminalSystem) elements.tabTerminalSystem.click();
+  }
 }
 
 setInterval(loadSharedRuntimeState, 1500);

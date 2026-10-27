@@ -118,14 +118,21 @@
   }
 
   async function runAiReply() {
-    let selectedDeviceId = typeof window.getSelectedDeviceId === 'function' ? window.getSelectedDeviceId() : null;
+    let selectedDeviceId = window.YunMomo?.store?.getSelectedDeviceId?.() || window.state?.selectedDeviceId || null;
+    if (!selectedDeviceId && typeof window.getSelectedDeviceId === 'function') {
+      selectedDeviceId = window.getSelectedDeviceId();
+    }
     if (!selectedDeviceId) {
       const card = document.querySelector('.device-card.selected');
       if (card?.dataset?.deviceId) selectedDeviceId = card.dataset.deviceId;
     }
 
     if (!selectedDeviceId || selectedDeviceId === '--') {
-      alert('请先在左侧选择目标云手机');
+      if (typeof window.showToast === 'function') {
+        window.showToast('请先在左侧选择目标云手机');
+      } else {
+        alert('请先在左侧选择目标云手机');
+      }
       return;
     }
 

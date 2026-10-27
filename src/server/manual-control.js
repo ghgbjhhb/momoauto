@@ -26,11 +26,13 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     const auth = authService || getAuthService();
     const user = auth.getUserFromRequest(request);
     if (!user) {
+      console.warn(`[WS REJECT] ${url.pathname} UNAUTHORIZED`);
       send(ws, { type: 'error', code: 'UNAUTHORIZED', message: '请先登录控制台' });
       ws.close(1008); return;
     }
     const deviceId = url.searchParams.get('deviceId');
     if (!deviceId || !auth.canAccessDevice(user, deviceId)) {
+      console.warn(`[WS REJECT] ${url.pathname} DEVICE_FORBIDDEN deviceId=${deviceId} user=${user.email}`);
       send(ws, { type: 'error', code: 'DEVICE_FORBIDDEN', message: '无权操作此设备或该设备租期已到期' });
       ws.close(1008); return;
     }
@@ -41,9 +43,11 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     let deviceSession = interactive ? manualDevices.get(deviceId) : null;
     if (!deviceId || deviceId.length > 128 || (interactive && (busyDevices.has(deviceId) ||
         (!deviceSession && defaultArbiter.isDeviceBusy(deviceId))))) {
+      console.warn(`[WS REJECT] ${url.pathname} DEVICE_BUSY deviceId=${deviceId}`);
       send(ws, { type: 'error', code: 'DEVICE_BUSY', message: '该设备正在执行脚本，暂时无法手动操作' });
       ws.close(1008); return;
     }
+    console.log(`[WS CONNECT] ${url.pathname} deviceId=${deviceId} user=${user.email}`);
     if (interactive && !deviceSession) {
       const acquired = defaultArbiter.acquireDevice(deviceId, 'manual_' + deviceId,
         { type: 'manual_control', returnLease: true });
@@ -127,7 +131,15 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
           y: Math.round(message.y * (control.screenHeight - 1)) };
         const input = deviceSession;
         if (message.action === 'down') {
-          if (input.touchOwner === lease) throw new Error('已有未松开的触点');
+          if (input.touchOwner === lease && lease.point) {
+            try {
+              if (canSendInput(lease)) {
+                control.touch(protocol.ACTION.UP, lease.point.x, lease.point.y, { pressure: 0, buttons: 0 });
+              }
+            } catch {}
+            lease.point = null;
+            input.touchOwner = null;
+          }
           const previous = input.touchOwner;
           if (previous) {
             try {
@@ -157,6 +169,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
         control.scroll(Math.round(message.x * (control.screenWidth - 1)), Math.round(message.y * (control.screenHeight - 1)), { vScroll: message.dy, hScroll: 0 });
       } else if (message.type === 'nav') {
         if (!['back', 'home', 'overview'].includes(message.key)) throw new Error('导航键无效');
+        console.log(`[MANUAL NAV] ${deviceId} key=${message.key}`);
         resetDeviceInput(); control[message.key]();
       } else if (message.type === 'key') {
         const code = protocol.KEY_CODES[message.key];
@@ -197,6 +210,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
         try { processInput(message); }
         catch (error) {
           try { resetInput(); } catch { /* Preserve original input failure. */ }
+          console.warn(`[MANUAL INPUT ERROR] ${deviceId}: ${error.message}`);
           send(ws, { type: 'error', code: 'INPUT_FAILED', message: redact(error.message) });
         }
       }).finally(() => { deviceSession.queuedInputs--; });
@@ -220,8 +234,14 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       }
     }
     lease.close = close;
-    ws.on('close', () => { close().catch(() => {}); });
-    ws.on('error', () => { close().catch(() => {}); });
+    ws.on('close', (code, reason) => {
+      console.log(`[WS CLOSE] ${url.pathname} deviceId=${deviceId} code=${code}`);
+      close().catch(() => {});
+    });
+    ws.on('error', err => {
+      console.error(`[WS ERROR] ${url.pathname} deviceId=${deviceId}: ${err?.message || err}`);
+      close().catch(() => {});
+    });
     ws.on('message', (raw, binary) => {
       try {
         if (lease.closed) return;
