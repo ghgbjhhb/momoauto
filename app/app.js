@@ -54,8 +54,12 @@ const state = {
 };
 
 function isCurrentUserAdmin() {
+  return Boolean(state.isAdmin || state.currentUser?.role === 'admin');
+}
+
+function isScriptManageMode() {
   const isEmbed = location.search.includes('view=admin-embed');
-  return Boolean(state.isAdmin || state.currentUser?.role === 'admin' || isEmbed);
+  return Boolean(isEmbed && isCurrentUserAdmin());
 }
 
 const byId = id => document.getElementById(id);
@@ -137,7 +141,16 @@ const elements = new Proxy({
   cancelRedeemBtn: null,
   submitRedeemBtn: null,
   redeemCardInput: null,
-  redeemAlert: null
+  redeemAlert: null,
+  openPasswordModalBtn: null,
+  passwordDialog: null,
+  closePasswordModalBtn: null,
+  cancelPasswordBtn: null,
+  submitPasswordBtn: null,
+  pwdCurrentInput: null,
+  pwdNewInput: null,
+  pwdConfirmInput: null,
+  passwordAlert: null
 }, {
   get(target, prop) {
     if (prop === 'serviceText') {
@@ -1002,7 +1015,7 @@ function parameterChoiceLabel(field, value) {
 }
 
 async function saveVisibilityConfig({ type, id, visible }) {
-  if (!isCurrentUserAdmin()) return;
+  if (!isScriptManageMode()) return;
   const payload = {};
   if (type === 'group') {
     if (!state.visibility.groups) state.visibility.groups = {};
@@ -1030,16 +1043,16 @@ async function saveVisibilityConfig({ type, id, visible }) {
 }
 
 function createScriptCard(script) {
-  const isAdmin = isCurrentUserAdmin();
+  const isManageMode = isScriptManageMode();
   const isScriptVisible = state.visibility?.scripts?.[script.id] !== false;
 
-  // 普通用户视角：若该脚本被管理员关闭，则直接不渲染
-  if (!isAdmin && !isScriptVisible) return null;
+  // 普通用户视角（非管理模式）：若该脚本被管理员关闭，则直接不渲染
+  if (!isManageMode && !isScriptVisible) return null;
 
   const card = document.createElement('article');
   card.className = 'script-card';
   card.dataset.scriptId = script.id;
-  if (!isScriptVisible) card.classList.add('hidden-from-user');
+  if (!isScriptVisible && isManageMode) card.classList.add('hidden-from-user');
   if (script.batch) card.classList.add('script-hero-card');
 
   const isSingleInline = script.parameters?.length === 1 && !script.parameters[0].multiline;
@@ -1064,7 +1077,7 @@ function createScriptCard(script) {
   title.textContent = script.order ? script.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '') : script.title;
   titleGroup.append(title);
 
-  if (!isScriptVisible && isAdmin) {
+  if (!isScriptVisible && isManageMode) {
     const hiddenBadge = document.createElement('span');
     hiddenBadge.className = 'badge-hidden-user';
     hiddenBadge.textContent = '用户侧隐藏';
@@ -1080,8 +1093,8 @@ function createScriptCard(script) {
     head.append(dangerTag);
   }
 
-  // 管理员视角：提供用户可见开关
-  if (isAdmin) {
+  // 仅在管理模式下渲染开关
+  if (isManageMode) {
     const visWrap = document.createElement('div');
     visWrap.className = 'script-visibility-wrap';
     visWrap.innerHTML = `
@@ -1304,11 +1317,11 @@ function showInPageConfirm({ title, message, okText = '确定', cancelText = '�
 }
 
 function createVersionSection(versionTag, title, scripts, defaultCollapsed = false, groupKey = '') {
-  const isAdmin = isCurrentUserAdmin();
+  const isManageMode = isScriptManageMode();
   const isGroupVisible = state.visibility?.groups?.[groupKey] !== false;
 
-  // 普通用户模式下：如果该分组被关闭，直接不渲染
-  if (!isAdmin && !isGroupVisible) return null;
+  // 普通用户视角（非管理模式）：如果该分组被关闭，直接不渲染
+  if (!isManageMode && !isGroupVisible) return null;
 
   const section = document.createElement('section');
   const tagClass = versionTag.toLowerCase() + '-tag';
@@ -1321,15 +1334,15 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
     if (saved !== null) isCollapsed = saved === 'true';
   } catch {}
 
-  section.className = `scripts-version-column ${colClass}` + (isCollapsed ? ' collapsed' : '') + (!isGroupVisible ? ' hidden-from-user' : '');
+  section.className = `scripts-version-column ${colClass}` + (isCollapsed ? ' collapsed' : '') + (!isGroupVisible && isManageMode ? ' hidden-from-user' : '');
   section.innerHTML = `
     <div class="version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
       <div class="version-badge-group">
         <span class="version-title">${title}</span>
-        ${!isGroupVisible ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
+        ${!isGroupVisible && isManageMode ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
-        ${isAdmin ? `
+        ${isManageMode ? `
           <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此分组">
             <label class="switch-toggle" onclick="event.stopPropagation()">
               <input type="checkbox" class="group-vis-input" data-group="${groupKey}" ${isGroupVisible ? 'checked' : ''}>
@@ -1347,7 +1360,7 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
     <div class="version-cards-stack"></div>
   `;
 
-  if (isAdmin) {
+  if (isManageMode) {
     const groupInput = section.querySelector('.group-vis-input');
     if (groupInput) {
       groupInput.addEventListener('change', e => {
@@ -1367,7 +1380,7 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
     }
   }
 
-  if (!isAdmin && visibleCount === 0) return null;
+  if (!isManageMode && visibleCount === 0) return null;
 
   const head = section.querySelector('.version-column-head');
   const toggleBtn = section.querySelector('.version-collapse-btn');
@@ -1398,11 +1411,14 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
 }
 
 function createBundleCard(bundle) {
-  const isAdmin = isCurrentUserAdmin();
+  const isManageMode = isScriptManageMode();
   const isEnabled = bundle.enabled !== false;
 
+  // 普通用户视角（非管理模式）：若组合脚本被关闭，直接不渲染
+  if (!isManageMode && !isEnabled) return null;
+
   const card = document.createElement('article');
-  card.className = 'script-card bundle-card' + (!isEnabled ? ' hidden-from-user' : '');
+  card.className = 'script-card bundle-card' + (!isEnabled && isManageMode ? ' hidden-from-user' : '');
   card.dataset.bundleId = bundle.id;
 
   const stepScripts = (bundle.stepIds || [])
@@ -1433,7 +1449,7 @@ function createBundleCard(bundle) {
 
   titleGroup.append(badge, title);
 
-  if (!isEnabled && isAdmin) {
+  if (!isEnabled && isManageMode) {
     const hiddenBadge = document.createElement('span');
     hiddenBadge.className = 'badge-hidden-user';
     hiddenBadge.textContent = '用户侧隐藏';
@@ -1442,7 +1458,7 @@ function createBundleCard(bundle) {
 
   titleRow.append(titleGroup);
 
-  if (isAdmin) {
+  if (isManageMode) {
     const adminActions = document.createElement('div');
     adminActions.className = 'bundle-admin-actions';
 
@@ -1559,7 +1575,7 @@ function createBundleCard(bundle) {
 function renderScripts() {
   elements.scriptList.replaceChildren();
 
-  const isAdmin = isCurrentUserAdmin();
+  const isManageMode = isScriptManageMode();
 
   const v2Scripts = state.scripts
     .filter(s => s.category === 'v2' || s.version === 'v2' || s.id.endsWith('-v2'))
@@ -1598,7 +1614,7 @@ function renderScripts() {
 
   // 3. MOMO 业务自动化板块 (11~15 + 全量执行)
   const isMomoVisible = state.visibility?.groups?.momo !== false;
-  if ((momoScripts.length || batchScripts.length) && (isAdmin || isMomoVisible)) {
+  if ((momoScripts.length || batchScripts.length) && (isManageMode || isMomoVisible)) {
     const momoSection = document.createElement('section');
     const storageKey = 'yunmomo.collapse.momo';
     let isMomoCollapsed = false;
@@ -1607,15 +1623,15 @@ function renderScripts() {
       if (saved !== null) isMomoCollapsed = saved === 'true';
     } catch {}
 
-    momoSection.className = 'scripts-momo-section' + (isMomoCollapsed ? ' collapsed' : '') + (!isMomoVisible ? ' hidden-from-user' : '');
+    momoSection.className = 'scripts-momo-section' + (isMomoCollapsed ? ' collapsed' : '') + (!isMomoVisible && isManageMode ? ' hidden-from-user' : '');
     momoSection.innerHTML = `
       <div class="momo-section-head version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
         <div class="momo-title-group version-badge-group">
           <span class="momo-title version-title">MOMO 业务自动化 (11~15)</span>
-          ${!isMomoVisible ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
+          ${!isMomoVisible && isManageMode ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
-          ${isAdmin ? `
+          ${isManageMode ? `
             <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此分组">
               <label class="switch-toggle" onclick="event.stopPropagation()">
                 <input type="checkbox" class="momo-vis-input" ${isMomoVisible ? 'checked' : ''}>
@@ -1633,7 +1649,7 @@ function renderScripts() {
       <div class="momo-cards-grid version-cards-stack"></div>
     `;
 
-    if (isAdmin) {
+    if (isManageMode) {
       const momoVisInput = momoSection.querySelector('.momo-vis-input');
       if (momoVisInput) {
         momoVisInput.addEventListener('change', e => {
@@ -1654,7 +1670,7 @@ function renderScripts() {
       if (card) { momoGrid.append(card); visibleCount++; }
     }
 
-    if (isAdmin || visibleCount > 0) {
+    if (isManageMode || visibleCount > 0) {
       const head = momoSection.querySelector('.momo-section-head');
       const toggleBtn = momoSection.querySelector('.version-collapse-btn');
       const toggleText = momoSection.querySelector('.toggle-text');
@@ -1687,22 +1703,22 @@ function renderScripts() {
   // 4. 自定义组合脚本板块
   const isCustomGroupVisible = state.visibility?.groups?.custom !== false;
   const bundles = Array.isArray(state.bundles) ? state.bundles : [];
-  const displayBundles = isAdmin
+  const displayBundles = isManageMode
     ? bundles
     : bundles.filter(b => b.enabled !== false);
 
-  if (isAdmin || (isCustomGroupVisible && displayBundles.length > 0)) {
+  if (isManageMode || (isCustomGroupVisible && displayBundles.length > 0)) {
     const bundleSection = document.createElement('section');
-    bundleSection.className = 'scripts-bundle-section' + (!isCustomGroupVisible ? ' hidden-from-user' : '');
+    bundleSection.className = 'scripts-bundle-section' + (!isCustomGroupVisible && isManageMode ? ' hidden-from-user' : '');
     bundleSection.innerHTML = `
       <div class="bundle-section-head">
         <div class="bundle-title-group">
           <span class="bundle-badge">组合</span>
           <span class="bundle-section-title">自定义组合脚本</span>
-          ${!isCustomGroupVisible ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
+          ${!isCustomGroupVisible && isManageMode ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
         </div>
         <div class="bundle-head-actions">
-          ${isAdmin ? `
+          ${isManageMode ? `
             <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此组合板块">
               <label class="switch-toggle" onclick="event.stopPropagation()">
                 <input type="checkbox" class="custom-group-vis-input" ${isCustomGroupVisible ? 'checked' : ''}>
@@ -1717,7 +1733,7 @@ function renderScripts() {
       <div class="bundle-cards-stack"></div>
     `;
 
-    if (isAdmin) {
+    if (isManageMode) {
       const customGroupInput = bundleSection.querySelector('.custom-group-vis-input');
       if (customGroupInput) {
         customGroupInput.addEventListener('change', e => {
@@ -1735,13 +1751,14 @@ function renderScripts() {
     if (displayBundles.length === 0) {
       const emptyTip = document.createElement('div');
       emptyTip.style.cssText = 'padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;';
-      emptyTip.textContent = isAdmin
+      emptyTip.textContent = isManageMode
         ? '暂无自定义组合脚本，点击右上角【+ 新建组合脚本】可以将多个脚本按序串联为一个组合供用户使用。'
         : '暂无可用组合脚本';
       bundleStack.append(emptyTip);
     } else {
       for (const bundle of displayBundles) {
-        bundleStack.append(createBundleCard(bundle));
+        const bCard = createBundleCard(bundle);
+        if (bCard) bundleStack.append(bCard);
       }
     }
 
@@ -2822,6 +2839,61 @@ if (elements.cancelRedeemBtn) {
   elements.cancelRedeemBtn.addEventListener('click', () => elements.redeemDialog?.close());
 }
 
+function showPasswordAlert(text, tone) {
+  if (!elements.passwordAlert) return;
+  elements.passwordAlert.textContent = text;
+  elements.passwordAlert.style.cssText = tone === 'success'
+    ? 'display:block; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px; background:rgba(46,160,67,0.15); border:1px solid rgba(46,160,67,0.35); color:#3fb950;'
+    : 'display:block; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px; background:#fff2f0; border:1px solid #ffccc7; color:#cf1322;';
+}
+
+if (elements.openPasswordModalBtn) {
+  elements.openPasswordModalBtn.addEventListener('click', () => {
+    if (elements.passwordAlert) elements.passwordAlert.style.display = 'none';
+    [elements.pwdCurrentInput, elements.pwdNewInput, elements.pwdConfirmInput].forEach(input => { if (input) input.value = ''; });
+    elements.passwordDialog?.showModal();
+    elements.pwdCurrentInput?.focus();
+  });
+}
+
+if (elements.closePasswordModalBtn) {
+  elements.closePasswordModalBtn.addEventListener('click', () => elements.passwordDialog?.close());
+}
+
+if (elements.cancelPasswordBtn) {
+  elements.cancelPasswordBtn.addEventListener('click', () => elements.passwordDialog?.close());
+}
+
+if (elements.submitPasswordBtn) {
+  elements.submitPasswordBtn.addEventListener('click', async () => {
+    const currentPassword = elements.pwdCurrentInput?.value || '';
+    const newPassword = elements.pwdNewInput?.value || '';
+    if (newPassword.length < 8) {
+      showPasswordAlert('新密码长度至少需要 8 位');
+      return;
+    }
+    if (newPassword !== (elements.pwdConfirmInput?.value || '')) {
+      showPasswordAlert('两次输入的新密码不一致');
+      return;
+    }
+    elements.submitPasswordBtn.disabled = true;
+    try {
+      await requestJson('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      // 服务端已递增令牌版本，本地缓存的旧 token 立刻作废
+      localStorage.removeItem('yunmomo.auth_token');
+      showPasswordAlert('密码已更新，即将跳转到登录页…', 'success');
+      setTimeout(() => { location.href = '/login.html'; }, 1200);
+    } catch (err) {
+      showPasswordAlert(err.message || '密码修改失败');
+      elements.submitPasswordBtn.disabled = false;
+    }
+  });
+}
+
 if (elements.userLogoutBtn) {
   elements.userLogoutBtn.addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -2892,6 +2964,9 @@ async function checkAuth() {
     if (elements.userPill && !isEmbed) {
       elements.userPill.style.display = 'block';
       elements.userPill.textContent = `${isAdmin ? '管理员' : '用户'}: ${data.user.email}`;
+    }
+    if (elements.openPasswordModalBtn && !isEmbed) {
+      elements.openPasswordModalBtn.style.display = 'inline-flex';
     }
     if (elements.userLogoutBtn && !isEmbed) {
       elements.userLogoutBtn.style.display = 'inline-flex';
