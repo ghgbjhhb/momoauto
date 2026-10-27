@@ -13,31 +13,24 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-title">云 MOMO 自动化控制台</span>
-        <span class="brand-tag">极简双区版</span>
-        <div class="theme-switch-pill">
-          <span>对比：</span>
-          <a href="/preview-a.html">查看 方案 A (Linear风)</a>
-        </div>
       </div>
 
       <!-- 集群状态指示 -->
       <div class="cluster-stats" id="clusterStats">
-        <span class="stat-item">设备: <strong id="statTotal">--</strong></span>
+        <span class="stat-item">设备数: <strong id="statTotal">--</strong></span>
         <span class="stat-sep">|</span>
         <span class="stat-item">在线: <strong class="text-green" id="statOnline">--</strong></span>
         <span class="stat-sep">|</span>
-        <span class="stat-item">目标: <strong class="text-blue" id="statTarget">未选择</strong></span>
+        <span class="stat-item">当前目标: <strong class="text-blue" id="statTarget">未选择</strong></span>
       </div>
 
       <div class="topbar-tools">
-        <div class="service-state" id="serviceState">
-          <span class="state-dot"></span>
-          <span class="state-text">服务正常</span>
-        </div>
+        <span id="serviceState" hidden></span>
         <div class="user-pill" id="userPill" style="display:none;">--</div>
         <button class="action-btn" id="openRedeemModalBtn" type="button">兑换卡密</button>
         <a class="action-btn" id="adminPortalLink" href="/admin.html" style="display:none;">管理后台</a>
         <button class="action-btn" id="userLogoutBtn" type="button" style="display:none;">退出</button>
+        <button class="action-btn" id="refreshDevices" type="button">刷新设备</button>
         <details class="session-settings" id="sessionSettings" hidden>
           <summary>凭据</summary>
           <form class="session-bridge" id="sessionBridge">
@@ -45,8 +38,6 @@
             <button class="action-btn" id="connectSession" type="submit">连接</button>
           </form>
         </details>
-        <a class="action-btn" href="https://cloud.yunmomo.com/#/screen/device/ScDeviceView" target="_blank" rel="noopener">云端后台</a>
-        <button class="action-btn" id="refreshDevices" type="button">刷新设备</button>
       </div>
     </header>
 
@@ -58,41 +49,30 @@
       <section class="preview-panel">
         <div class="panel-header">
           <h2 id="previewTitle">📱 云手机操作大屏</h2>
-          <span class="live-pill" id="previewState">就绪</span>
+          <button class="action-btn small" id="refreshPreview" type="button">刷新画面</button>
         </div>
 
-        <div class="preview-toolbar">
-          <label class="size-control" for="previewSize">
-            <span>画面宽度</span>
-            <input id="previewSize" type="range" min="200" max="440" step="10" value="320">
-            <output id="previewSizeValue" for="previewSize">320px</output>
-          </label>
-        </div>
+        <input id="previewSize" type="range" hidden value="340">
+        <output id="previewSizeValue" hidden>340px</output>
+        <span id="previewSummary" hidden></span>
+        <span id="previewState" hidden></span>
 
         <div class="preview-stage">
           <div class="device-grid" id="deviceGrid">
             <div class="loading-card">正在连接云机画面…</div>
           </div>
         </div>
-
-        <div class="preview-footer">
-          <span class="preview-summary" id="previewSummary">—</span>
-          <button class="action-btn small" id="refreshPreview" type="button">刷新画面</button>
-        </div>
       </section>
 
       <!-- 右区：业务指令与流程工作台 -->
       <aside class="workbench-panel">
-        <!-- 顶部目标指示与 Tab 切换 -->
+        <!-- 顶部 Tab 切换 -->
         <div class="workbench-header">
-          <div class="target-row">
-            <span class="target-label">当前控制实例：</span>
-            <strong class="target-name" id="workbenchTarget">未选择</strong>
-          </div>
           <div class="workbench-tabs" id="workbenchTabs">
             <button type="button" class="tab-btn active" data-tab="flow">业务脚本与流程</button>
             <button type="button" class="tab-btn" data-tab="ai">AI 与持续调度</button>
           </div>
+          <span id="workbenchTarget" hidden></span>
         </div>
 
         <div class="workbench-body">
@@ -101,10 +81,8 @@
             <!-- 01~08 初始化流水线模块 (单排直观横向平铺) -->
             <section class="pipeline-box" id="pipelineStepperBox">
               <div class="pipeline-header">
-                <div class="pipeline-title-group">
-                  <span class="pipeline-title">初始化流水线 (01~08)</span>
-                  <span class="stepper-target-badge" id="stepperTargetBadge">未选择目标</span>
-                </div>
+                <span class="pipeline-title">初始化全流程 (01~08)</span>
+                <span id="stepperTargetBadge" hidden></span>
                 <div class="pipeline-actions">
                   <button class="run-button stepper-run-all-btn" id="stepperRunAllBtn" type="button">执行全流程</button>
                   <button class="reset-button" id="resetStepperBtn" type="button">重置</button>

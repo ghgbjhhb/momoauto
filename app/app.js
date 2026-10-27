@@ -180,11 +180,7 @@ function renderPipelineStepper() {
     title.className = 'step-node-title';
     title.textContent = step.name;
 
-    const statusEl = document.createElement('div');
-    statusEl.className = 'step-node-status';
-    statusEl.textContent = STATUS_LABELS[status] || status;
-
-    info.append(title, statusEl);
+    info.append(title);
 
     const indicator = document.createElement('span');
     indicator.className = 'step-node-indicator';
@@ -780,7 +776,7 @@ function createScriptCard(script) {
 
   const title = document.createElement('div');
   title.className = 'script-title';
-  title.textContent = script.title;
+  title.textContent = script.order ? script.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '') : script.title;
   titleGroup.append(title);
 
   head.append(titleGroup);
@@ -951,9 +947,7 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
   section.innerHTML = `
     <div class="version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
       <div class="version-badge-group">
-        <span class="version-tag ${tagClass}">${versionTag}</span>
         <span class="version-title">${title}</span>
-        <span class="version-count">${scripts.length} 个</span>
       </div>
       <button class="version-collapse-btn" type="button" aria-expanded="${!isCollapsed}" title="点击收起/展开">
         <span class="toggle-text">${isCollapsed ? '展开' : '收起'}</span>
@@ -1048,9 +1042,7 @@ function renderScripts() {
     momoSection.innerHTML = `
       <div class="momo-section-head version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
         <div class="momo-title-group version-badge-group">
-          <span class="momo-icon">⚡</span>
-          <span class="momo-title version-title">MOMO 业务自动化中枢 (11~15)</span>
-          <span class="version-count">${momoScripts.length + batchScripts.length} 个</span>
+          <span class="momo-title version-title">MOMO 业务自动化 (11~15)</span>
         </div>
         <button class="version-collapse-btn" type="button" aria-expanded="${!isMomoCollapsed}" title="点击收起/展开">
           <span class="toggle-text">${isMomoCollapsed ? '展开' : '收起'}</span>
