@@ -1,12 +1,15 @@
 'use strict';
 
-// Script 7: 打开高德地图并完成首次初始化。
+// Script 7: 打开高德地图并完成首次初始化 (V2 专属脚本)。
 //
 // 云机只提供视频流，因此启动应用、处理首次权限/提示和判断地图已就绪，
 // 都通过 RapidOCR 找文字坐标；实际点击仍走现有云机控制通道。完成后会
 // 先让高德界面稳定可见一小段时间，再发送 HOME 并确认回到桌面。
 const fs = require('node:fs/promises');
+const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { YunmomoClient } = require('../../index');
+const { PROJECT_ROOT } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
   numberOr,
@@ -24,7 +27,7 @@ const {
   sendHome,
 } = require('../../automation/screen');
 
-const DEFAULT_DEVICE_ID = '2033060279606353921';
+const DEFAULT_DEVICE_ID = '1920787319565701122';
 const DEFAULT_POLL_MS = 700;
 const DEFAULT_HOME_TIMEOUT_MS = 15000;
 const DEFAULT_APP_TIMEOUT_MS = 20000;
@@ -34,7 +37,14 @@ const DEFAULT_PROMPT_SETTLE_MS = 900;
 const DEFAULT_APP_VISIBLE_MS = 500;
 const DEFAULT_STABLE_OBSERVATIONS = 3;
 const DEFAULT_MAX_PAGES_PER_DIRECTION = 5;
-const SCREENSHOT_LEVEL = 2;
+
+function matchesDevice(record, targetId) {
+  if (!record) return false;
+  const id = deviceIdOf(record);
+  if (id !== targetId) return false;
+  const sdk = String(record.sdkVersion || '').trim().toLowerCase();
+  return !sdk || sdk === 'v2';
+}
 
 function gaodeTargetBox(items) {
   return (
@@ -55,14 +65,14 @@ function launcherVisible(items) {
 function mapEvidenceCount(items) {
   const phrases = [
     '搜索', '路线', '导航', '我的', '附近', '驾车', '步行', '公交',
-    '地图', '定位', '高德地图',
+    '地图', '定位', '高德地图', '首页', '打车', '消息',
   ];
   return phrases.reduce((count, phrase) => count + (findPhrase(items, phrase) ? 1 : 0), 0);
 }
 
 function gaodeLaunchEvidence(items) {
   const mapControls = [
-    '搜索', '路线', '导航', '我的', '附近', '驾车', '步行', '公交',
+    '搜索', '路线', '导航', '我的', '附近', '驾车', '步行', '公交', '首页', '打车', '消息',
   ].reduce((count, phrase) => count + (findPhrase(items, phrase) ? 1 : 0), 0);
   const privacyOrPermission = Boolean(
     findPhrase(items, '隐私政策') ||
@@ -71,8 +81,6 @@ function gaodeLaunchEvidence(items) {
     findPhrase(items, '允许') ||
     findPhrase(items, '同意')
   );
-  // The launcher page itself also contains the “高德地图” label. Do not
-  // treat that unchanged home frame as a successful launch observation.
   const stillHome = launcherVisible(items) && mapControls < 2 && !privacyOrPermission;
   return Boolean(
     !stillHome && (
@@ -88,9 +96,8 @@ function gaodeMapReady(items) {
   if (launcherVisible(items)) return false;
   if (findStrictPhrase(items, '添加到主屏幕') || findStrictPhrase(items, '轻触并按住此微件')) return false;
   const mapControls = [
-    '搜索', '路线', '导航', '我的', '附近', '驾车', '步行', '公交', '图层', '更多',
+    '搜索', '路线', '导航', '我的', '附近', '驾车', '步行', '公交', '图层', '更多', '首页', '打车', '消息',
   ].reduce((count, phrase) => count + (findStrictPhrase(items, phrase) ? 1 : 0), 0);
-  // The words “高德地图”/“地图” on an icon are not two independent signals.
   return mapControls >= 2;
 }
 
@@ -98,7 +105,7 @@ function promptCue(items) {
   const cues = [
     '权限', '允许', '隐私', '协议', '用户协议', '服务协议', '个人信息',
     '定位', '通知', '温馨提示', '提示', '更新', '版本', '授权', '政策',
-    '高德地图',
+    '高德地图', '功能推荐', '体验',
   ];
   return cues.some(phrase => findPhrase(items, phrase));
 }
@@ -111,8 +118,6 @@ function exactActionBox(items, phrases) {
   return candidates[0] || null;
 }
 
-// Return only explicit button labels. In particular, do not use a substring
-// match for “允许”, otherwise “不允许” could be selected accidentally.
 function findPromptAction(observation) {
   const items = observation?.items || [];
   if (findStrictPhrase(items, '添加到主屏幕') || findStrictPhrase(items, '轻触并按住此微件')) {
@@ -121,13 +126,21 @@ function findPromptAction(observation) {
   }
   const height = Number(observation?.height) || 640;
   const bottomHalf = item => item.centerY >= height * 0.42;
+
+  // 安卓 12 及各平台系统权限文案（包含“允许”与常见OCR误识“充许”）
   const allowLabels = [
-    '同意并继续', '同意并使用', '使用应用时允许', '仅在使用时允许',
-    '仅此次允许', '始终允许', '允许',
+    '同意并继续', '同意并使用',
+    '仅在使用该应用时允许', '仅在使用该应用时充许',
+    '使用该应用时允许', '使用该应用时充许',
+    '使用应用时允许', '使用应用时充许',
+    '仅在使用中允许', '仅在使用中充许',
+    '仅在使用时允许', '仅在使用时充许',
+    '仅限这一次', '仅这一次', '仅此次允许',
+    '始终允许', '始终充许', '允许', '充许',
   ];
   const dismissLabels = [
     '继续使用', '我知道了', '知道了', '稍后再说', '以后再说', '跳过',
-    '关闭', '确定', '下一步', '继续',
+    '关闭', '确定', '下一步', '继续', '暂不开启', '暂不体验', '暂不', '以后', '放弃',
   ];
 
   for (const label of allowLabels) {
@@ -135,18 +148,31 @@ function findPromptAction(observation) {
     if (box && (bottomHalf(box) || promptCue(items))) return { label, box };
   }
 
-  // “同意” is deliberately separate from the allow list so that it cannot
-  // match “不同意”. It is expected on privacy/terms dialogs.
+  // 针对“仅在使用该应用时允许/充许”进行原生抗畸变防御（严格排除“不允许/不同意/拒绝/禁止”）
+  if (promptCue(items)) {
+    const isAllowLike = text => {
+      const norm = normalizeText(text);
+      if (norm.includes('不允许') || norm.includes('不同意') || norm.includes('拒绝') || norm.includes('禁止')) return false;
+      return (
+        (norm.includes('使用') && (norm.includes('允许') || norm.includes('充许'))) ||
+        norm.includes('仅限这一次') || norm.includes('仅这一次') || norm.includes('仅此次')
+      );
+    };
+    const candidates = items
+      .filter(item => isAllowLike(item.text) && bottomHalf(item))
+      .sort((a, b) => b.centerY - a.centerY);
+    if (candidates[0]) {
+      return { label: candidates[0].text, box: candidates[0] };
+    }
+  }
+
   const agree = exactActionBox(items, ['同意']);
   if (agree && (bottomHalf(agree) || promptCue(items))) return { label: '同意', box: agree };
 
-  // Generic dismiss/continue actions are accepted only when OCR also sees a
-  // dialog cue. This prevents a normal map control from being mistaken for a
-  // popup button.
   if (promptCue(items)) {
     for (const label of dismissLabels) {
       const box = exactActionBox(items, [label]);
-      if (box && (bottomHalf(box) || ['关闭', '确定', '知道了'].includes(label))) {
+      if (box && (bottomHalf(box) || ['关闭', '确定', '知道了', '跳过', '暂不开启', '暂不体验'].includes(label))) {
         return { label, box };
       }
     }
@@ -163,7 +189,7 @@ async function openGaode(phone, control, worker, directory, state, found, option
   });
 }
 
-async function initializeGaode(phone, control, worker, directory, state, opened, options) {
+async function initializeGaode(phone, control, worker, directory, state, opened, options, logger) {
   let observation = opened;
   let stableObservations = 0;
   let promptActions = [];
@@ -174,6 +200,9 @@ async function initializeGaode(phone, control, worker, directory, state, opened,
     const action = findPromptAction(observation);
     if (action && promptActionCount < options.maxPromptActions) {
       const point = tapBox(control, action.box, observation);
+      logger?.file(`Found prompt action: "${action.label}" at (${point.x}, ${point.y})`, { action, point });
+      logger?.console(`[3/4] 检测并处理弹窗: "${action.label}" (第 ${promptActionCount + 1} 个)...`);
+
       await control.tap(point.x, point.y);
       await control.flush();
       promptActions.push({ label: action.label, point });
@@ -183,12 +212,15 @@ async function initializeGaode(phone, control, worker, directory, state, opened,
       state.counter += 1;
       observation = await screenshotAndOcr(phone, worker, directory, state.counter);
       observation.label = 'gaode-after-prompt';
+      logger?.file(`OCR after prompt #${promptActionCount}`, { text: observation.text });
       continue;
     }
 
     if (gaodeMapReady(observation.items) && !findPromptAction(observation)) {
       stableObservations += 1;
+      logger?.file(`Map ready stable observation #${stableObservations}/${options.stableObservations}`);
       if (stableObservations >= options.stableObservations) {
+        logger?.console(`[3/4] 高德地图首页已稳定就绪 (共处理弹窗 ${promptActionCount} 个)`);
         return { ready: observation, promptActions };
       }
     } else {
@@ -207,132 +239,229 @@ async function initializeGaode(phone, control, worker, directory, state, opened,
   );
 }
 
-async function main() {
-  if (!process.env.YUNMOMO_TOKEN) {
-    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
-  }
-  if (process.env.YUNMOMO_CONFIRM_GAODE_INIT !== 'YES' && !process.argv.includes('--execute')) {
-    throw new Error(
-      '脚本7会打开高德地图、处理权限弹窗并发送 HOME；确认执行请设置 '
-      + 'YUNMOMO_CONFIRM_GAODE_INIT=YES 或传入 --execute',
-    );
+class Logger {
+  constructor(taskId) {
+    this.taskId = taskId;
+    this.logDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'initialize-gaode');
+    this.logFile = path.join(this.logDir, `${taskId}.log`);
   }
 
-  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
-  const options = {
-    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
-    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
-    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
-    openAttemptTimeoutMs: numberOr(
-      process.env.YUNMOMO_GAODE_OPEN_TIMEOUT_MS,
-      DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS,
-    ),
-    initTimeoutMs: numberOr(process.env.YUNMOMO_GAODE_INIT_TIMEOUT_MS, DEFAULT_INIT_TIMEOUT_MS),
-    promptSettleMs: numberOr(process.env.YUNMOMO_GAODE_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
-    appVisibleMs: numberOr(process.env.YUNMOMO_GAODE_VISIBLE_MS, DEFAULT_APP_VISIBLE_MS),
-    stableObservations: numberOr(
-      process.env.YUNMOMO_GAODE_STABLE_OBSERVATIONS,
-      DEFAULT_STABLE_OBSERVATIONS,
-    ),
-    maxPromptActions: numberOr(process.env.YUNMOMO_GAODE_MAX_PROMPTS, 12),
-    maxPagesPerDirection: numberOr(
-      process.env.YUNMOMO_MAX_HOME_PAGES,
-      DEFAULT_MAX_PAGES_PER_DIRECTION,
-    ),
-  };
+  async init() {
+    try {
+      await fs.mkdir(this.logDir, { recursive: true });
+      await fs.writeFile(this.logFile, `=== Gaode Map Init V2 Task Log [ID: ${this.taskId}] ===\nStarted: ${new Date().toISOString()}\n\n`, 'utf8');
+    } catch {}
+  }
 
-  const client = new YunmomoClient({ timeoutMs: 100000 });
-  const devices = await client.listDevices({ size: 50000 });
-  const target = devices.records.find(record => deviceIdOf(record) === targetDeviceId);
-  if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
+  file(message, meta) {
+    const time = new Date().toISOString();
+    let text = `[${time}] ${message}`;
+    if (meta !== undefined) {
+      text += typeof meta === 'string' ? `\n${meta}` : `\n${JSON.stringify(meta, null, 2)}`;
+    }
+    fs.appendFile(this.logFile, text + '\n', 'utf8').catch(() => {});
+  }
 
-  const phone = client.device(targetDeviceId);
-  const control = await phone.openControl({ udid: target.udid });
-  const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script7-');
-  const worker = new RapidOcrWorker();
-  const state = { counter: 0 };
-  let success = false;
-  let homeRestored = false;
+  console(message) {
+    console.log(message);
+    this.file(`[CONSOLE] ${message}`);
+  }
 
+  get relativeLogPath() {
+    return path.relative(PROJECT_ROOT, this.logFile).replace(/\\/g, '/');
+  }
+}
+
+async function ensureToken() {
+  if (process.env.YUNMOMO_TOKEN) return process.env.YUNMOMO_TOKEN;
   try {
-    await control.connect();
-    const home = await confirmHome(phone, control, worker, directory, state, options);
-    const found = await findApp(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      home,
-      options,
-      gaodeTargetBox,
-      '高德地图',
-    );
-    const opened = await openGaode(phone, control, worker, directory, state, found, options);
-    const initialized = await initializeGaode(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      opened.opened,
-      options,
-    );
-
-    // Keep the initialized app visible briefly so the state is observable in
-    // the web console before the final HOME action.
-    await sleep(options.appVisibleMs);
-    const finalHome = await confirmHome(phone, control, worker, directory, state, {
-      ...options,
-      homeConfirmation: {
-        settleMs: 300,
-        firstAttemptTimeoutMs: 900,
-        retryDelayMs: 300,
-        retryTimeoutMs: 1500,
-        pollMs: 300,
-        allowClipboardToast: true,
-      },
-    });
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    homeRestored = finalAnchors.length >= 2;
-    success = gaodeMapReady(initialized.ready.items) && homeRestored;
-
-    console.log(JSON.stringify({
-      ok: success,
-      script: '高德初始化',
-      targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      ocr: 'RapidOCR 1.2.3 (local WSL worker)',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      initialized: gaodeMapReady(initialized.ready.items),
-      promptActions: initialized.promptActions,
-      initializedText: initialized.ready.text.slice(0, 600),
-      finalHomeAnchors: finalAnchors,
-      homeRestored,
-      homeReturnElapsedMs: finalHome.homeConfirmation?.elapsedMs,
-      homeReturnAttempts: finalHome.homeConfirmation?.attempts,
-      screenshotObservations: state.counter,
-    }, null, 2));
-  } finally {
-    if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
-      try {
-        await sendHome(control);
-        homeRestored = true;
-      } catch {
-        // Preserve the original failure; cleanup below still runs.
+    const localEnvPath = path.join(PROJECT_ROOT, '.env.local');
+    const content = await fs.readFile(localEnvPath, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('YUNMOMO_TOKEN=')) {
+        const token = trimmed.slice('YUNMOMO_TOKEN='.length).trim();
+        if (token) {
+          process.env.YUNMOMO_TOKEN = token;
+          return token;
+        }
       }
     }
-    await worker.close();
-    await control.close();
-    if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
-      await fs.rm(directory, { recursive: true, force: true });
-    } else {
-      console.log('OCR screenshots kept at ' + directory);
+  } catch {}
+  throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
+}
+
+async function main() {
+  const taskId = process.env.YUNMOMO_TIMING_RUN_ID || process.env.RUN_ID || randomUUID();
+  const logger = new Logger(taskId);
+  await logger.init();
+
+  if (process.argv.includes('--execute')) {
+    process.env.YUNMOMO_CONFIRM_GAODE_INIT = 'YES';
+  }
+
+  logger.console(`[任务ID] ${taskId}`);
+
+  try {
+    await ensureToken();
+
+    const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID).trim();
+    const options = {
+      pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+      homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+      appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+      openAttemptTimeoutMs: numberOr(
+        process.env.YUNMOMO_GAODE_OPEN_TIMEOUT_MS,
+        DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS,
+      ),
+      initTimeoutMs: numberOr(process.env.YUNMOMO_GAODE_INIT_TIMEOUT_MS, DEFAULT_INIT_TIMEOUT_MS),
+      promptSettleMs: numberOr(process.env.YUNMOMO_GAODE_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
+      appVisibleMs: numberOr(process.env.YUNMOMO_GAODE_VISIBLE_MS, DEFAULT_APP_VISIBLE_MS),
+      stableObservations: numberOr(
+        process.env.YUNMOMO_GAODE_STABLE_OBSERVATIONS,
+        DEFAULT_STABLE_OBSERVATIONS,
+      ),
+      maxPromptActions: numberOr(process.env.YUNMOMO_GAODE_MAX_PROMPTS, 12),
+      maxPagesPerDirection: numberOr(
+        process.env.YUNMOMO_MAX_HOME_PAGES,
+        DEFAULT_MAX_PAGES_PER_DIRECTION,
+      ),
+    };
+
+    const client = new YunmomoClient({ timeoutMs: 100000 });
+    const devices = await client.listDevices({ size: 50000 });
+    let target = (devices.records || []).find(record => matchesDevice(record, targetDeviceId));
+    if (!target && devices.records?.length > 0 && !process.env.YUNMOMO_DEVICE_ID) {
+      target = (devices.records || []).find(record => {
+        const sdk = String(record.sdkVersion || '').trim().toLowerCase();
+        return sdk === 'v2';
+      });
     }
+    if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
+
+    const resolvedDeviceId = deviceIdOf(target);
+    const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+    logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion });
+
+    logger.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+    logger.console(`[执行操作] 高德地图首次启动与初始化`);
+
+    if (process.env.YUNMOMO_CONFIRM_GAODE_INIT !== 'YES') {
+      logger.console('[提示] 本脚本将打开高德地图、处理权限弹窗并返回桌面。如需执行，请传入 --execute 参数。');
+      logger.console(`[完整日志] ${logger.relativeLogPath}`);
+      return;
+    }
+
+    const phone = client.device(resolvedDeviceId);
+    const control = await phone.openControl({ udid: target.udid });
+    const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script7-');
+    const worker = new RapidOcrWorker();
+    const state = { counter: 0 };
+    let success = false;
+    let homeRestored = false;
+
+    try {
+      await control.connect();
+      logger.file('Control connected successfully');
+
+      // 1. 确认主屏幕就绪
+      logger.console('[1/4] 正在确认主屏幕状态...');
+      const home = await confirmHome(phone, control, worker, directory, state, options);
+      logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
+
+      // 2. 寻找并打开高德地图
+      logger.console('[2/4] 正在桌面寻找并打开应用“高德地图”...');
+      const found = await findApp(
+        phone,
+        control,
+        worker,
+        directory,
+        state,
+        home,
+        options,
+        gaodeTargetBox,
+        '高德地图',
+      );
+      logger.file('App located on launcher', { page: found.page, point: found.point });
+
+      const opened = await openGaode(phone, control, worker, directory, state, found, options);
+      logger.console(`[2/4] 已点击应用图标并等待响应 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
+      logger.file('App opened observation', { text: opened.opened.text });
+
+      // 3. 处理初始化权限弹窗与地图就绪
+      logger.console('[3/4] 正在监听并处理首次启动权限/隐私弹窗...');
+      const initialized = await initializeGaode(
+        phone,
+        control,
+        worker,
+        directory,
+        state,
+        opened.opened,
+        options,
+        logger,
+      );
+
+      // Keep the initialized app visible briefly so the state is observable in
+      // the web console before the final HOME action.
+      await sleep(options.appVisibleMs);
+
+      // 4. 返回桌面并确认
+      logger.console('[4/4] 地图已就绪，正在返回主屏幕并核验...');
+      const finalHome = await confirmHome(phone, control, worker, directory, state, {
+        ...options,
+        homeConfirmation: {
+          settleMs: 300,
+          firstAttemptTimeoutMs: 900,
+          retryDelayMs: 300,
+          retryTimeoutMs: 1500,
+          pollMs: 300,
+          allowClipboardToast: true,
+        },
+      });
+      const finalAnchors = homeAnchorMatches(finalHome.items);
+      homeRestored = finalAnchors.length >= 2;
+      success = gaodeMapReady(initialized.ready.items) && homeRestored;
+
+      logger.file('Task execution summary', {
+        success,
+        promptActions: initialized.promptActions,
+        finalAnchorsCount: finalAnchors.length,
+        homeRestored,
+        screenshotObservations: state.counter,
+      });
+
+      if (!success) {
+        throw new Error('高德地图初始化未完全成功或未能成功恢复主屏幕');
+      }
+
+      logger.console(`[完成] 高德地图首次初始化成功并已恢复主屏幕！`);
+      logger.console(`       目标设备: ${deviceName} (${resolvedDeviceId})`);
+      logger.console(`       主屏锚点: ${finalAnchors.length} 个 | 处理弹窗: ${initialized.promptActions.length} 个`);
+      logger.console(`[执行结果] 成功`);
+      logger.console(`[完整日志] ${logger.relativeLogPath}`);
+    } finally {
+      if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+        try {
+          await sendHome(control);
+          homeRestored = true;
+          logger.file('Fallback sendHome executed in finally');
+        } catch {
+          // Preserve the original failure; cleanup below still runs.
+        }
+      }
+      await worker.close();
+      await control.close();
+      if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
+        await fs.rm(directory, { recursive: true, force: true });
+      } else {
+        logger.console(`[截图归档] ${directory}`);
+      }
+    }
+  } catch (err) {
+    logger.file('TASK EXCEPTION', { message: err.message, stack: err.stack });
+    logger.console(`[执行结果] 失败: ${err.message}`);
+    logger.console(`[完整日志] ${logger.relativeLogPath}`);
+    throw err;
   }
 }
 
@@ -342,7 +471,6 @@ main = require('../../automation/timing').timedScript('script.src.workflows.v2.i
 
 if (require.main === module) {
   main().catch(error => {
-    console.error(error.message);
     process.exitCode = 1;
   });
 }
