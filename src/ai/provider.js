@@ -1,6 +1,7 @@
 'use strict';
 const { redact } = require('../automation/runtime');
 const { checkSignal, waitFor } = require('../automation/cancellation');
+const urlGuard = require('../automation/url-guard');
 function resolveChatCompletionsUrl(endpoint) {
   let url = String(endpoint || 'https://api.deepseek.com').trim().replace(/\/+$/, '');
   if (url.endsWith('/chat/completions')) return url;
@@ -23,6 +24,11 @@ class DeepSeekProvider {
     try {
       checkSignal(options.signal);
       const targetUrl = resolveChatCompletionsUrl(config.endpoint);
+      // 落盘时的同步校验拦不住「公网域名解析到内网 IP」，发请求前必须再做一次带 DNS 的异步校验
+      await urlGuard.assertSafeOutboundUrl(targetUrl, {
+        allowLoopback: true,
+        allowPrivate: String(process.env.YUNMOMO_AI_ALLOW_PRIVATE || '').trim() === '1'
+      });
       const response = await bounded((options.fetchFn || globalThis.fetch)(
         targetUrl, {
           method: 'POST', signal: controller.signal,

@@ -12,6 +12,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { PROJECT_ROOT } = require('../automation/runtime');
+const { assertSafeOutboundUrlSync } = require('../automation/url-guard');
 
 const CONFIG_DIR = path.join(PROJECT_ROOT, '.runtime', 'ai-reply');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
@@ -230,6 +231,22 @@ function saveProvider(providerData = {}) {
     createdAt: existing ? existing.createdAt : now,
     updatedAt: now
   };
+
+  // SSRF 防护：endpoint 由用户/管理员填写，src/ai/provider.js 会携带 Authorization:
+  // Bearer <apiKey> 直接向该地址发请求，等于转发第三方密钥，因此这里拒绝
+  // 私网/链路本地/元数据/保留地址（169.254.169.254 等）与非法 scheme、userinfo。
+  // 回环地址放行：本机自建模型服务（ollama / lm-studio 监听 127.0.0.1）是常见合法用法，
+  // 且本控制台自身只绑定回环，回环目标不会把流量带出本机。
+  // 局域网自建网关需显式设 YUNMOMO_AI_ALLOW_PRIVATE=1 才放行；provider.js 发请求前还会做异步 DNS 校验。
+  try {
+    assertSafeOutboundUrlSync(updatedProvider.endpoint, {
+      allowLoopback: true,
+      allowPrivate: String(process.env.YUNMOMO_AI_ALLOW_PRIVATE || '').trim() === '1'
+    });
+  } catch (err) {
+    if (!err.code) err.code = 'UNSAFE_ENDPOINT';
+    throw err;
+  }
 
   if (existingIndex >= 0) {
     providers[existingIndex] = updatedProvider;

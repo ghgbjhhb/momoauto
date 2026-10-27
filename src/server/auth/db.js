@@ -9,10 +9,39 @@ const { PROJECT_ROOT } = require('../../automation/runtime');
 const AUTH_DB_DIR = path.join(PROJECT_ROOT, '.runtime', 'auth-system');
 const AUTH_DB_PATH = path.join(AUTH_DB_DIR, 'management.sqlite');
 
+// 管理员列表分页的保护值：默认 200 条，单次最多 1000 条，避免全表拉取放大内存
+const LIST_DEFAULT_LIMIT = 200;
+const LIST_MAX_LIMIT = 1000;
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
+}
+
+// LIKE 的模式串必须转义通配符，否则调用方传入 '%' 即可匹配全表、搜索语义被破坏。
+// 配合 SQL 的 `ESCAPE '\'` 子句使用，反斜杠必须最先转义。
+function escapeLikePattern(input) {
+  return String(input)
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+}
+
+// 只接受真正的非负整数；字符串、NaN、小数、负数一律回退默认值，
+// 同时避免 LIMIT 为负数时 SQLite 视为「无上限」。
+function normalizeLimit(value) {
+  if (!Number.isInteger(value) || value <= 0) {
+    return LIST_DEFAULT_LIMIT;
+  }
+  return Math.min(value, LIST_MAX_LIMIT);
+}
+
+function normalizeOffset(value) {
+  if (!Number.isInteger(value) || value < 0) {
+    return 0;
+  }
+  return value;
 }
 
 class AuthDatabase {
@@ -285,7 +314,9 @@ class AuthDatabase {
     return result.changes > 0;
   }
 
-  listCards({ status, batchTag, type, limit = 200, offset = 0 } = {}) {
+  listCards({ status, batchTag, type, limit = LIST_DEFAULT_LIMIT, offset = 0 } = {}) {
+    const safeLimit = normalizeLimit(limit);
+    const safeOffset = normalizeOffset(offset);
     let sql = `
       SELECT c.*, u.email as used_by_email
       FROM cards c
@@ -302,11 +333,12 @@ class AuthDatabase {
       params.push(batchTag);
     }
     if (type) {
-      sql += ' AND c.card_types LIKE ?';
-      params.push(`%"${type}"%`);
+      // type 来自查询串，先转义 % _ \ 再交给 ESCAPE '\'，否则 '%' 会命中全部卡密
+      sql += ` AND c.card_types LIKE ? ESCAPE '\\'`;
+      params.push(`%"${escapeLikePattern(type)}"%`);
     }
     sql += ' ORDER BY c.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    params.push(safeLimit, safeOffset);
     return this.db.prepare(sql).all(...params);
   }
 

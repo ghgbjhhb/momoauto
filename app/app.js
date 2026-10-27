@@ -610,7 +610,8 @@ function createDeviceCard(device) {
   const ipBadge = document.createElement('span');
   ipBadge.className = 'device-ip-badge' + (device.currentIp ? ' configured' : ' unconfigured');
   if (device.currentIp) {
-    ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text">${device.currentIp}</span>`;
+    ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text"></span>`;
+    ipBadge.querySelector('.ip-text').textContent = device.currentIp;
     ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
     ipBadge.addEventListener('click', event => {
       event.stopPropagation();
@@ -653,7 +654,7 @@ function createDeviceCard(device) {
     const expireDateStr = new Date(device.expireAt).toLocaleDateString();
     expireBar.innerHTML = `
       <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:var(--text-title);">${expireDateStr}</strong></span>
-      <span style="color:#0958d9; font-weight:600;">剩余 ${remainingText}</span>
+      <span style="color:#0958d9; font-weight:600;">剩余 ${escapeHtml(remainingText)}</span>
     `;
     expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
   }
@@ -811,7 +812,8 @@ function updateDeviceCard(card, device, index) {
   if (ipBadge) {
     ipBadge.className = 'device-ip-badge' + (configured ? ' configured' : ' unconfigured');
     if (configured) {
-      ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text">${device.currentIp}</span>`;
+      ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text"></span>`;
+      ipBadge.querySelector('.ip-text').textContent = device.currentIp;
       ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
     } else {
       ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
@@ -836,7 +838,7 @@ function updateDeviceCard(card, device, index) {
     }
     expireBar.innerHTML = `
       <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:var(--text-title);">${expireDateStr}</strong></span>
-      <span style="color:#0958d9; font-weight:600;">剩余 ${remainingText}</span>
+      <span style="color:#0958d9; font-weight:600;">剩余 ${escapeHtml(remainingText)}</span>
     `;
     expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
   } else if (expireBar) {
@@ -2278,7 +2280,7 @@ async function executeScriptBundle(bundle, button, card) {
       bundleRunState.currentStepIndex = i;
       const script = stepScripts[i];
       if (button) {
-        button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">[${i + 1}/${total}] ${script.title.slice(0, 8)}…</span>`;
+        button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">[${i + 1}/${total}] ${escapeHtml(script.title.slice(0, 8))}…</span>`;
       }
 
       writeOutput(`\n▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [
@@ -2418,7 +2420,7 @@ function renderModalSelectedSteps() {
     info.style.cssText = 'display:flex; align-items:center; gap:8px;';
     info.innerHTML = `
       <span style="font-weight:700; color:#1677ff; width:20px;">${index + 1}.</span>
-      <span style="font-weight:500; color:#262626;">${script ? script.title : stepId}</span>
+      <span style="font-weight:500; color:#262626;">${escapeHtml(script ? script.title : stepId)}</span>
     `;
 
     const actions = document.createElement('div');
@@ -2921,7 +2923,7 @@ if (elements.submitRedeemBtn) {
       if (!data.ok) throw new Error(data.error || '兑换失败，请联系客服');
 
       const summary = data.result.summary || (data.result.deviceName ? `已为您分配新云手机 [${data.result.deviceName}]，有效期至 ${new Date(data.result.expireAt).toLocaleString()}` : '权益已成功充值到账！');
-      elements.redeemAlert.innerHTML = `🎉 <strong>兑换成功！</strong><div style="margin-top:4px; line-height:1.4;">${summary}</div>`;
+      elements.redeemAlert.innerHTML = `🎉 <strong>兑换成功！</strong><div style="margin-top:4px; line-height:1.4;">${escapeHtml(summary)}</div>`;
       elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:rgba(46,160,67,0.15); border:1px solid rgba(46,160,67,0.35); color:#3fb950;';
       setTimeout(async () => {
         elements.redeemDialog?.close();
@@ -2960,6 +2962,15 @@ async function checkAuth() {
     }
     if (elements.diagReportBtn) {
       elements.diagReportBtn.style.display = isAdmin ? 'inline-block' : 'none';
+    }
+    // 系统提示词、连接测试与中枢配置属于全局写入（服务端已限管理员），普通用户不再呈现必然被拒的入口
+    if (!isAdmin) {
+      for (const id of ['btnSaveAiConfig', 'btnTestAiApi', 'btnBrainSaveConfig']) {
+        const node = document.getElementById(id);
+        if (node) node.style.display = 'none';
+      }
+      const promptItem = document.getElementById('aiSystemPrompt')?.closest('.form-item');
+      if (promptItem) promptItem.style.display = 'none';
     }
     if (elements.userPill && !isEmbed) {
       elements.userPill.style.display = 'block';
