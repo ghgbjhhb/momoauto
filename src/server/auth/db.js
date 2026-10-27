@@ -33,6 +33,7 @@ class AuthDatabase {
         password_salt TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'user',
         status TEXT NOT NULL DEFAULT 'active',
+        token_version INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -143,6 +144,14 @@ class AuthDatabase {
       CREATE INDEX IF NOT EXISTS idx_sms_logs_phone ON sms_call_logs(phone_number);
     `);
 
+    // 平滑升级已有 users 表字段
+    try {
+      const userCols = this.db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+      if (!userCols.includes('token_version')) {
+        this.db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`);
+      }
+    } catch {}
+
     // 平滑升级已有 cards 表字段
     try {
       const cardCols = this.db.prepare('PRAGMA table_info(cards)').all().map(c => c.name);
@@ -206,6 +215,20 @@ class AuthDatabase {
     const stmt = this.db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?');
     stmt.run(status, now, id);
     return this.getUserById(id);
+  }
+
+  updateUserPassword(id, passwordHash, passwordSalt) {
+    const now = Date.now();
+    const stmt = this.db.prepare('UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?');
+    stmt.run(passwordHash, passwordSalt, now, id);
+    return this.getUserById(id);
+  }
+
+  // 改密后递增：旧令牌携带的 tv 与服务端当前值不再相等，据此让历史会话立即失效
+  bumpUserTokenVersion(id) {
+    this.db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(id);
+    const row = this.db.prepare('SELECT token_version FROM users WHERE id = ?').get(id);
+    return row ? row.token_version : 0;
   }
 
   countAdmins() {

@@ -181,31 +181,6 @@
       transform: none;
     }
 
-    /* 本机一键快捷进入按钮 */
-    .quick-login-btn {
-      width: 100%;
-      height: 38px;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      color: #334155;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      margin-top: 12px;
-      transition: all 0.15s ease;
-    }
-
-    .quick-login-btn:hover {
-      background: #f1f5f9;
-      border-color: #94a3b8;
-      color: #0f172a;
-    }
-
     /* 提示信息 */
     .alert-box {
       padding: 10px 14px;
@@ -279,8 +254,7 @@
             name="email"
             class="form-input"
             type="email"
-            placeholder="admin@yunmomo.local"
-            value="admin@yunmomo.local"
+            placeholder="请输入注册邮箱"
             required
             autocomplete="email"
           >
@@ -294,7 +268,6 @@
             class="form-input"
             type="password"
             placeholder="请输入密码"
-            value="admin123456"
             required
             autocomplete="current-password"
           >
@@ -313,10 +286,6 @@
 
         <button class="submit-btn" id="submitBtn" type="submit">
           <span id="btnText">立即登录</span>
-        </button>
-
-        <button class="quick-login-btn" id="quickLoginBtn" type="button">
-          <span>⚡ 本机免密一键进入控制台</span>
         </button>
       </form>
 
@@ -344,7 +313,6 @@
     const submitBtn = document.getElementById('submitBtn');
     const btnText = document.getElementById('btnText');
     const alertBox = document.getElementById('alertBox');
-    const quickLoginBtn = document.getElementById('quickLoginBtn');
 
     function showAlert(text, type = 'error') {
       alertBox.textContent = text;
@@ -366,14 +334,12 @@
         confirmGroup.style.display = 'none';
         confirmPasswordInput.removeAttribute('required');
         btnText.textContent = '立即登录';
-        quickLoginBtn.style.display = 'flex';
       } else {
         tabRegister.classList.add('active');
         tabLogin.classList.remove('active');
         confirmGroup.style.display = 'block';
         confirmPasswordInput.setAttribute('required', 'required');
         btnText.textContent = '注册并登录';
-        quickLoginBtn.style.display = 'none';
       }
     }
 
@@ -409,10 +375,6 @@
         btnText.textContent = '立即登录';
       }
     }
-
-    quickLoginBtn.addEventListener('click', () => {
-      doLogin('admin@yunmomo.local', 'admin123456');
-    });
 
     authForm.addEventListener('submit', async event => {
       event.preventDefault();
