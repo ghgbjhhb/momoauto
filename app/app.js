@@ -443,6 +443,10 @@ function renderPreviewSummary() {
     elements.workbenchTarget.textContent = targetBadge;
     elements.workbenchTarget.title = selected ? selected.deviceId : '';
   }
+  const remoteTargetTag = byId('remoteTargetTag');
+  if (remoteTargetTag) {
+    remoteTargetTag.textContent = selected ? `${selected.name} (${selected.deviceId})` : '未选择目标';
+  }
 }
 
 window.getSelectedDeviceId = () => state.selectedDeviceId;
@@ -574,6 +578,16 @@ function createDeviceCard(device) {
 
   screen.append(placeholder, image, hoverHint);
 
+  const operateBtn = document.createElement('button');
+  operateBtn.className = 'device-operate-btn';
+  operateBtn.type = 'button';
+  operateBtn.textContent = '📱 放大操作云机';
+  operateBtn.title = '放大并进入全屏控制台操作';
+  operateBtn.addEventListener('click', event => {
+    event.stopPropagation();
+    openManualControl(device);
+  });
+
   // 底部业务工具条：解决“数字看着没什么用”的问题，集成一键复制虚拟机 ID
   const footer = document.createElement('div');
   footer.className = 'device-card-footer';
@@ -613,9 +627,9 @@ function createDeviceCard(device) {
   targetTag.innerHTML = `<span>当前目标</span>`;
 
   if (expireBar) {
-    card.append(header, expireBar, miniStepper, screen, footer, targetTag);
+    card.append(header, expireBar, miniStepper, screen, operateBtn, footer, targetTag);
   } else {
-    card.append(header, miniStepper, screen, footer, targetTag);
+    card.append(header, miniStepper, screen, operateBtn, footer, targetTag);
   }
 
   card.addEventListener('click', () => selectDevice(device.deviceId));
@@ -1002,16 +1016,22 @@ function renderScripts() {
   const batchScripts = state.scripts
     .filter(s => s.batch || s.id.startsWith('flow-all'));
 
-  // 1. V2 流程脚本栏 (在 V3 上方)
+  // 1 & 2: V2 与 V3 流程架构双列并排展示
+  const columnsContainer = document.createElement('div');
+  columnsContainer.className = 'scripts-columns-container';
+
   if (v2Scripts.length > 0) {
-    const v2Section = createVersionSection('V2', 'V2 流程脚本 (01~09)', v2Scripts, false);
-    elements.scriptList.append(v2Section);
+    const v2Section = createVersionSection('V2', 'V2 流程架构 (01~08)', v2Scripts, false);
+    columnsContainer.append(v2Section);
   }
 
-  // 2. V3 流程脚本栏 (带收起操作)
   if (v3Scripts.length > 0) {
-    const v3Section = createVersionSection('V3', 'V3 流程脚本 (01~09)', v3Scripts, false);
-    elements.scriptList.append(v3Section);
+    const v3Section = createVersionSection('V3', 'V3 极速架构 (01~08)', v3Scripts, false);
+    columnsContainer.append(v3Section);
+  }
+
+  if (columnsContainer.hasChildNodes()) {
+    elements.scriptList.append(columnsContainer);
   }
 
   // 3. MOMO 业务自动化板块 (11~15 + 全量执行)
@@ -1089,7 +1109,13 @@ function writeOutput(title, lines, meta = {}) {
   }
 
   elements.outputBox.textContent = header + '\n' + cleanLines.join('\n');
-  elements.outputSection.open = true;
+  if (elements.outputSection) elements.outputSection.open = true;
+  const dock = byId('terminalDock');
+  if (dock && dock.classList.contains('minimized')) {
+    dock.classList.remove('minimized');
+    const toggleIcon = byId('terminalToggleIcon');
+    if (toggleIcon) toggleIcon.textContent = '▼';
+  }
   elements.outputBox.scrollTop = elements.outputBox.scrollHeight;
 }
 
@@ -1219,9 +1245,11 @@ async function executeScript(script, button, card) {
   }
 
   const resetConfirmed = script.destructive ? window.confirm(
-    '确认对 ' + deviceLabel(currentDevice()) + ' 执行“改机重置”？\n' +
-    '机型范围：Android ' + (options.androidVersion || '16') + '；国家：' + (options.countryCode || 'CN') +
-    '。\n此操作会清除该设备数据，不能撤销。取消将不执行。'
+    script.id === 'flow-09-v2'
+      ? '确认对 ' + deviceLabel(currentDevice()) + ' 执行“重置数据”？\n\n警告：即将重置该设备，此操作不可恢复！\n此操作会清空该设备所有数据并恢复出厂设置。取消将不执行。'
+      : '确认对 ' + deviceLabel(currentDevice()) + ' 执行“改机重置”？\n' +
+        '机型范围：Android ' + (options.androidVersion || '16') + '；国家：' + (options.countryCode || 'CN') +
+        '。\n此操作会清除该设备数据，不能撤销。取消将不执行。'
   ) : false;
   if (script.destructive && !resetConfirmed) return;
   const scriptRunId = createScriptRunId();
@@ -1232,6 +1260,12 @@ async function executeScript(script, button, card) {
     elements.stopScriptBtn.style.display = 'inline-flex';
     elements.stopScriptBtn.disabled = false;
     elements.stopScriptBtn.textContent = '⏹ 停止脚本';
+  }
+  const activeTag = byId('terminalActiveTag');
+  const activeText = byId('terminalActiveText');
+  if (activeTag && activeText) {
+    activeTag.hidden = false;
+    activeText.textContent = script.title;
   }
   if (button) {
     button.disabled = false;
@@ -1380,6 +1414,8 @@ async function executeScript(script, button, card) {
       }
       if (card) card.classList.remove('running');
     }
+    const activeTag = byId('terminalActiveTag');
+    if (activeTag) activeTag.hidden = true;
     loadSharedRuntimeState();
   }
 }
@@ -1510,9 +1546,46 @@ if (elements.copyOutputBtn) {
   });
 }
 
-elements.outputSection.addEventListener('toggle', () => {
-  elements.outputToggle.textContent = elements.outputSection.open ? '收起' : '展开';
-});
+if (elements.outputSection && elements.outputToggle) {
+  elements.outputSection.addEventListener('toggle', () => {
+    elements.outputToggle.textContent = elements.outputSection.open ? '收起' : '展开';
+  });
+}
+
+function initTabs() {
+  const tabsContainer = byId('workbenchTabs');
+  if (!tabsContainer) return;
+  const tabBtns = tabsContainer.querySelectorAll('.tab-btn');
+  const panes = document.querySelectorAll('.tab-pane');
+
+  function switchTab(targetTab) {
+    for (const btn of tabBtns) {
+      const active = btn.dataset.tab === targetTab;
+      btn.classList.toggle('active', active);
+    }
+    for (const pane of panes) {
+      const paneId = 'tabPane' + targetTab.charAt(0).toUpperCase() + targetTab.slice(1);
+      const active = pane.id === paneId;
+      pane.classList.toggle('active', active);
+    }
+    try {
+      localStorage.setItem('yunmomo.activeTab', targetTab);
+    } catch {}
+  }
+
+  for (const btn of tabBtns) {
+    btn.addEventListener('click', () => {
+      switchTab(btn.dataset.tab);
+    });
+  }
+
+  let savedTab = 'flow';
+  try {
+    savedTab = localStorage.getItem('yunmomo.activeTab') || 'flow';
+    if (savedTab !== 'flow' && savedTab !== 'ai') savedTab = 'flow';
+  } catch {}
+  switchTab(savedTab);
+}
 
 if (elements.stepperRunAllBtn) {
   elements.stepperRunAllBtn.addEventListener('click', () => {
@@ -1638,6 +1711,7 @@ async function init() {
   if (state.tokenConfigured) await loadDevices();
   renderPipelineStepper();
   await loadSharedRuntimeState();
+  initTabs();
 }
 
 setInterval(loadSharedRuntimeState, 1500);

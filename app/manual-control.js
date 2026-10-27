@@ -692,7 +692,7 @@ window.addEventListener('online', () => {
 });
 
 const previewSize = byId('previewSize');
-try { const stored = Number(localStorage.getItem('yunmomo.previewWidth')); if (stored >= 140 && stored <= 280 && stored % 10 === 0) previewSize.value = String(stored); } catch { /* Storage can be disabled. */ }
+try { const stored = Number(localStorage.getItem('yunmomo.previewWidth')); if (stored >= 140 && stored <= 500 && stored % 10 === 0) previewSize.value = String(stored); } catch { /* Storage can be disabled. */ }
 function resizePreviews() {
   document.documentElement.style.setProperty('--device-width', previewSize.value + 'px');
   byId('previewSizeValue').textContent = previewSize.value;

@@ -143,13 +143,9 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     } : {})
   })),
   {
-    id: 'flow-09-v2', order: 9, version: 'v2', category: 'v2', title: '改机重置v2',
-    file: 'flows/v2/09-改机重置.js', args: ['--execute', '--v2'], requiresDevice: true,
-    destructive: true,
-    parameters: [
-      { name: 'androidVersion', label: '安卓版本', choices: ['16', '14', '10', 'all'], defaultValue: '16' },
-      { name: 'countryCode', label: '国家代码', defaultValue: 'CN', maxLength: 2 }
-    ]
+    id: 'flow-09-v2', order: 9, version: 'v2', category: 'v2', title: '重置数据v2',
+    file: 'flows/v2/09-重置数据.js', args: ['--execute', '--v2'], requiresDevice: true,
+    destructive: true
   },
   {
     id: 'flow-all-v2', title: '执行全流程 (V2)', file: 'flows/v2/执行全部.js', args: ['--execute'],
@@ -731,7 +727,7 @@ function configureScript(script, body, env) {
       throw invalidOptions('脚本参数无效：' + field.label);
     }
   }
-  if (script.destructive && body.resetConfirmed !== true) throw invalidOptions('改机重置会清除数据，请先确认目标设备及清数据操作');
+  if (script.destructive && body.resetConfirmed !== true) throw invalidOptions('重置/改机会清除设备数据，请先确认目标设备及操作');
   if (script.id.startsWith('flow-02.1') || script.id.startsWith('flow-2.1')) {
     if (options.filePath?.trim()) {
       env.YUNMOMO_REAL_PARAMS_FILE = options.filePath.trim();
@@ -757,7 +753,9 @@ function configureScript(script, body, env) {
       env.YUNMOMO_LOCATION_ADDRESS = options.address.trim();
     }
   }
-  if (script.id.startsWith('flow-09')) {
+  if (script.id === 'flow-09-v2') {
+    env.YUNMOMO_SDK_VERSION = 'v2';
+  } else if (script.id.startsWith('flow-09')) {
     const countryCode = String(options.countryCode ?? 'CN').trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(countryCode)) throw invalidOptions('国家代码应为CN、US等两位字母');
     env.YUNMOMO_COUNTRY_CODE = countryCode;
