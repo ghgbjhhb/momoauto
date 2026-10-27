@@ -9,10 +9,14 @@ const SCREENSHOT_LEVEL = 2;
 const HOME_ANCHORS = [
   ['时钟'],
   ['日历'],
-  ['通讯录'],
+  ['通讯录', '联系人'],
   ['录音机'],
   ['音乐'],
-  ['图库', '图'],
+  ['图库', '相册', '图'],
+  ['相机'],
+  ['电话'],
+  ['设备助手'],
+  ['星期'],
 ];
 
 function numberOr(value, fallback) {
@@ -312,7 +316,7 @@ async function confirmHome(phone, control, worker, directory, state, options) {
     'home-retry-2',
   );
   if (!isConfirmedHome(home)) {
-    throw new Error('返回主页后未识别到足够的桌面锚点（至少需要两个：时钟/日历/通讯录/录音机/音乐/图库）');
+    throw new Error('返回主页后未识别到足够的桌面锚点（至少需要两个：通讯录/联系人/相机/电话/设备助手/图库/时钟/日历/音乐）');
   }
   return reportConfirmation(home, 3);
 }
