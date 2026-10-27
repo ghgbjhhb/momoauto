@@ -3,253 +3,305 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#070d17">
-  <title>登录与注册 - 云 MOMO 云手机平台</title>
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/console.css">
+  <meta name="theme-color" content="#f8fafc">
+  <title>登录 - 云 MOMO 云手机控制台</title>
   <style>
-    body {
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --border-focus: #2563eb;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --font-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
       margin: 0;
+      padding: 0;
+    }
+
+    body {
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: radial-gradient(circle at 50% 30%, #0f1c2e 0%, #070d17 100%);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      background-color: var(--bg);
+      font-family: var(--font-base);
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+      padding: 20px;
     }
 
-    .auth-container {
+    .auth-wrapper {
       width: 100%;
-      max-width: 440px;
-      padding: 24px;
-      margin: 20px;
+      max-width: 400px;
     }
 
     .auth-card {
-      background: rgba(15, 28, 46, 0.85);
-      border: 1px solid var(--line-accent);
-      border-radius: 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
       padding: 36px 32px;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px var(--blue-glow);
-      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
     }
 
-    .auth-brand {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 28px;
+    .brand-section {
       text-align: center;
+      margin-bottom: 28px;
     }
 
-    .brand-icon {
-      width: 52px;
-      height: 52px;
+    .brand-logo {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 14px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
       border-radius: 12px;
-      background: linear-gradient(135deg, var(--blue), var(--cyan));
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #fff;
-      margin-bottom: 14px;
-      box-shadow: 0 4px 16px var(--blue-glow);
+      color: var(--primary);
     }
 
-    .brand-icon svg {
-      width: 28px;
-      height: 28px;
+    .brand-logo svg {
+      width: 24px;
+      height: 24px;
     }
 
-    .auth-title {
-      font-size: 22px;
+    .brand-title {
+      font-size: 20px;
       font-weight: 700;
-      color: #fff;
-      letter-spacing: 0.5px;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
       margin-bottom: 6px;
     }
 
-    .auth-subtitle {
+    .brand-desc {
       font-size: 13px;
       color: var(--text-muted);
     }
 
-    .auth-tabs {
+    /* 选项卡 */
+    .tab-nav {
       display: flex;
-      background: var(--bg-dark);
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      background: #f1f5f9;
       padding: 4px;
+      border-radius: 8px;
       margin-bottom: 24px;
+      gap: 4px;
     }
 
-    .auth-tab {
+    .tab-btn {
       flex: 1;
-      padding: 10px;
+      height: 34px;
       border: none;
       background: transparent;
       color: var(--text-muted);
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 600;
       border-radius: 6px;
       cursor: pointer;
-      transition: all 0.2s ease;
-      text-align: center;
+      transition: all 0.15s ease;
     }
 
-    .auth-tab.active {
-      background: var(--blue);
-      color: #fff;
-      box-shadow: 0 2px 8px var(--blue-glow);
+    .tab-btn.active {
+      background: #ffffff;
+      color: var(--text-main);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     }
 
+    /* 表单控件 */
     .form-group {
-      margin-bottom: 20px;
+      margin-bottom: 18px;
     }
 
-    .form-group label {
+    .form-label {
       display: block;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-bottom: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 6px;
     }
 
     .form-input {
       width: 100%;
       height: 42px;
-      background: var(--bg-dark);
-      border: 1px solid var(--line-strong);
+      padding: 0 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
       border-radius: 8px;
-      padding: 0 14px;
-      color: #fff;
       font-size: 14px;
+      color: var(--text-main);
       outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
     .form-input:focus {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 3px var(--blue-glow);
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
     }
 
-    .auth-btn {
+    .form-input::placeholder {
+      color: #94a3b8;
+    }
+
+    /* 主按钮 */
+    .submit-btn {
       width: 100%;
-      height: 44px;
-      background: linear-gradient(135deg, var(--blue), #2b77e5);
-      border: none;
+      height: 42px;
+      background: var(--primary);
+      border: 1px solid var(--primary-hover);
       border-radius: 8px;
-      color: #fff;
-      font-size: 15px;
+      color: #ffffff;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
-      box-shadow: 0 4px 14px var(--blue-glow);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      margin-top: 10px;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+      transition: all 0.15s ease;
+      margin-top: 6px;
     }
 
-    .auth-btn:hover {
-      background: linear-gradient(135deg, var(--blue-hover), #3a85f5);
+    .submit-btn:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 4px 8px rgba(37, 99, 235, 0.25);
       transform: translateY(-1px);
     }
 
-    .auth-btn:disabled {
+    .submit-btn:active {
+      transform: translateY(0);
+    }
+
+    .submit-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
       transform: none;
     }
 
-    .auth-alert {
-      padding: 12px 14px;
+    /* 本机一键快捷进入按钮 */
+    .quick-login-btn {
+      width: 100%;
+      height: 38px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 12px;
+      transition: all 0.15s ease;
+    }
+
+    .quick-login-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+      color: #0f172a;
+    }
+
+    /* 提示信息 */
+    .alert-box {
+      padding: 10px 14px;
       border-radius: 8px;
       font-size: 13px;
-      margin-bottom: 20px;
+      margin-bottom: 18px;
       display: none;
-      animation: fadeIn 0.2s ease;
     }
 
-    .auth-alert.error {
+    .alert-box.error {
       display: block;
-      background: rgba(248, 81, 73, 0.15);
-      border: 1px solid rgba(248, 81, 73, 0.35);
-      color: #ff7b72;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
     }
 
-    .auth-alert.success {
+    .alert-box.success {
       display: block;
-      background: rgba(46, 160, 67, 0.15);
-      border: 1px solid rgba(46, 160, 67, 0.35);
-      color: #3fb950;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #059669;
     }
 
-    .auth-footer {
+    .theme-preview-links {
       margin-top: 24px;
-      font-size: 12px;
-      color: var(--text-dim);
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
       text-align: center;
-      line-height: 1.6;
+      font-size: 12.5px;
+      color: var(--text-muted);
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
+    .theme-preview-links a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      margin: 0 6px;
+    }
+
+    .theme-preview-links a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <div class="auth-container">
+  <div class="auth-wrapper">
     <div class="auth-card">
-      <div class="auth-brand">
-        <div class="brand-icon">
+      <div class="brand-section">
+        <div class="brand-logo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="5" y="2" width="14" height="20" rx="3"></rect>
             <path d="M12 18h.01"></path>
           </svg>
         </div>
-        <div class="auth-title">云 MOMO 云手机平台</div>
-        <div class="auth-subtitle">高性能多端云控与卡密分发系统</div>
+        <h1 class="brand-title">云 MOMO 控制台</h1>
+        <p class="brand-desc">云手机自动化管理与持续调度工作台</p>
       </div>
 
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tabLogin" type="button">用户登录</button>
-        <button class="auth-tab" id="tabRegister" type="button">邮箱注册</button>
+      <div class="tab-nav">
+        <button class="tab-btn active" id="tabLogin" type="button">登录</button>
+        <button class="tab-btn" id="tabRegister" type="button">注册</button>
       </div>
 
-      <div class="auth-alert" id="authAlert" role="alert"></div>
+      <div class="alert-box" id="alertBox" role="alert"></div>
 
       <form id="authForm" autocomplete="on">
         <div class="form-group">
-          <label for="emailInput">电子邮箱</label>
+          <label class="form-label" for="emailInput">账号邮箱</label>
           <input
             id="emailInput"
             name="email"
             class="form-input"
             type="email"
-            placeholder="请输入电子邮箱，如 user@domain.com"
+            placeholder="admin@yunmomo.local"
+            value="admin@yunmomo.local"
             required
             autocomplete="email"
           >
         </div>
 
         <div class="form-group">
-          <label for="passwordInput">登录密码</label>
+          <label class="form-label" for="passwordInput">登录密码</label>
           <input
             id="passwordInput"
             name="password"
             class="form-input"
             type="password"
-            placeholder="请输入密码 (至少 6 位)"
+            placeholder="请输入密码"
+            value="admin123456"
             required
             autocomplete="current-password"
           >
         </div>
 
         <div class="form-group" id="confirmGroup" style="display: none;">
-          <label for="confirmPasswordInput">确认密码</label>
+          <label class="form-label" for="confirmPasswordInput">确认密码</label>
           <input
             id="confirmPasswordInput"
             class="form-input"
@@ -259,21 +311,27 @@
           >
         </div>
 
-        <button class="auth-btn" id="submitBtn" type="submit">
+        <button class="submit-btn" id="submitBtn" type="submit">
           <span id="btnText">立即登录</span>
+        </button>
+
+        <button class="quick-login-btn" id="quickLoginBtn" type="button">
+          <span>⚡ 本机免密一键进入控制台</span>
         </button>
       </form>
 
-      <div class="auth-footer">
-        <div>管理员默认账号：<code>admin@yunmomo.local</code> / <code>admin123456</code></div>
-        <div>如需开通云机，登录后在工作台右上角【兑换卡密】即可绑定</div>
+      <div class="theme-preview-links">
+        <span>UI 风格对比：</span>
+        <a href="/preview-a.html">方案 A (Linear 极简风)</a>
+        <span>·</span>
+        <a href="/preview-b.html">方案 B (阿里云工控风)</a>
       </div>
     </div>
   </div>
 
   <script>
     'use strict';
-    let mode = 'login'; // 'login' | 'register'
+    let mode = 'login';
 
     const tabLogin = document.getElementById('tabLogin');
     const tabRegister = document.getElementById('tabRegister');
@@ -284,17 +342,18 @@
     const confirmPasswordInput = document.getElementById('confirmPasswordInput');
     const submitBtn = document.getElementById('submitBtn');
     const btnText = document.getElementById('btnText');
-    const authAlert = document.getElementById('authAlert');
+    const alertBox = document.getElementById('alertBox');
+    const quickLoginBtn = document.getElementById('quickLoginBtn');
 
     function showAlert(text, type = 'error') {
-      authAlert.textContent = text;
-      authAlert.className = `auth-alert ${type}`;
-      authAlert.style.display = 'block';
+      alertBox.textContent = text;
+      alertBox.className = `alert-box ${type}`;
     }
 
     function hideAlert() {
-      authAlert.style.display = 'none';
-      authAlert.textContent = '';
+      alertBox.className = 'alert-box';
+      alertBox.style.display = 'none';
+      alertBox.textContent = '';
     }
 
     function switchMode(newMode) {
@@ -306,31 +365,53 @@
         confirmGroup.style.display = 'none';
         confirmPasswordInput.removeAttribute('required');
         btnText.textContent = '立即登录';
+        quickLoginBtn.style.display = 'flex';
       } else {
         tabRegister.classList.add('active');
         tabLogin.classList.remove('active');
         confirmGroup.style.display = 'block';
         confirmPasswordInput.setAttribute('required', 'required');
         btnText.textContent = '注册并登录';
+        quickLoginBtn.style.display = 'none';
       }
     }
 
     tabLogin.addEventListener('click', () => switchMode('login'));
     tabRegister.addEventListener('click', () => switchMode('register'));
 
-    // Check if already logged in
-    fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(res => {
-        if (res.ok && res.user) {
-          if (res.user.role === 'admin') {
-            location.href = '/admin.html';
-          } else {
-            location.href = '/index.html';
-          }
+    async function doLogin(email, password) {
+      submitBtn.disabled = true;
+      btnText.textContent = '正在进入…';
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+          showAlert(result.error || '登录失败，请核对账号与密码');
+          submitBtn.disabled = false;
+          btnText.textContent = '立即登录';
+          return;
         }
-      })
-      .catch(() => {});
+
+        showAlert('登录成功，正在进入工作台…', 'success');
+        setTimeout(() => {
+          location.href = '/index.html';
+        }, 300);
+      } catch (err) {
+        showAlert('网络连接失败，请检查服务状态');
+        submitBtn.disabled = false;
+        btnText.textContent = '立即登录';
+      }
+    }
+
+    quickLoginBtn.addEventListener('click', () => {
+      doLogin('admin@yunmomo.local', 'admin123456');
+    });
 
     authForm.addEventListener('submit', async event => {
       event.preventDefault();
@@ -339,12 +420,10 @@
       const email = emailInput.value.trim().toLowerCase();
       const password = passwordInput.value;
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        showAlert('请输入正确的邮箱格式（例如 user@domain.com）');
+      if (!email) {
+        showAlert('请输入邮箱');
         return;
       }
-
       if (password.length < 6) {
         showAlert('密码长度至少需要 6 个字符');
         return;
@@ -356,41 +435,46 @@
           showAlert('两次输入的密码不一致，请核对');
           return;
         }
-      }
 
-      submitBtn.disabled = true;
-      btnText.textContent = mode === 'login' ? '正在登录…' : '正在注册…';
-
-      try {
-        const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const result = await response.json();
-
-        if (!response.ok || !result.ok) {
-          showAlert(result.error || '请求失败，请稍后重试');
-          submitBtn.disabled = false;
-          btnText.textContent = mode === 'login' ? '立即登录' : '注册并登录';
-          return;
-        }
-
-        showAlert(mode === 'login' ? '登录成功，正在进入工作台…' : '注册成功，正在进入工作台…', 'success');
-        setTimeout(() => {
-          if (result.user?.role === 'admin') {
-            location.href = '/admin.html';
-          } else {
-            location.href = '/index.html';
+        submitBtn.disabled = true;
+        btnText.textContent = '正在注册…';
+        try {
+          const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const result = await response.json();
+          if (!response.ok || !result.ok) {
+            showAlert(result.error || '注册失败');
+            submitBtn.disabled = false;
+            btnText.textContent = '注册并登录';
+            return;
           }
-        }, 600);
-      } catch (err) {
-        showAlert('网络连接失败，请检查服务状态');
-        submitBtn.disabled = false;
-        btnText.textContent = mode === 'login' ? '立即登录' : '注册并登录';
+          showAlert('注册成功，正在进入工作台…', 'success');
+          setTimeout(() => {
+            location.href = '/index.html';
+          }, 300);
+        } catch {
+          showAlert('网络连接失败');
+          submitBtn.disabled = false;
+          btnText.textContent = '注册并登录';
+        }
+        return;
       }
+
+      doLogin(email, password);
     });
+
+    // 检查是否已有活跃会话，已有则直接进入
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok && res.user) {
+          location.href = '/index.html';
+        }
+      })
+      .catch(() => {});
   </script>
 </body>
 </html>

@@ -1680,8 +1680,24 @@ if (elements.submitRedeemBtn) {
 async function checkAuth() {
   const isEmbed = location.search.includes('view=admin-embed');
   try {
-    const res = await fetch('/api/auth/me');
-    const data = await res.json();
+    let res = await fetch('/api/auth/me');
+    let data = await res.json();
+    if (!data.ok || !data.user) {
+      // 本机环境 (127.0.0.1 / localhost) 自动尝试以默认超管免密静默登录，无需用户手动打断体验
+      if (['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)) {
+        try {
+          const autoRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'admin@yunmomo.local', password: 'admin123456' })
+          });
+          const autoData = await autoRes.json();
+          if (autoData.ok && autoData.user) {
+            data = autoData;
+          }
+        } catch {}
+      }
+    }
     if (!data.ok || !data.user) {
       if (!isEmbed) location.href = '/login.html';
       return null;

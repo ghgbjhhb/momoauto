@@ -199,6 +199,7 @@ async function solveCaptcha(imageInput, options = {}) {
 
   const endpoint = (options.endpoint || 'https://api.deepseek.com').replace(/\/+$/, '');
   const model = options.model || 'deepseek-flash';
+  const reasoningEffort = options.reasoningEffort || 'low';
   const timeoutMs = options.timeoutMs || 60000;
 
   // 3. 构建精准视觉提示词
@@ -235,6 +236,7 @@ async function solveCaptcha(imageInput, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let resText = '';
+  let usage = null;
 
   try {
     const response = await fetch(endpoint + '/chat/completions', {
@@ -246,6 +248,7 @@ async function solveCaptcha(imageInput, options = {}) {
       },
       body: JSON.stringify({
         model,
+        reasoning_effort: reasoningEffort,
         response_format: { type: 'json_object' },
         temperature: 0.1,
         messages: [
@@ -266,6 +269,7 @@ async function solveCaptcha(imageInput, options = {}) {
 
     const payload = await response.json();
     resText = payload.choices?.[0]?.message?.content || '{}';
+    usage = payload.usage || null;
   } finally {
     clearTimeout(timer);
   }
@@ -314,7 +318,8 @@ async function solveCaptcha(imageInput, options = {}) {
     imageHeight: height,
     promptOrder: Array.isArray(parsed.promptOrder) ? parsed.promptOrder : targets.map(t => t.name),
     targets,
-    confirmButton
+    confirmButton,
+    usage
   };
 }
 
