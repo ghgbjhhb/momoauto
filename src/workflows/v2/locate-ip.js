@@ -185,17 +185,23 @@ function ipLocationButtonBox(items) {
   );
 }
 
-function traverseDialogEvidence(items) {
-  const fullText = items.map(item => normalizeText(item.text)).join('');
-  const hasTraverseBtn = Boolean(
-    items.some(it => normalizeText(it.text) === '穿越') ||
-    findStrictPhrase(items, '选点') ||
-    findPhrase(items, '选点') ||
-    fullText.includes('仅gps穿越') ||
-    fullText.includes('取消')
-  );
-  const hasDialogKeyword = fullText.includes('提示') || fullText.includes('定位到') || fullText.includes('仅gps');
-  return hasTraverseBtn && hasDialogKeyword;
+// 严格双层弹窗证据：
+// 1. 必须在屏幕中部具有精确的“提示”标题（严禁仅凭背景底图模糊文字冒充）；
+// 2. 必须具备弹窗专属交互动作（精确“穿越”、“取消”、“选点”，或“仅Gps穿越”）。
+function traverseDialogEvidence(items, observation) {
+  const height = observation?.height || 600;
+  const hasTitle = items.some(it => {
+    const t = normalizeText(it.text);
+    return t === '提示' && it.top > height * 0.20 && it.bottom < height * 0.65;
+  });
+  if (!hasTitle) return false;
+
+  const hasAction = items.some(it => {
+    const t = normalizeText(it.text);
+    return (t === '穿越' || t === '取消' || t === '选点') && it.top > height * 0.40;
+  }) || items.some(it => normalizeText(it.text).includes('仅gps'));
+
+  return hasTitle && hasAction;
 }
 
 function traverseButtonBox(items, observation) {
@@ -213,11 +219,11 @@ function traverseButtonBox(items, observation) {
   });
   if (candidate) return candidate;
 
-  // 3. 对称推导：若检测到左侧按钮“选点”或“取消”，右侧“穿越”按钮处于水平镜像对称位置
+  // 3. 对称推导：若检测到左侧按钮“选点”或“取消”（必须精确匹配，严禁匹配“查看我的选点”）
   const leftBtn = items.find(it => {
     const t = normalizeText(it.text);
-    return (t === '选点' || t === '取消');
-  }) || findStrictPhrase(items, '选点') || findStrictPhrase(items, '取消');
+    return t === '选点' || t === '取消';
+  });
 
   if (leftBtn && observation) {
     const width = observation.width || 360;
@@ -233,7 +239,11 @@ function traverseButtonBox(items, observation) {
   }
 
   // 4. 对话框标题推导位置
-  const titleBox = items.find(it => normalizeText(it.text) === '提示');
+  const height = observation?.height || 600;
+  const titleBox = items.find(it => {
+    const t = normalizeText(it.text);
+    return t === '提示' && it.top > height * 0.20 && it.bottom < height * 0.65;
+  });
   if (titleBox && observation) {
     const width = observation.width || 360;
     return {
@@ -332,7 +342,7 @@ async function clickIpLocationAndTraverse(phone, control, worker, directory, sta
   await control.tap(ipPoint.x, ipPoint.y);
   await control.flush();
 
-  // 等待“提示：定位到:...”确认弹窗
+  // 等待“提示：定位到:...”确认弹窗就绪（严格校验“提示”标题与弹窗动作按钮）
   const deadline = Date.now() + options.actionTimeoutMs;
   let dialogSeen = false;
   let targetLocation = 'IP 所在地';
@@ -342,16 +352,9 @@ async function clickIpLocationAndTraverse(phone, control, worker, directory, sta
     state.counter += 1;
     dialogObs = await screenshotAndOcr(phone, worker, directory, state.counter);
 
-    if (traverseDialogEvidence(dialogObs.items)) {
+    if (traverseDialogEvidence(dialogObs.items, dialogObs)) {
       dialogSeen = true;
       targetLocation = extractLocationTarget(dialogObs.items);
-      const traverseBtn = traverseButtonBox(dialogObs.items, dialogObs);
-      if (!traverseBtn) throw new Error('检测到定位确认弹窗，但未找到“穿越”按钮');
-
-      const traversePoint = tapBox(control, traverseBtn, dialogObs);
-      console.log(`[穿越] 确认弹窗就绪 (目标: ${targetLocation})，点击“穿越” (${traversePoint.x}, ${traversePoint.y})...`);
-      await control.tap(traversePoint.x, traversePoint.y);
-      await control.flush();
       break;
     }
 
@@ -362,24 +365,48 @@ async function clickIpLocationAndTraverse(phone, control, worker, directory, sta
     throw new Error('点击“定位到ip所在地”后未弹出穿越确认弹窗');
   }
 
-  // 等待“穿越成功”Toast 或界面变更
+  // 弹窗出现后缓冲 300ms 避开动画位移，点击“穿越”；若弹窗未关闭支持有界重试
+  await new Promise(r => setTimeout(r, 300));
   let traverseSucceeded = false;
-  const verifyDeadline = Date.now() + 8000;
-  while (Date.now() <= verifyDeadline) {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const traverseBtn = traverseButtonBox(dialogObs.items, dialogObs);
+    if (!traverseBtn) {
+      throw new Error('检测到定位确认弹窗，但未找到“穿越”按钮');
+    }
+
+    const traversePoint = tapBox(control, traverseBtn, dialogObs);
+    console.log(`[穿越] 确认弹窗就绪 (目标: ${targetLocation})，点击“穿越” (${traversePoint.x}, ${traversePoint.y}) [第 ${attempt} 次]...`);
+    await control.tap(traversePoint.x, traversePoint.y);
+    await control.flush();
+
+    // 等待 800ms 观察后验结果
+    await new Promise(r => setTimeout(r, 800));
     state.counter += 1;
     const postObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+
     if (traverseSuccessEvidence(postObs.items)) {
       console.log('[穿越] 检测到“穿越成功”提示！');
       traverseSucceeded = true;
       break;
     }
-    const fullText = postObs.items.map(it => normalizeText(it.text)).join('');
-    if (fullText.includes('定位到ip') && (fullText.includes('City') || fullText.includes('China') || fullText.includes(')'))) {
-      console.log('[穿越] 定位状态已更新为目标 IP 地！');
+
+    const stillHasDialog = traverseDialogEvidence(postObs.items, postObs);
+    if (!stillHasDialog && mapPageEvidence(postObs.items)) {
+      console.log('[穿越] 穿越确认弹窗已关闭，穿越成功！');
       traverseSucceeded = true;
       break;
     }
-    await new Promise(r => setTimeout(r, 300));
+
+    if (stillHasDialog && attempt < maxAttempts) {
+      console.log('[穿越] 确认弹窗仍在显示，准备重试点击“穿越”...');
+      dialogObs = postObs;
+    }
+  }
+
+  if (!traverseSucceeded) {
+    throw new Error('点击“穿越”后确认弹窗未关闭且未检测到穿越成功');
   }
 
   return { success: true, targetLocation, mode: 'ip' };
@@ -466,7 +493,7 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
     mapCenteredObs = await screenshotAndOcr(phone, worker, directory, state.counter);
 
     // 检查是否已直接弹出了穿越确认框（某些版本点击结果直接弹框）
-    if (traverseDialogEvidence(mapCenteredObs.items)) {
+    if (traverseDialogEvidence(mapCenteredObs.items, mapCenteredObs)) {
       bubbleClicked = true;
       break;
     }
@@ -498,18 +525,10 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
     state.counter += 1;
     dialogObs = await screenshotAndOcr(phone, worker, directory, state.counter);
 
-    if (traverseDialogEvidence(dialogObs.items)) {
+    if (traverseDialogEvidence(dialogObs.items, dialogObs)) {
       dialogSeen = true;
       const extracted = extractLocationTarget(dialogObs.items);
       if (extracted && extracted !== 'IP 所在地') targetLocation = extracted;
-
-      const traverseBtn = traverseButtonBox(dialogObs.items, dialogObs);
-      if (!traverseBtn) throw new Error('检测到定位确认弹窗，但未找到“穿越”按钮');
-
-      const traversePoint = tapBox(control, traverseBtn, dialogObs);
-      console.log(`[穿越] 确认弹窗就绪 (目标: ${targetLocation})，点击“穿越” (${traversePoint.x}, ${traversePoint.y})...`);
-      await control.tap(traversePoint.x, traversePoint.y);
-      await control.flush();
       break;
     }
 
@@ -520,23 +539,47 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
     throw new Error('点击中心气泡后未弹出穿越确认弹窗');
   }
 
-  // 8. 等待“穿越成功”Toast 或界面变更
+  // 弹窗出现后缓冲 300ms 避开动画位移，点击“穿越”；若弹窗未关闭支持有界重试
+  await new Promise(r => setTimeout(r, 300));
   let traverseSucceeded = false;
-  const verifyDeadline = Date.now() + 8000;
-  while (Date.now() <= verifyDeadline) {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const traverseBtn = traverseButtonBox(dialogObs.items, dialogObs);
+    if (!traverseBtn) {
+      throw new Error('检测到定位确认弹窗，但未找到“穿越”按钮');
+    }
+
+    const traversePoint = tapBox(control, traverseBtn, dialogObs);
+    console.log(`[穿越] 确认弹窗就绪 (目标: ${targetLocation})，点击“穿越” (${traversePoint.x}, ${traversePoint.y}) [第 ${attempt} 次]...`);
+    await control.tap(traversePoint.x, traversePoint.y);
+    await control.flush();
+
+    await new Promise(r => setTimeout(r, 800));
     state.counter += 1;
     const postObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+
     if (traverseSuccessEvidence(postObs.items)) {
       console.log('[穿越] 检测到“穿越成功”提示！');
       traverseSucceeded = true;
       break;
     }
-    if (!traverseDialogEvidence(postObs.items) && mapPageEvidence(postObs.items)) {
-      console.log('[穿越] 穿越弹窗已关闭，穿越成功！');
+
+    const stillHasDialog = traverseDialogEvidence(postObs.items, postObs);
+    if (!stillHasDialog && mapPageEvidence(postObs.items)) {
+      console.log('[穿越] 穿越确认弹窗已关闭，穿越成功！');
       traverseSucceeded = true;
       break;
     }
-    await new Promise(r => setTimeout(r, 300));
+
+    if (stillHasDialog && attempt < maxAttempts) {
+      console.log('[穿越] 确认弹窗仍在显示，准备重试点击“穿越”...');
+      dialogObs = postObs;
+    }
+  }
+
+  if (!traverseSucceeded) {
+    throw new Error('点击“穿越”后确认弹窗未关闭且未检测到穿越成功');
   }
 
   return { success: true, targetLocation, mode: 'search' };
