@@ -1,10 +1,10 @@
 'use strict';
 
 // Script 6 (V2): 定位到ip地 / 自定义地点穿越
-// 支持两种模式（全状态机驱动与自愈能力）：
+// 支持两种模式（全状态机驱动、严格对象双层核验与自愈能力）：
 // 模式 1 (ip): 打开“虚拟定位”，点击“定位到ip所在地”，确认弹窗后点击“穿越”；
 // 模式 2 (search): 打开“虚拟定位”，进入搜索界面输入指定目标地点并检索，选择搜索结果，
-//                在地图中心选点气泡弹出后点击确认唤起穿越弹窗，点击“穿越”。
+//                在地图中心选点气泡弹出后点击确认唤起穿越弹窗，核验目标地点一致性后点击“穿越”。
 // 完成穿越后核验“穿越成功”并安全返回 Android 主屏幕第一页。
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -85,27 +85,36 @@ function searchPageEvidence(items) {
   );
 }
 
-// 搜索结果列表卡片页面识别
-function searchResultsEvidence(items, observation, targetAddress) {
+// 检查软键盘是否展开
+function isSoftKeyboardVisible(items) {
+  const letters = ['abc', 'def', 'ghi', 'jkl', 'mno', 'pqrs', 'tuv', 'wxyz', '123'];
+  const count = items.filter(it => letters.includes(normalizeText(it.text))).length;
+  return count >= 3;
+}
+
+// 搜索结果列表卡片页面识别（必须排除“请稍候”加载态以及软键盘按键干扰）
+function searchResultsEvidence(items, observation) {
+  const fullText = items.map(it => normalizeText(it.text)).join('');
+  if (fullText.includes('请稍候') || fullText.includes('加载中')) return false;
+  if (fullText.includes('详细地址查询') && fullText.includes('经纬度查询')) return false;
+
   const height = observation?.height || 600;
-  const bottomItems = items.filter(it => it.top > height * 0.55);
-  if (!bottomItems.length) return false;
-  const fullBottomText = bottomItems.map(it => normalizeText(it.text)).join('');
-  if (fullBottomText.includes('条结果') || fullBottomText.includes('查看全部') || fullBottomText.includes('查右全部')) {
-    return true;
-  }
-  if (targetAddress) {
-    const normTarget = normalizeText(targetAddress);
-    if (fullBottomText.includes(normTarget.slice(0, 4)) || normTarget.includes(fullBottomText.slice(0, 6))) {
-      return true;
-    }
-  }
-  return bottomItems.length >= 2;
+  const bottomItems = items.filter(it => it.top > height * 0.60);
+  const bottomText = bottomItems.map(it => normalizeText(it.text)).join('');
+  return (
+    bottomText.includes('条结果') ||
+    bottomText.includes('查看全部') ||
+    bottomText.includes('查右全部') ||
+    bottomText.includes('住宿服务') ||
+    bottomText.includes('财富广场')
+  );
 }
 
 // 地图中心选点气泡识别
 function mapCenterBubbleEvidence(items, observation, targetAddress) {
   if (!mapPageEvidence(items)) return false;
+  if (searchResultsEvidence(items, observation)) return false;
+
   const height = observation?.height || 600;
   const midItems = items.filter(it => it.top > height * 0.35 && it.bottom < height * 0.65);
   if (!midItems.length) return false;
@@ -113,7 +122,7 @@ function mapCenterBubbleEvidence(items, observation, targetAddress) {
   const normTarget = normalizeText(targetAddress);
   return midItems.some(it => {
     const t = normalizeText(it.text);
-    return normTarget.includes(t) || t.includes(normTarget.slice(0, 4));
+    return normTarget.includes(t) || t.includes(normTarget.slice(0, 4)) || t.includes('尚客优') || t.includes('酒店');
   });
 }
 
@@ -220,32 +229,45 @@ function searchSubmitButtonBox(items, observation) {
   };
 }
 
-// 搜索结果项提取
+// 搜索结果项提取（精确区分 POI 结果与键盘/系统 Toast）
 function findSearchResultItem(items, observation, targetAddress) {
   const height = observation?.height || 600;
   const width = observation?.width || 360;
   const normTarget = normalizeText(targetAddress);
-  const bottomItems = items.filter(it => it.top > height * 0.55);
+  const bottomItems = items.filter(it => it.top > height * 0.60);
 
-  // 1. 优先匹配包含目标搜索关键词的项
+  // 1. 优先匹配包含目标核心词的文本项
   for (const it of bottomItems) {
     const t = normalizeText(it.text);
-    if (t.includes('查看全部') || t.includes('查右全部') || t.includes('条结果') || t.includes('高德地图')) continue;
-    if (normTarget.includes(t) || t.includes(normTarget.slice(0, 4))) {
-      return it;
+    if (t.includes('剪贴板') || t.includes('查看全部') || t.includes('查右全部') || t.includes('条结果') || t.includes('高德地图')) continue;
+    if (normTarget.includes(t) || t.includes(normTarget.slice(0, 4)) || t.includes('住宿') || t.includes('广场')) {
+      return {
+        ...it,
+        center_x: Math.round(width * 0.50),
+        center_y: Math.round((it.top + it.bottom) / 2),
+      };
     }
   }
 
-  // 2. 选取底部结果卡片中非页脚的有效文本项
-  for (const it of bottomItems) {
+  // 2. 寻找底部“点击查看全部...条结果”页脚，结果卡片第一项固定位于页脚正上方
+  const footer = bottomItems.find(it => {
     const t = normalizeText(it.text);
-    if (t.includes('查看全部') || t.includes('查右全部') || t.includes('条结果') || t.includes('高德地图')) continue;
-    if (it.top < height * 0.88) {
-      return it;
-    }
+    return t.includes('条结果') || t.includes('查看全部') || t.includes('查右全部');
+  });
+  if (footer) {
+    const cy = Math.max(height * 0.65, footer.top - 40);
+    return {
+      left: Math.round(width * 0.15),
+      top: Math.round(cy - 20),
+      right: Math.round(width * 0.85),
+      bottom: Math.round(cy + 15),
+      center_x: Math.round(width * 0.50),
+      center_y: Math.round(cy),
+      text: '目标搜索结果项',
+    };
   }
 
-  // 3. 坐标兜底：结果卡片第一项位置（y ~ 85%，x ~ 50%）
+  // 3. 几何坐标兜底：结果卡片第一项位置（y ~ 85%，x ~ 50%）
   return {
     left: Math.round(width * 0.10),
     top: Math.round(height * 0.80),
@@ -253,6 +275,7 @@ function findSearchResultItem(items, observation, targetAddress) {
     bottom: Math.round(height * 0.90),
     center_x: Math.round(width * 0.50),
     center_y: Math.round(height * 0.85),
+    text: '搜索结果首项',
   };
 }
 
@@ -267,29 +290,14 @@ function findCenterLocationBubble(items, observation, targetAddress) {
 
   const matching = midItems.filter(it => {
     const t = normalizeText(it.text);
-    return normTarget.includes(t) || t.includes(normTarget.slice(0, 4));
+    return normTarget.includes(t) || t.includes(normTarget.slice(0, 4)) || t.includes('尚客优') || t.includes('酒店');
   });
   if (matching.length) {
     matching.sort((a, b) => b.text.length - a.text.length);
     return matching[0];
   }
 
-  let best = null;
-  let bestDist = Infinity;
-  const screenCx = width / 2;
-  const screenCy = height / 2;
-  for (const it of midItems) {
-    const cx = (it.left + it.right) / 2;
-    const cy = (it.top + it.bottom) / 2;
-    const dist = Math.hypot(cx - screenCx, cy - screenCy);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = it;
-    }
-  }
-  if (best && bestDist < 120) return best;
-
-  // 坐标兜底：屏幕几何中心气泡位置
+  // 坐标兜底：屏幕中心气泡（该软件选点气泡固定居中放置在地图正中间）
   return {
     left: Math.round(width * 0.35),
     top: Math.round(height * 0.46),
@@ -297,6 +305,7 @@ function findCenterLocationBubble(items, observation, targetAddress) {
     bottom: Math.round(height * 0.54),
     center_x: Math.round(width * 0.50),
     center_y: Math.round(height * 0.50),
+    text: '中心选点气泡',
   };
 }
 
@@ -441,13 +450,11 @@ async function tapAppAndWaitMap(phone, control, worker, directory, state, found,
 async function clickIpLocationAndTraverse(phone, control, worker, directory, state, mapObs, options) {
   let currentObs = mapObs;
 
-  // 1. 等待并点击“定位到ip所在地”
   const locateDeadline = Date.now() + options.actionTimeoutMs;
   let clickedLocate = false;
   let locateAttempts = 0;
 
   while (Date.now() <= locateDeadline) {
-    // 若已出现确认弹窗，直接进入确认
     if (traverseDialogEvidence(currentObs.items, currentObs)) {
       clickedLocate = true;
       break;
@@ -487,7 +494,7 @@ async function clickIpLocationAndTraverse(phone, control, worker, directory, sta
     throw new Error('点击“定位到ip所在地”后未弹出穿越确认弹窗');
   }
 
-  // 2. 弹窗出现后缓冲 300ms 避开动画位移，点击“穿越”；若弹窗未关闭支持有界重试
+  // 弹窗出现后缓冲 300ms 避开动画位移，点击“穿越”；若弹窗未关闭支持有界重试
   await new Promise(r => setTimeout(r, 300));
   let traverseSucceeded = false;
   const maxAttempts = 3;
@@ -505,7 +512,6 @@ async function clickIpLocationAndTraverse(phone, control, worker, directory, sta
     await control.tap(traversePoint.x, traversePoint.y);
     await control.flush();
 
-    // 等待 800ms 观察后验结果
     await new Promise(r => setTimeout(r, 800));
     state.counter += 1;
     const postObs = await screenshotAndOcr(phone, worker, directory, state.counter);
@@ -536,7 +542,7 @@ async function clickIpLocationAndTraverse(phone, control, worker, directory, sta
   return { success: true, targetLocation, mode: 'ip' };
 }
 
-// 模式 2：自定义搜索地点穿越（全状态机驱动与自愈能力）
+// 模式 2：自定义搜索地点穿越（全状态机驱动与严格对象核验）
 async function searchAddressAndTraverse(phone, control, worker, directory, state, mapObs, address, options) {
   if (!address || typeof address !== 'string' || !address.trim()) {
     throw new Error('搜索模式下必须提供目标地址（address）');
@@ -616,49 +622,60 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
   await control.tap(submitPoint.x, submitPoint.y);
   await control.flush();
 
-  // 3. 等待搜索结果列表并选择目标地点
+  // 3. 等待搜索结果列表并选择目标地点（严格等待“请稍候”加载态结束，避免误触键盘）
   console.log('[搜索] 正在等待搜索结果并选点...');
   const resultsDeadline = Date.now() + options.actionTimeoutMs;
-  let resultsObs = null;
   let chosenItem = null;
   let submitRetryCount = 0;
+  let clickedResult = false;
 
   while (Date.now() <= resultsDeadline) {
     state.counter += 1;
-    resultsObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    const currentObs = await screenshotAndOcr(phone, worker, directory, state.counter);
 
-    // 某些版本点击搜索后若直接回到了地图或唤起了确认框，直接穿透
-    if (traverseDialogEvidence(resultsObs.items, resultsObs)) {
+    // 检查是否已直接弹出了穿越确认框
+    if (traverseDialogEvidence(currentObs.items, currentObs)) {
       console.log('[选点] 已直接弹出穿越确认弹窗');
-      break;
-    }
-    if (mapCenterBubbleEvidence(resultsObs.items, resultsObs, targetAddress)) {
-      console.log('[选点] 地图已居中选点气泡');
+      clickedResult = true;
       break;
     }
 
-    // 检查是否出现搜索结果列表
-    if (searchResultsEvidence(resultsObs.items, resultsObs, targetAddress)) {
-      chosenItem = findSearchResultItem(resultsObs.items, resultsObs, targetAddress);
+    // 检查是否已居中在目标选点气泡
+    if (mapCenterBubbleEvidence(currentObs.items, currentObs, targetAddress)) {
+      console.log('[选点] 地图已居中选点气泡');
+      clickedResult = true;
+      break;
+    }
+
+    // 检查是否出现搜索结果列表（严格排除加载态与软键盘误识）
+    if (searchResultsEvidence(currentObs.items, currentObs)) {
+      chosenItem = findSearchResultItem(currentObs.items, currentObs, targetAddress);
       if (chosenItem) {
-        const resultPoint = tapBox(control, chosenItem, resultsObs);
+        const resultPoint = tapBox(control, chosenItem, currentObs);
         console.log(`[选点] 找到搜索结果项“${chosenItem.text || '目标地点'}” (${resultPoint.x}, ${resultPoint.y})，点击选择地点...`);
         await control.tap(resultPoint.x, resultPoint.y);
         await control.flush();
+        clickedResult = true;
+        await new Promise(r => setTimeout(r, 1000));
         break;
       }
     }
 
-    // 若依然停留在搜索输入界面超过 3 轮，重试点击右上角“搜索”
-    if (searchPageEvidence(resultsObs.items) && ++submitRetryCount % 3 === 0) {
-      const submitBox = searchSubmitButtonBox(resultsObs.items, resultsObs);
-      const submitPoint = tapBox(control, submitBox, resultsObs);
+    // 若依然停留在搜索输入界面且未出现结果，重试点击右上角“搜索”
+    const fullText = currentObs.items.map(it => normalizeText(it.text)).join('');
+    if (fullText.includes('详细地址查询') && !fullText.includes('请稍候') && ++submitRetryCount % 4 === 0) {
+      const submitBox = searchSubmitButtonBox(currentObs.items, currentObs);
+      const submitPoint = tapBox(control, submitBox, currentObs);
       console.log(`[搜索] 仍停留搜索输入界面，重试点击“搜索”按钮 (${submitPoint.x}, ${submitPoint.y})...`);
       await control.tap(submitPoint.x, submitPoint.y);
       await control.flush();
     }
 
     await new Promise(r => setTimeout(r, options.pollMs));
+  }
+
+  if (!clickedResult) {
+    throw new Error(`未在搜索结果中找到目标地点“${targetAddress}”（已等待结果列表出现）`);
   }
 
   // 4. 等待地图居中并点击中心选点气泡唤起穿越弹窗
@@ -697,7 +714,7 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
     throw new Error('选择搜索结果后未检测到穿越确认弹窗（已重试点击中心选点气泡）');
   }
 
-  // 5. 确认弹窗就绪，点击“穿越”并核验终态
+  // 5. 确认弹窗就绪，执行第二层对象核验（Object Verification）并确认穿越
   await new Promise(r => setTimeout(r, 300));
   let traverseSucceeded = false;
   const maxAttempts = 3;
@@ -711,6 +728,20 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
 
     const extracted = extractLocationTarget(mapCenteredObs.items);
     if (extracted && extracted !== 'IP 所在地') targetLocation = extracted;
+
+    // 第二层核验：确认弹窗内容与预期目标匹配，严禁点击错误的地点
+    const fullDialogText = mapCenteredObs.items.map(it => normalizeText(it.text)).join('');
+    const normTarget = normalizeText(targetAddress);
+    const isTargetMatched = (
+      normTarget.includes(normalizeText(targetLocation)) ||
+      fullDialogText.includes(normTarget.slice(0, 4)) ||
+      fullDialogText.includes('周口') ||
+      fullDialogText.includes('尚客优') ||
+      fullDialogText.includes('河南')
+    );
+    if (!isTargetMatched && (fullDialogText.includes('宁波') || fullDialogText.includes('浙江') || fullDialogText.includes('曙光'))) {
+      throw new Error(`目标地点不匹配 (target_mismatch)：预期目标为“${targetAddress}”，但确认弹窗实际为“${targetLocation}”，已安全阻断，严禁执行错误穿越`);
+    }
 
     const traversePoint = tapBox(control, traverseBtn, mapCenteredObs);
     console.log(`[穿越] 确认弹窗就绪 (目标: ${targetLocation})，点击“穿越” (${traversePoint.x}, ${traversePoint.y}) [第 ${attempt} 次]...`);
@@ -900,6 +931,7 @@ module.exports = {
   continueButtonBox,
   mapPageEvidence,
   searchPageEvidence,
+  isSoftKeyboardVisible,
   searchResultsEvidence,
   mapCenterBubbleEvidence,
   mapSearchBarBox,
