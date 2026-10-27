@@ -134,6 +134,12 @@ const SCRIPT_DEFINITIONS = Object.freeze([
       parameters: [
         { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
       ]
+    } : {}),
+    ...(step.order === 6 ? {
+      parameters: [
+        { name: 'mode', label: '定位模式', choices: ['ip', 'search'], defaultValue: 'ip' },
+        { name: 'address', label: '目标搜索地址', defaultValue: '' }
+      ]
     } : {})
   })),
   {
@@ -737,6 +743,18 @@ function configureScript(script, body, env) {
     }
     if (options.action?.trim()) {
       env.YUNMOMO_PROXY_ACTION = options.action.trim();
+    }
+  }
+  if (script.id.startsWith('flow-06')) {
+    const mode = options.mode?.trim() || 'ip';
+    env.YUNMOMO_LOCATION_MODE = mode;
+    if (mode === 'search') {
+      if (!options.address?.trim()) {
+        throw invalidOptions('搜索模式下必须提供目标搜索地址');
+      }
+      env.YUNMOMO_LOCATION_ADDRESS = options.address.trim();
+    } else if (options.address?.trim()) {
+      env.YUNMOMO_LOCATION_ADDRESS = options.address.trim();
     }
   }
   if (script.id.startsWith('flow-09')) {

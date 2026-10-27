@@ -119,7 +119,16 @@ function launch(order) {
     process.exitCode = 1;
     return;
   }
-  runStep(order, { env: { ...process.env, YUNMOMO_SDK_VERSION: 'v2' } }).catch(error => { console.error(redact(error.message)); process.exitCode = 1; });
+  const env = { ...process.env, YUNMOMO_SDK_VERSION: 'v2' };
+  const modeIdx = process.argv.indexOf('--mode');
+  if (modeIdx !== -1 && process.argv[modeIdx + 1]) {
+    env.YUNMOMO_LOCATION_MODE = process.argv[modeIdx + 1].trim();
+  }
+  const addrIdx = process.argv.indexOf('--address');
+  if (addrIdx !== -1 && process.argv[addrIdx + 1]) {
+    env.YUNMOMO_LOCATION_ADDRESS = process.argv[addrIdx + 1].trim();
+  }
+  runStep(order, { env }).catch(error => { console.error(redact(error.message)); process.exitCode = 1; });
 }
 
 module.exports = { STEPS, PROJECT_ROOT, redact, runStep, launch };
