@@ -311,6 +311,50 @@
     </div>
   </dialog>
 
+  <!-- 自定义组合脚本模态框 -->
+  <dialog class="bundle-dialog" id="scriptBundleModal" style="border: 1px solid #d9d9d9; border-radius: 10px; padding: 20px 24px; max-width: 580px; width: 92%; box-shadow: 0 16px 48px rgba(0,0,0,0.18);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 id="bundleModalTitle" style="margin:0; font-size:16px; font-weight:700; color:#1f1f1f;">新建自定义脚本组合</h3>
+      <button class="action-btn small" id="closeBundleModalBtn" type="button" style="padding:2px 8px;">✕</button>
+    </div>
+    <form id="bundleForm" onsubmit="return false;">
+      <input type="hidden" id="bundleEditId" value="">
+      <div style="margin-bottom:12px;">
+        <label for="bundleNameInput" style="display:block; font-size:13px; font-weight:600; color:#262626; margin-bottom:4px;">组合脚本名称 <span style="color:#ff4d4f;">*</span></label>
+        <input id="bundleNameInput" type="text" placeholder="如：一键初始化全套流程" required style="width:100%; height:34px; background:#fff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; font-size:13px; box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label for="bundleDescInput" style="display:block; font-size:13px; font-weight:600; color:#262626; margin-bottom:4px;">备注（脚本功能说明）</label>
+        <input id="bundleDescInput" type="text" placeholder="如：按顺序自动执行环境重置、证书注入及抓包代理配置" style="width:100%; height:34px; background:#fff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; font-size:13px; box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+        <label class="switch-toggle" style="cursor:pointer;">
+          <input type="checkbox" id="bundleEnabledInput" checked>
+          <span class="switch-slider"></span>
+          <span class="switch-text" style="font-weight:600; color:#1f1f1f;">在用户侧显示</span>
+        </label>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:13px; font-weight:600; color:#262626; margin-bottom:6px;">配置执行步骤（按顺序依次执行）</label>
+        <!-- 已选步骤列表，支持上移、下移、删除 -->
+        <div id="bundleSelectedSteps" style="min-height:50px; max-height:160px; overflow-y:auto; border:1px dashed #d9d9d9; border-radius:6px; padding:8px; background:#fafafa; margin-bottom:10px;">
+          <!-- 动态填充 -->
+        </div>
+        <!-- 添加脚本步骤选择器 -->
+        <div style="display:flex; gap:8px;">
+          <select id="bundleAvailableScriptsSelect" style="flex:1; height:32px; border:1px solid #d9d9d9; border-radius:4px; padding:0 8px; font-size:12.5px; background:#fff;">
+            <!-- 动态填充可选脚本 -->
+          </select>
+          <button class="action-btn" id="addStepToBundleBtn" type="button" style="padding:4px 12px; font-size:12.5px;">+ 添加步骤</button>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+        <button class="action-btn" id="cancelBundleBtn" type="button">取消</button>
+        <button class="run-button" id="saveBundleBtn" type="button" style="padding:6px 20px;">保存组合</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- 核心交互脚本 -->

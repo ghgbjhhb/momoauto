@@ -37,8 +37,12 @@ const state = {
   selectedDeviceId: '',
   tokenConfigured: false,
   scripts: [],
+  bundles: [],
+  visibility: { groups: {}, scripts: {} },
+  isAdmin: false,
   runningScript: '',
   activeRun: null,
+  activeBundleRun: null,
   previewPlayers: new Map(),
   previewRetry: new Map(),
   manualDeviceId: '',
@@ -48,6 +52,11 @@ const state = {
     catch { return {}; }
   })()
 };
+
+function isCurrentUserAdmin() {
+  const isEmbed = location.search.includes('view=admin-embed');
+  return Boolean(state.isAdmin || state.currentUser?.role === 'admin' || isEmbed);
+}
 
 const byId = id => document.getElementById(id);
 window.byId = byId;
@@ -992,10 +1001,45 @@ function parameterChoiceLabel(field, value) {
   return String(value);
 }
 
+async function saveVisibilityConfig({ type, id, visible }) {
+  if (!isCurrentUserAdmin()) return;
+  const payload = {};
+  if (type === 'group') {
+    if (!state.visibility.groups) state.visibility.groups = {};
+    state.visibility.groups[id] = visible;
+    payload.groups = { [id]: visible };
+  } else if (type === 'script') {
+    if (!state.visibility.scripts) state.visibility.scripts = {};
+    state.visibility.scripts[id] = visible;
+    payload.scripts = { [id]: visible };
+  }
+  try {
+    const res = await requestJson('/api/admin/scripts/visibility', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok && res.visibility) {
+      state.visibility = res.visibility;
+    }
+    showToast(`已${visible ? '开启' : '关闭'}在用户侧的显示`);
+    renderScripts();
+  } catch (err) {
+    showToast('更新显隐设置失败: ' + err.message);
+  }
+}
+
 function createScriptCard(script) {
+  const isAdmin = isCurrentUserAdmin();
+  const isScriptVisible = state.visibility?.scripts?.[script.id] !== false;
+
+  // 普通用户视角：若该脚本被管理员关闭，则直接不渲染
+  if (!isAdmin && !isScriptVisible) return null;
+
   const card = document.createElement('article');
   card.className = 'script-card';
   card.dataset.scriptId = script.id;
+  if (!isScriptVisible) card.classList.add('hidden-from-user');
   if (script.batch) card.classList.add('script-hero-card');
 
   const isSingleInline = script.parameters?.length === 1 && !script.parameters[0].multiline;
@@ -1020,6 +1064,13 @@ function createScriptCard(script) {
   title.textContent = script.order ? script.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '') : script.title;
   titleGroup.append(title);
 
+  if (!isScriptVisible && isAdmin) {
+    const hiddenBadge = document.createElement('span');
+    hiddenBadge.className = 'badge-hidden-user';
+    hiddenBadge.textContent = '用户侧隐藏';
+    titleGroup.append(hiddenBadge);
+  }
+
   head.append(titleGroup);
 
   if (script.destructive) {
@@ -1027,6 +1078,26 @@ function createScriptCard(script) {
     dangerTag.className = 'script-danger-badge';
     dangerTag.textContent = '⚠️ 清数据';
     head.append(dangerTag);
+  }
+
+  // 管理员视角：提供用户可见开关
+  if (isAdmin) {
+    const visWrap = document.createElement('div');
+    visWrap.className = 'script-visibility-wrap';
+    visWrap.innerHTML = `
+      <label class="switch-toggle" title="控制此脚本在普通用户侧是否显示">
+        <input type="checkbox" ${isScriptVisible ? 'checked' : ''}>
+        <span class="switch-slider"></span>
+        <span class="switch-text">${isScriptVisible ? '用户可见' : '隐藏'}</span>
+      </label>
+    `;
+    const visInput = visWrap.querySelector('input');
+    visInput.addEventListener('click', e => e.stopPropagation());
+    visInput.addEventListener('change', e => {
+      e.stopPropagation();
+      saveVisibilityConfig({ type: 'script', id: script.id, visible: e.target.checked });
+    });
+    head.append(visWrap);
   }
 
   card.append(head);
@@ -1182,7 +1253,63 @@ async function stopRunningScript() {
   }
 }
 
-function createVersionSection(versionTag, title, scripts, defaultCollapsed = false) {
+function showInPageConfirm({ title, message, okText = '确定', cancelText = '取消', isDanger = true, icon = '⚠️' } = {}) {
+  return new Promise(resolve => {
+    const dialog = document.getElementById('userConfirmDialog');
+    if (!dialog) return resolve(false);
+    const titleEl = document.getElementById('userConfirmTitle');
+    const descEl = document.getElementById('userConfirmDesc');
+    const okBtn = document.getElementById('userConfirmOkBtn');
+    const cancelBtn = document.getElementById('userConfirmCancelBtn');
+    const iconEl = document.getElementById('userConfirmIcon');
+
+    if (titleEl) titleEl.textContent = title;
+    if (descEl) descEl.innerHTML = message;
+    if (okBtn) {
+      okBtn.textContent = okText;
+      okBtn.style.background = isDanger ? '#ff4d4f' : '#1677ff';
+      okBtn.style.borderColor = isDanger ? '#ff4d4f' : '#1677ff';
+      okBtn.style.color = '#fff';
+    }
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+    if (iconEl) {
+      iconEl.textContent = icon;
+      iconEl.style.background = isDanger ? '#fff2f0' : '#e6f4ff';
+      iconEl.style.borderColor = isDanger ? '#ffccc7' : '#91caff';
+      iconEl.style.color = isDanger ? '#ff4d4f' : '#1677ff';
+    }
+
+    const cleanup = () => {
+      try { dialog.close(); } catch {}
+      okBtn?.removeEventListener('click', onOk);
+      cancelBtn?.removeEventListener('click', onCancel);
+      dialog.removeEventListener('keydown', onKeyDown);
+      dialog.removeEventListener('cancel', onCancel);
+    };
+
+    const onOk = () => { cleanup(); resolve(true); };
+    const onCancel = () => { cleanup(); resolve(false); };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(); resolve(false); }
+    };
+
+    okBtn?.addEventListener('click', onOk);
+    cancelBtn?.addEventListener('click', onCancel);
+    dialog.addEventListener('keydown', onKeyDown);
+    dialog.addEventListener('cancel', onCancel, { once: true });
+
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  });
+}
+
+function createVersionSection(versionTag, title, scripts, defaultCollapsed = false, groupKey = '') {
+  const isAdmin = isCurrentUserAdmin();
+  const isGroupVisible = state.visibility?.groups?.[groupKey] !== false;
+
+  // 普通用户模式下：如果该分组被关闭，直接不渲染
+  if (!isAdmin && !isGroupVisible) return null;
+
   const section = document.createElement('section');
   const tagClass = versionTag.toLowerCase() + '-tag';
   const colClass = versionTag.toLowerCase() + '-column';
@@ -1194,24 +1321,53 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
     if (saved !== null) isCollapsed = saved === 'true';
   } catch {}
 
-  section.className = `scripts-version-column ${colClass}` + (isCollapsed ? ' collapsed' : '');
+  section.className = `scripts-version-column ${colClass}` + (isCollapsed ? ' collapsed' : '') + (!isGroupVisible ? ' hidden-from-user' : '');
   section.innerHTML = `
     <div class="version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
       <div class="version-badge-group">
         <span class="version-title">${title}</span>
+        ${!isGroupVisible ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
       </div>
-      <button class="version-collapse-btn" type="button" aria-expanded="${!isCollapsed}" title="点击收起/展开">
-        <span class="toggle-text">${isCollapsed ? '展开' : '收起'}</span>
-        <span class="toggle-icon">${isCollapsed ? '▼' : '▲'}</span>
-      </button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        ${isAdmin ? `
+          <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此分组">
+            <label class="switch-toggle" onclick="event.stopPropagation()">
+              <input type="checkbox" class="group-vis-input" data-group="${groupKey}" ${isGroupVisible ? 'checked' : ''}>
+              <span class="switch-slider"></span>
+              <span class="switch-text">${isGroupVisible ? '用户可见' : '隐藏'}</span>
+            </label>
+          </div>
+        ` : ''}
+        <button class="version-collapse-btn" type="button" aria-expanded="${!isCollapsed}" title="点击收起/展开">
+          <span class="toggle-text">${isCollapsed ? '展开' : '收起'}</span>
+          <span class="toggle-icon">${isCollapsed ? '▼' : '▲'}</span>
+        </button>
+      </div>
     </div>
     <div class="version-cards-stack"></div>
   `;
 
-  const stack = section.querySelector('.version-cards-stack');
-  for (const script of scripts) {
-    stack.append(createScriptCard(script));
+  if (isAdmin) {
+    const groupInput = section.querySelector('.group-vis-input');
+    if (groupInput) {
+      groupInput.addEventListener('change', e => {
+        e.stopPropagation();
+        saveVisibilityConfig({ type: 'group', id: groupKey, visible: e.target.checked });
+      });
+    }
   }
+
+  const stack = section.querySelector('.version-cards-stack');
+  let visibleCount = 0;
+  for (const script of scripts) {
+    const card = createScriptCard(script);
+    if (card) {
+      stack.append(card);
+      visibleCount++;
+    }
+  }
+
+  if (!isAdmin && visibleCount === 0) return null;
 
   const head = section.querySelector('.version-column-head');
   const toggleBtn = section.querySelector('.version-collapse-btn');
@@ -1241,8 +1397,169 @@ function createVersionSection(versionTag, title, scripts, defaultCollapsed = fal
   return section;
 }
 
+function createBundleCard(bundle) {
+  const isAdmin = isCurrentUserAdmin();
+  const isEnabled = bundle.enabled !== false;
+
+  const card = document.createElement('article');
+  card.className = 'script-card bundle-card' + (!isEnabled ? ' hidden-from-user' : '');
+  card.dataset.bundleId = bundle.id;
+
+  const stepScripts = (bundle.stepIds || [])
+    .map(id => state.scripts.find(s => s.id === id))
+    .filter(Boolean);
+
+  const head = document.createElement('div');
+  head.className = 'script-card-head';
+  head.style.flexDirection = 'column';
+  head.style.alignItems = 'stretch';
+  head.style.gap = '4px';
+
+  // 标题行与管理操作
+  const titleRow = document.createElement('div');
+  titleRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;';
+
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'script-title-group';
+
+  const badge = document.createElement('span');
+  badge.className = 'bundle-badge';
+  badge.textContent = '组合';
+
+  const title = document.createElement('div');
+  title.className = 'script-title';
+  title.style.fontWeight = '700';
+  title.textContent = bundle.name;
+
+  titleGroup.append(badge, title);
+
+  if (!isEnabled && isAdmin) {
+    const hiddenBadge = document.createElement('span');
+    hiddenBadge.className = 'badge-hidden-user';
+    hiddenBadge.textContent = '用户侧隐藏';
+    titleGroup.append(hiddenBadge);
+  }
+
+  titleRow.append(titleGroup);
+
+  if (isAdmin) {
+    const adminActions = document.createElement('div');
+    adminActions.className = 'bundle-admin-actions';
+
+    // 显隐开关
+    const visWrap = document.createElement('div');
+    visWrap.className = 'script-visibility-wrap';
+    visWrap.innerHTML = `
+      <label class="switch-toggle" title="控制此组合脚本在普通用户侧是否显示">
+        <input type="checkbox" ${isEnabled ? 'checked' : ''}>
+        <span class="switch-slider"></span>
+        <span class="switch-text">${isEnabled ? '用户可见' : '隐藏'}</span>
+      </label>
+    `;
+    const visInput = visWrap.querySelector('input');
+    visInput.addEventListener('change', async e => {
+      e.stopPropagation();
+      bundle.enabled = e.target.checked;
+      await saveBundleDirect(bundle);
+    });
+
+    // 编辑按钮
+    const editBtn = document.createElement('button');
+    editBtn.className = 'action-btn small';
+    editBtn.type = 'button';
+    editBtn.textContent = '编辑';
+    editBtn.title = '编辑组合名称、备注及步骤';
+    editBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      openBundleModal(bundle);
+    });
+
+    // 删除按钮
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'action-btn small danger';
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '删除';
+    deleteBtn.title = '删除此自定义脚本组合';
+    deleteBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const confirmed = await showInPageConfirm({
+        title: '确认删除脚本组合？',
+        message: `确定要彻底删除组合脚本 <strong>${escapeHtml(bundle.name)}</strong> 吗？此操作无法撤销。`,
+        okText: '确认删除',
+        isDanger: true
+      });
+      if (!confirmed) return;
+      await deleteBundle(bundle.id);
+    });
+
+    adminActions.append(visWrap, editBtn, deleteBtn);
+    titleRow.append(adminActions);
+  }
+
+  head.append(titleRow);
+
+  // 备注 / 脚本功能说明
+  if (bundle.description) {
+    const desc = document.createElement('div');
+    desc.className = 'bundle-desc';
+    desc.textContent = bundle.description;
+    head.append(desc);
+  }
+
+  // 步骤徽章流
+  if (stepScripts.length > 0) {
+    const flow = document.createElement('div');
+    flow.className = 'bundle-steps-flow';
+    stepScripts.forEach((step, idx) => {
+      if (idx > 0) {
+        const arrow = document.createElement('span');
+        arrow.className = 'bundle-step-arrow';
+        arrow.textContent = '➔';
+        flow.append(arrow);
+      }
+      const tag = document.createElement('span');
+      tag.className = 'bundle-step-item';
+      tag.textContent = `${idx + 1}. ${step.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '')}`;
+      flow.append(tag);
+    });
+    head.append(flow);
+  }
+
+  card.append(head);
+
+  // 执行按钮
+  const actions = document.createElement('div');
+  actions.className = 'script-actions';
+
+  const isCurrentRunning = state.activeBundleRun?.bundleId === bundle.id;
+  const button = document.createElement('button');
+  button.className = 'run-button' + (isCurrentRunning ? ' run-button-stop' : '');
+  button.type = 'button';
+
+  if (isCurrentRunning) {
+    button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止组合</span>`;
+  } else {
+    button.innerHTML = `<span class="run-icon">▶</span><span class="run-text">执行组合</span>`;
+  }
+
+  button.addEventListener('click', () => {
+    if (state.activeBundleRun?.bundleId === bundle.id) {
+      stopRunningBundle();
+    } else {
+      executeScriptBundle(bundle, button, card);
+    }
+  });
+
+  actions.append(button);
+  card.append(actions);
+
+  return card;
+}
+
 function renderScripts() {
   elements.scriptList.replaceChildren();
+
+  const isAdmin = isCurrentUserAdmin();
 
   const v2Scripts = state.scripts
     .filter(s => s.category === 'v2' || s.version === 'v2' || s.id.endsWith('-v2'))
@@ -1266,13 +1583,13 @@ function renderScripts() {
   columnsContainer.className = 'scripts-columns-container';
 
   if (v2Scripts.length > 0) {
-    const v2Section = createVersionSection('V2', 'V2 流程架构 (01~07)', v2Scripts, false);
-    columnsContainer.append(v2Section);
+    const v2Section = createVersionSection('V2', 'V2 流程架构 (01~07)', v2Scripts, false, 'v2');
+    if (v2Section) columnsContainer.append(v2Section);
   }
 
   if (v3Scripts.length > 0) {
-    const v3Section = createVersionSection('V3', 'V3 极速架构 (01~08)', v3Scripts, false);
-    columnsContainer.append(v3Section);
+    const v3Section = createVersionSection('V3', 'V3 极速架构 (01~08)', v3Scripts, false, 'v3');
+    if (v3Section) columnsContainer.append(v3Section);
   }
 
   if (columnsContainer.hasChildNodes()) {
@@ -1280,7 +1597,8 @@ function renderScripts() {
   }
 
   // 3. MOMO 业务自动化板块 (11~15 + 全量执行)
-  if (momoScripts.length || batchScripts.length) {
+  const isMomoVisible = state.visibility?.groups?.momo !== false;
+  if ((momoScripts.length || batchScripts.length) && (isAdmin || isMomoVisible)) {
     const momoSection = document.createElement('section');
     const storageKey = 'yunmomo.collapse.momo';
     let isMomoCollapsed = false;
@@ -1289,53 +1607,145 @@ function renderScripts() {
       if (saved !== null) isMomoCollapsed = saved === 'true';
     } catch {}
 
-    momoSection.className = 'scripts-momo-section' + (isMomoCollapsed ? ' collapsed' : '');
+    momoSection.className = 'scripts-momo-section' + (isMomoCollapsed ? ' collapsed' : '') + (!isMomoVisible ? ' hidden-from-user' : '');
     momoSection.innerHTML = `
       <div class="momo-section-head version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
         <div class="momo-title-group version-badge-group">
           <span class="momo-title version-title">MOMO 业务自动化 (11~15)</span>
+          ${!isMomoVisible ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
         </div>
-        <button class="version-collapse-btn" type="button" aria-expanded="${!isMomoCollapsed}" title="点击收起/展开">
-          <span class="toggle-text">${isMomoCollapsed ? '展开' : '收起'}</span>
-          <span class="toggle-icon">${isMomoCollapsed ? '▼' : '▲'}</span>
-        </button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          ${isAdmin ? `
+            <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此分组">
+              <label class="switch-toggle" onclick="event.stopPropagation()">
+                <input type="checkbox" class="momo-vis-input" ${isMomoVisible ? 'checked' : ''}>
+                <span class="switch-slider"></span>
+                <span class="switch-text">${isMomoVisible ? '用户可见' : '隐藏'}</span>
+              </label>
+            </div>
+          ` : ''}
+          <button class="version-collapse-btn" type="button" aria-expanded="${!isMomoCollapsed}" title="点击收起/展开">
+            <span class="toggle-text">${isMomoCollapsed ? '展开' : '收起'}</span>
+            <span class="toggle-icon">${isMomoCollapsed ? '▼' : '▲'}</span>
+          </button>
+        </div>
       </div>
       <div class="momo-cards-grid version-cards-stack"></div>
     `;
+
+    if (isAdmin) {
+      const momoVisInput = momoSection.querySelector('.momo-vis-input');
+      if (momoVisInput) {
+        momoVisInput.addEventListener('change', e => {
+          e.stopPropagation();
+          saveVisibilityConfig({ type: 'group', id: 'momo', visible: e.target.checked });
+        });
+      }
+    }
+
     const momoGrid = momoSection.querySelector('.momo-cards-grid');
+    let visibleCount = 0;
     for (const script of momoScripts) {
-      momoGrid.append(createScriptCard(script));
+      const card = createScriptCard(script);
+      if (card) { momoGrid.append(card); visibleCount++; }
     }
     for (const script of batchScripts) {
-      momoGrid.append(createScriptCard(script));
+      const card = createScriptCard(script);
+      if (card) { momoGrid.append(card); visibleCount++; }
     }
 
-    const head = momoSection.querySelector('.momo-section-head');
-    const toggleBtn = momoSection.querySelector('.version-collapse-btn');
-    const toggleText = momoSection.querySelector('.toggle-text');
-    const toggleIcon = momoSection.querySelector('.toggle-icon');
+    if (isAdmin || visibleCount > 0) {
+      const head = momoSection.querySelector('.momo-section-head');
+      const toggleBtn = momoSection.querySelector('.version-collapse-btn');
+      const toggleText = momoSection.querySelector('.toggle-text');
+      const toggleIcon = momoSection.querySelector('.toggle-icon');
 
-    function toggleMomo(e) {
-      if (e) e.stopPropagation();
-      isMomoCollapsed = !isMomoCollapsed;
-      momoSection.classList.toggle('collapsed', isMomoCollapsed);
-      toggleBtn.setAttribute('aria-expanded', String(!isMomoCollapsed));
-      toggleText.textContent = isMomoCollapsed ? '展开' : '收起';
-      toggleIcon.textContent = isMomoCollapsed ? '▼' : '▲';
-      try {
-        localStorage.setItem(storageKey, String(isMomoCollapsed));
-      } catch {}
-    }
-
-    head.addEventListener('click', toggleMomo);
-    head.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        toggleMomo(e);
+      function toggleMomo(e) {
+        if (e) e.stopPropagation();
+        isMomoCollapsed = !isMomoCollapsed;
+        momoSection.classList.toggle('collapsed', isMomoCollapsed);
+        toggleBtn.setAttribute('aria-expanded', String(!isMomoCollapsed));
+        toggleText.textContent = isMomoCollapsed ? '展开' : '收起';
+        toggleIcon.textContent = isMomoCollapsed ? '▼' : '▲';
+        try {
+          localStorage.setItem(storageKey, String(isMomoCollapsed));
+        } catch {}
       }
-    });
 
-    elements.scriptList.append(momoSection);
+      head.addEventListener('click', toggleMomo);
+      head.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleMomo(e);
+        }
+      });
+
+      elements.scriptList.append(momoSection);
+    }
+  }
+
+  // 4. 自定义组合脚本板块
+  const isCustomGroupVisible = state.visibility?.groups?.custom !== false;
+  const bundles = Array.isArray(state.bundles) ? state.bundles : [];
+  const displayBundles = isAdmin
+    ? bundles
+    : bundles.filter(b => b.enabled !== false);
+
+  if (isAdmin || (isCustomGroupVisible && displayBundles.length > 0)) {
+    const bundleSection = document.createElement('section');
+    bundleSection.className = 'scripts-bundle-section' + (!isCustomGroupVisible ? ' hidden-from-user' : '');
+    bundleSection.innerHTML = `
+      <div class="bundle-section-head">
+        <div class="bundle-title-group">
+          <span class="bundle-badge">组合</span>
+          <span class="bundle-section-title">自定义组合脚本</span>
+          ${!isCustomGroupVisible ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
+        </div>
+        <div class="bundle-head-actions">
+          ${isAdmin ? `
+            <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此组合板块">
+              <label class="switch-toggle" onclick="event.stopPropagation()">
+                <input type="checkbox" class="custom-group-vis-input" ${isCustomGroupVisible ? 'checked' : ''}>
+                <span class="switch-slider"></span>
+                <span class="switch-text">${isCustomGroupVisible ? '用户可见' : '隐藏'}</span>
+              </label>
+            </div>
+            <button class="action-btn small" id="openCreateBundleBtn" type="button" style="background:#1677ff; color:#fff; border-color:#1677ff; font-weight:600;">+ 新建组合脚本</button>
+          ` : ''}
+        </div>
+      </div>
+      <div class="bundle-cards-stack"></div>
+    `;
+
+    if (isAdmin) {
+      const customGroupInput = bundleSection.querySelector('.custom-group-vis-input');
+      if (customGroupInput) {
+        customGroupInput.addEventListener('change', e => {
+          e.stopPropagation();
+          saveVisibilityConfig({ type: 'group', id: 'custom', visible: e.target.checked });
+        });
+      }
+      const openCreateBtn = bundleSection.querySelector('#openCreateBundleBtn');
+      if (openCreateBtn) {
+        openCreateBtn.addEventListener('click', () => openBundleModal());
+      }
+    }
+
+    const bundleStack = bundleSection.querySelector('.bundle-cards-stack');
+    if (displayBundles.length === 0) {
+      const emptyTip = document.createElement('div');
+      emptyTip.style.cssText = 'padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;';
+      emptyTip.textContent = isAdmin
+        ? '暂无自定义组合脚本，点击右上角【+ 新建组合脚本】可以将多个脚本按序串联为一个组合供用户使用。'
+        : '暂无可用组合脚本';
+      bundleStack.append(emptyTip);
+    } else {
+      for (const bundle of displayBundles) {
+        bundleStack.append(createBundleCard(bundle));
+      }
+    }
+
+    elements.scriptList.append(bundleSection);
   }
 }
 
@@ -1484,56 +1894,6 @@ async function executeScript(script, button, card) {
       if (!vpcData) return;
       options.vpcData = vpcData;
     }
-  }
-
-  function showInPageConfirm({ title, message, okText = '确定', cancelText = '取消', isDanger = true, icon = '⚠️' } = {}) {
-    return new Promise(resolve => {
-      const dialog = document.getElementById('userConfirmDialog');
-      if (!dialog) return resolve(false);
-      const titleEl = document.getElementById('userConfirmTitle');
-      const descEl = document.getElementById('userConfirmDesc');
-      const okBtn = document.getElementById('userConfirmOkBtn');
-      const cancelBtn = document.getElementById('userConfirmCancelBtn');
-      const iconEl = document.getElementById('userConfirmIcon');
-
-      if (titleEl) titleEl.textContent = title;
-      if (descEl) descEl.innerHTML = message;
-      if (okBtn) {
-        okBtn.textContent = okText;
-        okBtn.style.background = isDanger ? '#ff4d4f' : '#1677ff';
-        okBtn.style.borderColor = isDanger ? '#ff4d4f' : '#1677ff';
-        okBtn.style.color = '#fff';
-      }
-      if (cancelBtn) cancelBtn.textContent = cancelText;
-      if (iconEl) {
-        iconEl.textContent = icon;
-        iconEl.style.background = isDanger ? '#fff2f0' : '#e6f4ff';
-        iconEl.style.borderColor = isDanger ? '#ffccc7' : '#91caff';
-        iconEl.style.color = isDanger ? '#ff4d4f' : '#1677ff';
-      }
-
-      const cleanup = () => {
-        try { dialog.close(); } catch {}
-        okBtn?.removeEventListener('click', onOk);
-        cancelBtn?.removeEventListener('click', onCancel);
-        dialog.removeEventListener('keydown', onKeyDown);
-        dialog.removeEventListener('cancel', onCancel);
-      };
-
-      const onOk = () => { cleanup(); resolve(true); };
-      const onCancel = () => { cleanup(); resolve(false); };
-      const onKeyDown = (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); cleanup(); resolve(false); }
-      };
-
-      okBtn?.addEventListener('click', onOk);
-      cancelBtn?.addEventListener('click', onCancel);
-      dialog.addEventListener('keydown', onKeyDown);
-      dialog.addEventListener('cancel', onCancel, { once: true });
-
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-      else dialog.setAttribute('open', '');
-    });
   }
 
   if (script.destructive) {
@@ -1743,10 +2103,448 @@ async function loadStatus() {
   }
 }
 
+async function executeSingleStep(script, targetId, options = {}) {
+  const scriptRunId = createScriptRunId();
+  const run = { id: scriptRunId, scriptId: script.id, deviceId: targetId, stopping: false, stopConfirmed: false };
+  state.activeRun = run;
+  state.runningScript = script.id;
+
+  if (elements.stopScriptBtn) {
+    elements.stopScriptBtn.style.display = 'inline-flex';
+    elements.stopScriptBtn.disabled = false;
+    elements.stopScriptBtn.textContent = '⏹ 停止脚本';
+  }
+
+  if (script.order >= 1 && script.order <= 8) {
+    setStepState(targetId, script.order, 'running');
+  }
+
+  let isPollingOutput = false;
+  const outputPollTimer = setInterval(async () => {
+    if (!state.activeRun || state.activeRun.id !== scriptRunId) {
+      clearInterval(outputPollTimer);
+      return;
+    }
+    if (isPollingOutput) return;
+    isPollingOutput = true;
+    try {
+      const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
+      if (live.ok) {
+        if (live.logFile && state.activeRun) state.activeRun.logFile = live.logFile;
+        if (live.stdout || live.stderr) {
+          if (state.activeRun && state.activeRun.id === scriptRunId) {
+            const lines = cleanScriptLines(live.stdout, live.stderr);
+            writeOutput('正在执行：' + script.title, lines, { runId: scriptRunId, logFile: live.logFile });
+          }
+        }
+      }
+    } catch {}
+    finally { isPollingOutput = false; }
+  }, 300);
+
+  try {
+    const result = await requestJson('/api/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scriptRunId,
+        scriptId: script.id,
+        deviceId: targetId,
+        pageId: state.pageId,
+        options
+      })
+    });
+    clearInterval(outputPollTimer);
+    const lines = cleanScriptLines(result.stdout, result.stderr);
+    const durationSec = Number.isFinite(result.durationMs) ? (result.durationMs / 1000).toFixed(1) + 's' : '';
+    writeOutput(
+      result.cancelled ? '脚本已停止：' + script.title : result.ok ? '执行成功：' + script.title : '执行失败：' + script.title,
+      lines,
+      { runId: scriptRunId, logFile: result.logFile }
+    );
+
+    if (script.order >= 1 && script.order <= 8) {
+      setStepState(targetId, script.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
+    }
+
+    return {
+      ok: Boolean(result.ok),
+      cancelled: Boolean(result.cancelled),
+      exitCode: result.exitCode,
+      durationSec,
+      logFile: result.logFile
+    };
+  } catch (err) {
+    clearInterval(outputPollTimer);
+    if (script.order >= 1 && script.order <= 8) {
+      setStepState(targetId, script.order, 'failed');
+    }
+    return {
+      ok: false,
+      cancelled: run.stopConfirmed,
+      exitCode: -1,
+      durationSec: '',
+      error: err.message
+    };
+  } finally {
+    clearInterval(outputPollTimer);
+    if (state.activeRun?.id === scriptRunId) {
+      state.activeRun = null;
+      state.runningScript = '';
+      if (elements.stopScriptBtn) {
+        elements.stopScriptBtn.style.display = 'none';
+        elements.stopScriptBtn.disabled = false;
+        elements.stopScriptBtn.textContent = '⏹ 停止脚本';
+      }
+    }
+  }
+}
+
+async function executeScriptBundle(bundle, button, card) {
+  if (state.activeRun || state.runningScript || state.activeBundleRun) {
+    showToast('请等待当前正在运行的脚本完成');
+    return;
+  }
+  if (state.manualDeviceId) {
+    showToast('请先关闭手动操作窗，再运行脚本');
+    return;
+  }
+  if (!state.tokenConfigured) {
+    showToast('尚未连接');
+    return;
+  }
+  const targetId = state.selectedDeviceId;
+  const stepScripts = (bundle.stepIds || [])
+    .map(id => state.scripts.find(s => s.id === id))
+    .filter(Boolean);
+
+  if (stepScripts.length === 0) {
+    showToast('此组合未包含有效脚本步骤');
+    return;
+  }
+
+  const anyRequiresDevice = stepScripts.some(s => s.requiresDevice);
+  if (anyRequiresDevice && !currentDevice()) {
+    showToast('此组合脚本需要操作云机，请先在左侧选择目标云机');
+    return;
+  }
+
+  const bundleRunState = {
+    bundleId: bundle.id,
+    stopped: false,
+    currentStepIndex: 0
+  };
+  state.activeBundleRun = bundleRunState;
+
+  if (button) {
+    button.classList.add('run-button-stop');
+    button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止组合</span>`;
+  }
+  if (card) card.classList.add('running');
+
+  const total = stepScripts.length;
+  writeOutput(`【开始执行组合脚本】: ${bundle.name}`, [
+    `功能备注：${bundle.description || '无'}`,
+    `目标设备：${targetId ? deviceLabel(currentDevice()) : '无需设备'}`,
+    `计划执行步骤（共 ${total} 步）：`,
+    ...stepScripts.map((s, i) => `  ${i + 1}. ${s.title}`)
+  ]);
+
+  try {
+    for (let i = 0; i < total; i++) {
+      if (bundleRunState.stopped) {
+        writeOutput(`【组合脚本人为中断】: ${bundle.name}`, ['用户已主动停止组合脚本，剩余步骤已取消。']);
+        showToast('组合脚本已停止');
+        break;
+      }
+
+      bundleRunState.currentStepIndex = i;
+      const script = stepScripts[i];
+      if (button) {
+        button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">[${i + 1}/${total}] ${script.title.slice(0, 8)}…</span>`;
+      }
+
+      writeOutput(`\n▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [
+        `正在运行子脚本 ${script.id}...`
+      ]);
+
+      const stepRes = await executeSingleStep(script, targetId);
+
+      if (bundleRunState.stopped || stepRes.cancelled) {
+        writeOutput(`【组合脚本中断】: 步骤 ${i + 1} (${script.title}) 已停止。`, ['终止后续执行。']);
+        showToast(`组合脚本已在步骤 ${i + 1} 停止`);
+        break;
+      }
+
+      if (!stepRes.ok) {
+        writeOutput(`【组合脚本失败中断】: 步骤 ${i + 1} (${script.title}) 执行未达成`, [
+          `退出码: ${stepRes.exitCode ?? '未知'}`,
+          '组合脚本后续步骤已自动熔断中止。请排查错误后重试。'
+        ]);
+        showToast(`步骤 ${i + 1} (${script.title}) 执行失败，组合已中断`);
+        break;
+      }
+
+      writeOutput(`✓ [步骤 ${i + 1}/${total}] 成功达成: ${script.title}`, [
+        `耗时: ${stepRes.durationSec || '--'}`
+      ]);
+
+      if (i === total - 1) {
+        writeOutput(`\n🎉【组合脚本全部执行成功】: ${bundle.name}`, [
+          `共 ${total} 个步骤全部依次顺利执行达成！`
+        ]);
+        showToast(`🎉 组合脚本【${bundle.name}】全部执行完成！`);
+      } else {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  } catch (err) {
+    writeOutput(`【组合脚本异常失败】: ${bundle.name}`, [err.message]);
+    showToast('组合脚本异常: ' + err.message);
+  } finally {
+    state.activeBundleRun = null;
+    if (button) {
+      button.classList.remove('run-button-stop');
+      button.innerHTML = `<span class="run-icon">▶</span><span class="run-text">执行组合</span>`;
+    }
+    if (card) card.classList.remove('running');
+    loadSharedRuntimeState();
+    requestAllPreviews();
+  }
+}
+
+function stopRunningBundle() {
+  if (state.activeBundleRun) {
+    state.activeBundleRun.stopped = true;
+    showToast('正在停止组合脚本…');
+    stopRunningScript();
+  }
+}
+
+let editingBundleSteps = [];
+
+function openBundleModal(bundle = null) {
+  const modal = byId('scriptBundleModal');
+  const title = byId('bundleModalTitle');
+  const editIdInput = byId('bundleEditId');
+  const nameInput = byId('bundleNameInput');
+  const descInput = byId('bundleDescInput');
+  const enabledInput = byId('bundleEnabledInput');
+  const scriptsSelect = byId('bundleAvailableScriptsSelect');
+
+  if (!modal) return;
+
+  if (scriptsSelect) {
+    scriptsSelect.innerHTML = '';
+    const nonBatchScripts = state.scripts.filter(s => !s.batch && !s.id.startsWith('flow-all'));
+    for (const s of nonBatchScripts) {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      const ver = (s.category || s.version || '').toUpperCase();
+      opt.textContent = `${ver ? `[${ver}] ` : ''}${s.title}`;
+      scriptsSelect.append(opt);
+    }
+  }
+
+  if (bundle) {
+    if (title) title.textContent = '编辑自定义脚本组合';
+    if (editIdInput) editIdInput.value = bundle.id;
+    if (nameInput) nameInput.value = bundle.name || '';
+    if (descInput) descInput.value = bundle.description || '';
+    if (enabledInput) enabledInput.checked = bundle.enabled !== false;
+    editingBundleSteps = Array.isArray(bundle.stepIds) ? [...bundle.stepIds] : [];
+  } else {
+    if (title) title.textContent = '新建自定义脚本组合';
+    if (editIdInput) editIdInput.value = '';
+    if (nameInput) nameInput.value = '';
+    if (descInput) descInput.value = '';
+    if (enabledInput) enabledInput.checked = true;
+    editingBundleSteps = [];
+  }
+
+  renderModalSelectedSteps();
+  try {
+    if (typeof modal.showModal === 'function') modal.showModal();
+    else modal.setAttribute('open', '');
+  } catch {}
+}
+
+function closeBundleModal() {
+  const modal = byId('scriptBundleModal');
+  if (!modal) return;
+  try {
+    modal.close();
+  } catch {
+    modal.removeAttribute('open');
+  }
+}
+
+function renderModalSelectedSteps() {
+  const container = byId('bundleSelectedSteps');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (editingBundleSteps.length === 0) {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'color:#8c8c8c; font-size:12.5px; padding:10px; text-align:center;';
+    tip.textContent = '暂未添加步骤，请在下方选择脚本并点击【+ 添加步骤】';
+    container.append(tip);
+    return;
+  }
+
+  editingBundleSteps.forEach((stepId, index) => {
+    const script = state.scripts.find(s => s.id === stepId);
+    const row = document.createElement('div');
+    row.className = 'bundle-step-row';
+
+    const info = document.createElement('div');
+    info.style.cssText = 'display:flex; align-items:center; gap:8px;';
+    info.innerHTML = `
+      <span style="font-weight:700; color:#1677ff; width:20px;">${index + 1}.</span>
+      <span style="font-weight:500; color:#262626;">${script ? script.title : stepId}</span>
+    `;
+
+    const actions = document.createElement('div');
+    actions.className = 'bundle-step-actions';
+
+    const upBtn = document.createElement('button');
+    upBtn.className = 'btn-icon';
+    upBtn.type = 'button';
+    upBtn.innerHTML = '▲';
+    upBtn.title = '上移一步';
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener('click', () => {
+      if (index > 0) {
+        const tmp = editingBundleSteps[index];
+        editingBundleSteps[index] = editingBundleSteps[index - 1];
+        editingBundleSteps[index - 1] = tmp;
+        renderModalSelectedSteps();
+      }
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.className = 'btn-icon';
+    downBtn.type = 'button';
+    downBtn.innerHTML = '▼';
+    downBtn.title = '下移一步';
+    downBtn.disabled = index === editingBundleSteps.length - 1;
+    downBtn.addEventListener('click', () => {
+      if (index < editingBundleSteps.length - 1) {
+        const tmp = editingBundleSteps[index];
+        editingBundleSteps[index] = editingBundleSteps[index + 1];
+        editingBundleSteps[index + 1] = tmp;
+        renderModalSelectedSteps();
+      }
+    });
+
+    const rmBtn = document.createElement('button');
+    rmBtn.className = 'btn-icon danger';
+    rmBtn.type = 'button';
+    rmBtn.innerHTML = '✕';
+    rmBtn.title = '移除此步骤';
+    rmBtn.addEventListener('click', () => {
+      editingBundleSteps.splice(index, 1);
+      renderModalSelectedSteps();
+    });
+
+    actions.append(upBtn, downBtn, rmBtn);
+    row.append(info, actions);
+    container.append(row);
+  });
+}
+
+async function saveBundleDirect(bundle) {
+  try {
+    const res = await requestJson('/api/admin/scripts/bundles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bundle)
+    });
+    if (res.ok) {
+      showToast(`已${bundle.enabled ? '开启' : '关闭'}组合脚本【${bundle.name}】的用户侧显示`);
+      await loadScripts();
+    }
+  } catch (err) {
+    showToast('更新组合脚本状态失败: ' + err.message);
+  }
+}
+
+async function deleteBundle(bundleId) {
+  try {
+    const res = await requestJson('/api/admin/scripts/bundles', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: bundleId })
+    });
+    if (res.ok) {
+      showToast('组合脚本已成功删除');
+      await loadScripts();
+    }
+  } catch (err) {
+    showToast('删除组合脚本失败: ' + err.message);
+  }
+}
+
+async function handleSaveBundleModal() {
+  const editId = byId('bundleEditId')?.value || '';
+  const name = byId('bundleNameInput')?.value?.trim();
+  const description = byId('bundleDescInput')?.value?.trim() || '';
+  const enabled = byId('bundleEnabledInput')?.checked !== false;
+
+  if (!name) {
+    showToast('请输入组合脚本名称');
+    byId('bundleNameInput')?.focus();
+    return;
+  }
+
+  if (editingBundleSteps.length === 0) {
+    showToast('请至少添加一个执行步骤');
+    return;
+  }
+
+  try {
+    const payload = {
+      id: editId || undefined,
+      name,
+      description,
+      enabled,
+      stepIds: editingBundleSteps
+    };
+    const res = await requestJson('/api/admin/scripts/bundles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      showToast('组合脚本保存成功');
+      closeBundleModal();
+      await loadScripts();
+    }
+  } catch (err) {
+    showToast('保存组合脚本失败: ' + err.message);
+  }
+}
+
+function initBundleModalEvents() {
+  byId('closeBundleModalBtn')?.addEventListener('click', closeBundleModal);
+  byId('cancelBundleBtn')?.addEventListener('click', closeBundleModal);
+  byId('saveBundleBtn')?.addEventListener('click', handleSaveBundleModal);
+  byId('addStepToBundleBtn')?.addEventListener('click', () => {
+    const select = byId('bundleAvailableScriptsSelect');
+    if (select && select.value) {
+      editingBundleSteps.push(select.value);
+      renderModalSelectedSteps();
+    }
+  });
+}
+
 async function loadScripts() {
   try {
     const data = await requestJson('/api/scripts');
     state.scripts = Array.isArray(data.scripts) ? data.scripts : [];
+    state.bundles = Array.isArray(data.bundles) ? data.bundles : [];
+    state.visibility = data.visibility || { groups: {}, scripts: {} };
+    if (data.isAdmin !== undefined) state.isAdmin = Boolean(data.isAdmin);
     renderScripts();
     updateSharedRunControls();
   } catch (error) {
@@ -2131,6 +2929,7 @@ async function init() {
   window.AppLogger?.info('Init', '正在启动控制台工作台前端...');
   initTabs();
   initTerminalTabs();
+  initBundleModalEvents();
   try {
     await checkAuth();
     window.AppLogger?.info('Auth', `登录用户就绪: ${state.currentUser?.email || '未知'}`);
