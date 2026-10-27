@@ -149,8 +149,11 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text-muted);
-  padding: 0 8px;
+  color: #15803d !important;
+  background: #ecfdf5 !important;
+  border: 1px solid #a7f3d0 !important;
+  border-radius: 5px;
+  padding: 3px 8px;
 }
 
 .service-state .state-dot {
@@ -158,6 +161,14 @@ body {
   height: 7px;
   border-radius: 50%;
   background: var(--green);
+}
+
+.user-pill {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+  border-radius: 5px !important;
+  padding: 4px 10px !important;
 }
 
 .action-btn {
@@ -280,12 +291,15 @@ body {
   font-size: 14.5px !important;
   font-weight: 700 !important;
   color: var(--text-title) !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
-.preview-tools {
+.preview-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 0 4px;
 }
 
 .size-control {
@@ -959,21 +973,76 @@ body {
   gap: 8px !important;
 }
 
-/* 脚本行：严格单行横向排布！ */
+/* 脚本行：常规单行横向排布，带参数时自适应纵向展开 */
 .script-card {
   display: flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: space-between !important;
-  height: 42px !important;
   min-height: 42px !important;
-  padding: 0 10px !important;
+  height: auto !important;
+  padding: 6px 10px !important;
   background: #ffffff !important;
   border: 1px solid var(--border) !important;
   border-radius: 6px !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: all 0.15s ease !important;
   box-sizing: border-box !important;
+  gap: 8px !important;
+}
+
+.script-card.script-card-has-params {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  padding: 8px 10px !important;
+}
+
+.script-card.script-card-has-params > .script-card-head {
+  width: 100% !important;
+}
+
+.script-card.script-card-has-params > .script-settings {
+  width: 100% !important;
+  border-top: 1px solid var(--border) !important;
+  padding-top: 6px !important;
+}
+
+.script-card.script-card-has-params > .script-actions {
+  align-self: flex-end !important;
+}
+
+.script-settings {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.script-settings summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.script-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.script-settings input, .script-settings select, .script-settings textarea {
+  background: #ffffff !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 4px !important;
+  padding: 5px 8px !important;
+  font-size: 12px !important;
+  color: var(--text-title) !important;
 }
 
 .script-card:hover {

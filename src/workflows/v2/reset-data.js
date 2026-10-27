@@ -5,13 +5,32 @@ const path = require('node:path');
 const { YunmomoClient } = require('../../index');
 const { redact, PROJECT_ROOT } = require('../../automation/runtime');
 
-async function prepareResetData(client, deviceId, options = {}) {
-  if (typeof deviceId !== 'string' || !/^\d+$/.test(deviceId)) {
-    throw new Error('请用 YUNMOMO_DEVICE_ID 显式指定设备 ID，不默认选择任何云机');
+function deviceIdOf(record) {
+  return String(record?.deviceId ?? record?.id ?? '');
+}
+
+function matchesDevice(record, identifier) {
+  const id = String(identifier || '').trim();
+  if (!id) return false;
+  if (deviceIdOf(record) === id ||
+    String(record?.deviceCode ?? record?.code ?? record?.cloudNumber ?? '').trim() === id) {
+    return true;
+  }
+  if (String(record?.name ?? record?.deviceName ?? '').trim() === id) {
+    return String(record?.sdkVersion ?? '').toLowerCase() === 'v2';
+  }
+  return false;
+}
+
+async function prepareResetData(client, identifier, options = {}) {
+  const targetId = String(identifier || '').trim();
+  if (!targetId) {
+    throw new Error('请用 YUNMOMO_DEVICE_ID 显式指定设备 ID 或机身码(如 GVIP...)，不默认选择任何云机');
   }
   const { records } = await client.listDevices({ size: 50000 });
-  const device = records.find(row => String(row.deviceId ?? row.id) === deviceId);
-  if (!device) throw new Error('目标云机不在当前账号设备列表中：' + deviceId);
+  const device = records.find(row => matchesDevice(row, targetId));
+  if (!device) throw new Error('目标云机不在当前账号设备列表中：' + targetId);
+  const deviceId = deviceIdOf(device);
   const actualVersion = String(device.sdkVersion ?? '').trim().toLowerCase();
   const expectedVersion = String(options.sdkVersion ?? process.env.YUNMOMO_SDK_VERSION ?? 'v2').trim().toLowerCase();
   if (actualVersion && actualVersion !== expectedVersion) {
@@ -21,6 +40,7 @@ async function prepareResetData(client, deviceId, options = {}) {
     device: {
       id: deviceId,
       name: String(device.name ?? ''),
+      code: String(device.code ?? ''),
       sdkVersion: actualVersion || expectedVersion,
     },
     action: 'reset',
@@ -97,7 +117,7 @@ async function main(argv = process.argv.slice(2)) {
   const save = () => fs.writeFile(reportPath, redact(JSON.stringify(report, null, 2)), 'utf8');
   await save();
 
-  const devLabel = `${plan.device.name ? plan.device.name + ' (' + plan.device.id + ')' : plan.device.id}`;
+  const devLabel = `${plan.device.name ? plan.device.name + ' (' + plan.device.id + (plan.device.code ? ' / ' + plan.device.code : '') + ')' : plan.device.id}`;
   console.log(`[1/2] 正在向云端下发“重置数据”指令 (目标云机: ${devLabel})...`);
   console.log(`[警告] ${plan.warning}`);
 
