@@ -219,13 +219,80 @@ class AuthService {
     return `YM-${segment(4)}-${segment(4)}-${segment(4)}-${segment(4)}`;
   }
 
-  generateCards({ count = 1, durationDays = 0, durationHours = 0, batchTag = '' }) {
-    count = Math.min(Math.max(1, parseInt(count, 10) || 1), 500);
-    durationDays = Math.max(0, parseInt(durationDays, 10) || 0);
-    durationHours = Math.max(0, parseInt(durationHours, 10) || 0);
+  generateCards(options = {}) {
+    let {
+      count = 1,
+      batchTag = '',
+      cardTypes,
+      cloudConfig,
+      zhencanConfig,
+      ipConfig,
+      durationDays,
+      durationHours
+    } = options;
 
-    if (durationDays === 0 && durationHours === 0) {
-      throw new Error('请至少指定天数或小时数');
+    count = Math.min(Math.max(1, parseInt(count, 10) || 1), 500);
+
+    // 标准化 cardTypes 数组
+    let types = [];
+    if (Array.isArray(cardTypes) && cardTypes.length > 0) {
+      types = [...new Set(cardTypes.map(t => String(t).trim().toLowerCase()))];
+    } else if (typeof cardTypes === 'string' && cardTypes.trim()) {
+      try {
+        const parsed = JSON.parse(cardTypes);
+        if (Array.isArray(parsed)) types = [...new Set(parsed.map(t => String(t).trim().toLowerCase()))];
+      } catch {
+        types = [cardTypes.trim().toLowerCase()];
+      }
+    }
+
+    // 若未传递 cardTypes，则回退为 ['cloud']
+    if (types.length === 0) {
+      types = ['cloud'];
+    }
+
+    const validTypes = types.filter(t => ['cloud', 'zhencan', 'ip'].includes(t));
+    if (validTypes.length === 0) {
+      throw new Error('请至少选择一个有效的卡密权益类别（云机 / 真参 / IP）');
+    }
+
+    const contents = {};
+    let legacyDurationDays = 0;
+    let legacyDurationHours = 0;
+
+    if (validTypes.includes('cloud')) {
+      const cDays = parseInt(cloudConfig?.durationDays ?? durationDays, 10) || 0;
+      const cHours = parseInt(cloudConfig?.durationHours ?? durationHours, 10) || 0;
+      if (cDays <= 0 && cHours <= 0) {
+        throw new Error('已勾选云机卡密，请至少设置大于 0 的云机天数或小时数！');
+      }
+      contents.cloud = {
+        durationDays: Math.max(0, cDays),
+        durationHours: Math.max(0, cHours),
+        deviceCount: Math.max(1, parseInt(cloudConfig?.deviceCount, 10) || 1)
+      };
+      legacyDurationDays = contents.cloud.durationDays;
+      legacyDurationHours = contents.cloud.durationHours;
+    }
+
+    if (validTypes.includes('zhencan')) {
+      const zCount = parseInt(zhencanConfig?.count, 10) || 10;
+      if (zCount <= 0) {
+        throw new Error('已勾选真参卡密，请设置至少 1 套真参数量！');
+      }
+      contents.zhencan = {
+        count: zCount
+      };
+    }
+
+    if (validTypes.includes('ip')) {
+      const ipDays = parseInt(ipConfig?.durationDays, 10) || 30;
+      if (ipDays <= 0) {
+        throw new Error('已勾选IP卡密，请设置至少 1 天的IP有效时长！');
+      }
+      contents.ip = {
+        durationDays: ipDays
+      };
     }
 
     const cards = [];
@@ -234,8 +301,10 @@ class AuthService {
       cards.push({
         id: 'crd_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16),
         cardCode: this.generateCardCode(),
-        durationDays,
-        durationHours,
+        cardTypes: validTypes,
+        cardContents: contents,
+        durationDays: legacyDurationDays,
+        durationHours: legacyDurationHours,
         status: 'unused',
         batchTag: String(batchTag || '').trim(),
         createdAt: now
@@ -255,16 +324,15 @@ class AuthService {
   }
 
   // --- Device Allocation & Redemption ---
-  // User confirmed: "不是，是新开" (Always allocate a new cloud phone upon redemption)
-  // "到期直接没" (Directly expired/recycled once time expires)
-  redeemCardForNewDevice({ userId, cardCode, masterDevices = [] }) {
+  // 支持一张卡密兑换多个内容（云机、真参、IP）
+  redeemCard({ userId, cardCode, masterDevices = [] }) {
     cardCode = String(cardCode || '').trim().toUpperCase();
     if (!cardCode) throw new Error('请输入有效的卡密');
 
-    // 1. Purge expired allocations first
+    // 1. 先回收清理所有过期设备
     this.sweepExpiredAllocations();
 
-    // 2. Validate card
+    // 2. 校验卡密
     const card = this.db.getCardByCode(cardCode);
     if (!card) {
       throw new Error('卡密不存在，请核对后重试');
@@ -273,44 +341,140 @@ class AuthService {
       throw new Error('该卡密已被使用或已作废');
     }
 
-    // 3. Find available master device
-    const activeAllocatedIds = new Set(this.db.getActiveAllocatedDeviceIds());
-    const availableDevice = masterDevices.find(d => !activeAllocatedIds.has(d.deviceId));
+    // 解析包含的类别
+    let types = ['cloud'];
+    try {
+      if (card.card_types) {
+        const parsed = JSON.parse(card.card_types);
+        if (Array.isArray(parsed) && parsed.length > 0) types = parsed;
+      }
+    } catch {}
 
-    if (!availableDevice) {
-      throw new Error('当前系统空闲云机库存不足，卡密未扣除，请联系客服补库后再试！');
+    let contents = {};
+    try {
+      if (card.card_contents) {
+        contents = JSON.parse(card.card_contents) || {};
+      }
+    } catch {}
+
+    // 兼容老卡密：若含有 cloud 但 contents.cloud 为空，从 duration_days 构造
+    if (types.includes('cloud') && !contents.cloud) {
+      contents.cloud = {
+        durationDays: card.duration_days || 0,
+        durationHours: card.duration_hours || 0,
+        deviceCount: 1
+      };
     }
 
-    // 4. Calculate expiration
-    const allocatedAt = Date.now();
-    const durationMs = (card.duration_days * 24 * 3600 * 1000) + (card.duration_hours * 3600 * 1000);
-    const expireAt = allocatedAt + durationMs;
+    // 3. 若包含云机权益，优先探明并核验空闲云机库存（业务不变量：在分配成功前绝不消耗卡密）
+    let availableDevice = null;
+    let cloudDurationMs = 0;
+    let cloudExpireAt = 0;
+    if (types.includes('cloud')) {
+      const activeAllocatedIds = new Set(this.db.getActiveAllocatedDeviceIds());
+      availableDevice = masterDevices.find(d => !activeAllocatedIds.has(d.deviceId));
 
-    // 5. Atomic mark card used and create allocation
+      if (!availableDevice) {
+        throw new Error('当前系统空闲云机库存不足，卡密未扣除，请联系客服补库后再试！');
+      }
+
+      const cDays = contents.cloud?.durationDays ?? card.duration_days ?? 0;
+      const cHours = contents.cloud?.durationHours ?? card.duration_hours ?? 0;
+      cloudDurationMs = (cDays * 24 * 3600 * 1000) + (cHours * 3600 * 1000);
+      cloudExpireAt = Date.now() + cloudDurationMs;
+    }
+
+    // 4. 原子核销卡密
     const used = this.db.markCardUsed(card.id, userId);
     if (!used) {
       throw new Error('卡密兑换失败，可能已被并发核销');
     }
 
-    const allocId = 'alc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-    const allocation = this.db.createAllocation({
-      id: allocId,
+    const allocatedAt = Date.now();
+    const resultDetails = {};
+    const summaryParts = [];
+
+    // 5. 执行各类别权益的入账与发放
+    // 5.1 云机权益开通
+    if (types.includes('cloud') && availableDevice) {
+      const allocId = 'alc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+      const allocation = this.db.createAllocation({
+        id: allocId,
+        userId,
+        deviceId: availableDevice.deviceId,
+        deviceName: availableDevice.name || availableDevice.cloudNo || 'SF',
+        cardId: card.id,
+        allocatedAt,
+        expireAt: cloudExpireAt
+      });
+      resultDetails.cloud = {
+        allocationId: allocation.id,
+        deviceId: availableDevice.deviceId,
+        deviceName: allocation.device_name,
+        allocatedAt,
+        expireAt: cloudExpireAt,
+        remainingMs: Math.max(0, cloudExpireAt - Date.now())
+      };
+      const daysText = contents.cloud?.durationDays ? `${contents.cloud.durationDays}天` : '';
+      const hoursText = contents.cloud?.durationHours ? `${contents.cloud.durationHours}小时` : '';
+      summaryParts.push(`云机 [${allocation.device_name}] (${daysText || hoursText || '已开通'})`);
+    }
+
+    // 5.2 真参权益入账
+    if (types.includes('zhencan')) {
+      const count = parseInt(contents.zhencan?.count, 10) || 10;
+      const totalBalance = this.db.addZhencanQuota(userId, count, { cardCode, cardId: card.id });
+      resultDetails.zhencan = {
+        added: count,
+        currentBalance: totalBalance
+      };
+      summaryParts.push(`真参配额 +${count} 套`);
+    }
+
+    // 5.3 IP权益开通/续期
+    if (types.includes('ip')) {
+      const ipDays = parseInt(contents.ip?.durationDays, 10) || 30;
+      const newExpireAt = this.db.addOrExtendIp(userId, ipDays, { cardCode, cardId: card.id });
+      resultDetails.ip = {
+        addedDays: ipDays,
+        expireAt: newExpireAt,
+        remainingMs: Math.max(0, newExpireAt - Date.now())
+      };
+      summaryParts.push(`代理IP ${ipDays}天`);
+    }
+
+    const summaryText = summaryParts.join(' + ') || '权益已兑换';
+
+    // 6. 记录兑换明细
+    const logId = 'rdm_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    this.db.createRedemptionLog({
+      id: logId,
       userId,
-      deviceId: availableDevice.deviceId,
-      deviceName: availableDevice.name || availableDevice.cloudNo || 'SF',
       cardId: card.id,
-      allocatedAt,
-      expireAt
+      cardCode,
+      redeemedTypes: types,
+      redeemedSummary: summaryText,
+      details: resultDetails
     });
 
     return {
-      allocationId: allocation.id,
-      deviceId: availableDevice.deviceId,
-      deviceName: allocation.device_name,
+      success: true,
+      cardCode,
+      types,
+      summary: summaryText,
+      details: resultDetails,
+      // 向后兼容旧调用方读取的字段
+      allocationId: resultDetails.cloud?.allocationId || null,
+      deviceId: resultDetails.cloud?.deviceId || null,
+      deviceName: resultDetails.cloud?.deviceName || null,
       allocatedAt,
-      expireAt,
-      remainingMs: Math.max(0, expireAt - Date.now())
+      expireAt: cloudExpireAt || null,
+      remainingMs: resultDetails.cloud ? Math.max(0, cloudExpireAt - Date.now()) : 0
     };
+  }
+
+  redeemCardForNewDevice(args) {
+    return this.redeemCard(args);
   }
 
   getUserDevices(userId, masterDevices = []) {
@@ -328,6 +492,8 @@ class AuthService {
         status: master?.status ?? null,
         online: master?.online ?? null,
         sdkVersion: master?.sdkVersion ?? null,
+        currentIp: master?.currentIp || null,
+        proxyAddress: master?.proxyAddress || null,
         allocatedAt: alloc.allocated_at,
         expireAt: alloc.expire_at,
         remainingMs,

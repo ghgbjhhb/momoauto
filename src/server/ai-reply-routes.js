@@ -33,21 +33,39 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
   const pathname = urlObj.pathname;
   const method = req.method.toUpperCase();
 
-  // 1. GET /api/ai-reply/settings
+  // 1. GET /api/ai-reply/settings (用户侧读取：仅暴露系统提示词及可用状态，不暴露密钥与后端配置)
   if (pathname === '/api/ai-reply/settings' && method === 'GET') {
     const deviceId = urlObj.searchParams.get('deviceId');
     const settings = getSanitizedSettings(deviceId);
-    sendJson(res, 200, { ok: true, settings });
+    sendJson(res, 200, {
+      ok: true,
+      settings: {
+        systemPrompt: settings.systemPrompt,
+        revision: settings.revision,
+        ready: Boolean(settings.hasApiKey),
+        model: settings.model
+      }
+    });
     return true;
   }
 
-  // 2. POST /api/ai-reply/settings
+  // 2. POST /api/ai-reply/settings (用户侧保存：严格仅允许设置系统提示词，禁止修改全局 API Key 与接口)
   if (pathname === '/api/ai-reply/settings' && method === 'POST') {
-    const { expectedRevision, ...updates } = bodyJson || {};
+    const { expectedRevision, systemPrompt } = bodyJson || {};
     try {
+      const updates = {};
+      if (typeof systemPrompt === 'string') {
+        updates.systemPrompt = systemPrompt.trim();
+      }
       const saved = saveSettings(updates, expectedRevision);
-      const sanitized = getSanitizedSettings();
-      sendJson(res, 200, { ok: true, settings: sanitized });
+      sendJson(res, 200, {
+        ok: true,
+        settings: {
+          systemPrompt: saved.systemPrompt,
+          revision: saved.revision,
+          ready: Boolean(saved.apiKey && saved.apiKey.trim())
+        }
+      });
     } catch (err) {
       if (err.code === 'REVISION_CONFLICT') {
         sendJson(res, 409, { ok: false, error: { code: 'REVISION_CONFLICT', message: err.message } });
@@ -61,15 +79,11 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
   // 3. POST /api/ai-reply/test
   if (pathname === '/api/ai-reply/test' && method === 'POST') {
     const configSnapshot = getEffectiveConfig(bodyJson?.deviceId);
-    const apiKey = bodyJson?.apiKey || configSnapshot.apiKey;
-    const endpoint = bodyJson?.endpoint || configSnapshot.endpoint;
-    const model = bodyJson?.model || configSnapshot.model;
-
     const testConfig = {
       ...configSnapshot,
-      apiKey,
-      endpoint,
-      model
+      apiKey: configSnapshot.apiKey,
+      endpoint: configSnapshot.endpoint,
+      model: configSnapshot.model
     };
 
     (async () => {
@@ -79,7 +93,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
         ], testConfig);
         sendJson(res, 200, {
           ok: true,
-          message: 'DeepSeek API connection successful',
+          message: 'AI API 连接测试成功',
           response: testRes.text,
           model: testRes.model,
           requestId: testRes.requestId

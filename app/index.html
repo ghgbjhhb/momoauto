@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
-  <title>云 MOMO 自动化控制台</title>
+  <title>momo全托管</title>
   <link rel="stylesheet" href="/theme-b.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
     <!-- 顶部主导航栏 (纯白，50px) -->
     <header class="topbar">
       <div class="brand">
-        <span class="brand-title">云 MOMO 自动化控制台</span>
+        <span class="brand-title">momo全托管</span>
       </div>
 
       <!-- 集群状态指示 -->
@@ -34,7 +34,7 @@
         <details class="session-settings" id="sessionSettings" hidden>
           <summary>凭据</summary>
           <form class="session-bridge" id="sessionBridge">
-            <input id="sessionToken" type="password" autocomplete="off" placeholder="粘贴 Token">
+            <input id="sessionToken" type="text" class="masked-secret" autocomplete="off" placeholder="粘贴 Token" data-lpignore="true">
             <button class="action-btn" id="connectSession" type="submit">连接</button>
           </form>
         </details>
@@ -49,11 +49,16 @@
       <section class="preview-panel">
         <div class="panel-header">
           <h2 id="previewTitle">📱 云手机操作大屏</h2>
-          <button class="action-btn small" id="refreshPreview" type="button">刷新画面</button>
+          <div class="preview-header-tools">
+            <div class="preview-zoom-ctrl" title="拖动放大或缩小云机画面">
+              <span class="zoom-icon" aria-hidden="true">🔍</span>
+              <input id="previewSize" type="range" min="220" max="650" step="10" value="340" class="zoom-slider" aria-label="云机画面尺寸调节">
+              <span id="previewSizeValue" class="zoom-value">340px</span>
+            </div>
+            <button class="action-btn small" id="refreshPreview" type="button" title="重新获取云手机实时画面">刷新画面</button>
+          </div>
         </div>
 
-        <input id="previewSize" type="range" hidden value="340">
-        <output id="previewSizeValue" hidden>340px</output>
         <span id="previewSummary" hidden></span>
         <span id="previewState" hidden></span>
 
@@ -107,19 +112,15 @@
               <!-- AI 自动回复 -->
               <section class="config-card" id="aiReplyCard">
                 <div class="card-header">
-                  <h3>DeepSeek AI 自动回复</h3>
+                  <h3>AI 智能回复设置</h3>
                   <span class="badge" id="aiReplyStatusBadge">待命</span>
                 </div>
                 <div class="config-form">
                   <div class="form-item">
-                    <label for="aiApiKey">DeepSeek API Key</label>
-                    <input type="password" id="aiApiKey" autocomplete="off" placeholder="留空保持原有 Key">
+                    <label for="aiSystemPrompt">系统提示词</label>
+                    <textarea id="aiSystemPrompt" rows="6" placeholder="设置 AI 回复人设、回复口吻、业务引导话术…"></textarea>
                   </div>
                   <div class="form-row">
-                    <div class="form-item">
-                      <label for="aiModel">模型标识</label>
-                      <input type="text" id="aiModel" value="deepseek-chat">
-                    </div>
                     <div class="form-item">
                       <label for="aiMode">运行模式</label>
                       <select id="aiMode">
@@ -127,23 +128,17 @@
                         <option value="execute" selected>直接发送</option>
                       </select>
                     </div>
-                  </div>
-                  <div class="form-item">
-                    <label for="aiSystemPrompt">系统提示词 (Prompt)</label>
-                    <textarea id="aiSystemPrompt" rows="5" placeholder="设置 AI 回复人设、回复口吻、业务话术…"></textarea>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-item">
-                      <label for="aiContactName">指定联系人</label>
-                      <input type="text" id="aiContactName" placeholder="留空自动扫描未读">
-                    </div>
                     <div class="form-item">
                       <label for="aiMaxContacts">处理人数</label>
                       <input type="number" id="aiMaxContacts" value="1" min="1" max="5">
                     </div>
                   </div>
+                  <div class="form-item">
+                    <label for="aiContactName">指定联系人</label>
+                    <input type="text" id="aiContactName" placeholder="留空自动扫描未读联系人">
+                  </div>
                   <div class="form-actions">
-                    <button type="button" class="action-btn" id="btnSaveAiConfig">保存配置</button>
+                    <button type="button" class="action-btn" id="btnSaveAiConfig">保存提示词</button>
                     <button type="button" class="action-btn" id="btnTestAiApi">测试连接</button>
                     <button type="button" class="run-button" id="btnRunAiReply">执行一次</button>
                     <button type="button" class="danger-button" id="btnCancelAiReply" hidden>取消</button>
@@ -211,14 +206,14 @@
           <div class="terminal-bar">
             <div class="terminal-tabs">
               <button type="button" class="terminal-tab-btn active" id="tabTerminalScript">业务脚本日志</button>
-              <button type="button" class="terminal-tab-btn" id="tabTerminalSystem">
+              <button type="button" class="terminal-tab-btn" id="tabTerminalSystem" style="display:none;">
                 系统运行日志
                 <span class="terminal-badge" id="systemLogBadge" style="display:none;">0</span>
               </button>
             </div>
             <div class="terminal-actions">
               <button class="danger-button" id="stopScriptBtn" type="button" style="display:none;">⏹ 停止脚本</button>
-              <button class="action-btn small" id="diagReportBtn" type="button" title="一键复制系统环境与错误诊断包">📋 诊断报告</button>
+              <button class="action-btn small" id="diagReportBtn" type="button" title="一键复制系统环境与错误诊断包" style="display:none;">📋 诊断报告</button>
               <button class="action-btn small" id="copyOutputBtn" type="button">复制日志</button>
               <button class="action-btn small" id="clearOutput" type="button">清空</button>
             </div>
@@ -298,6 +293,21 @@
     <div style="display:flex; justify-content:flex-end; gap:8px;">
       <button class="action-btn" id="cancelRedeemBtn" type="button">取消</button>
       <button class="run-button" id="submitRedeemBtn" type="button">立即兑换</button>
+    </div>
+  </dialog>
+
+  <!-- 原生风格通用模态确认弹窗 (告别丑陋的 window.confirm) -->
+  <dialog class="confirm-dialog" id="userConfirmDialog" style="border: 1px solid #e8e8e8; border-radius: 10px; padding: 22px; max-width: 440px; box-shadow: 0 16px 48px rgba(0,0,0,0.18);">
+    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:18px;">
+      <div id="userConfirmIcon" style="width:38px; height:38px; border-radius:50%; background:#fff2f0; border:1px solid #ffccc7; color:#ff4d4f; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">⚠️</div>
+      <div style="flex:1;">
+        <h3 id="userConfirmTitle" style="font-size:16px; font-weight:700; color:#1f1f1f; margin:0 0 6px 0;">确认操作</h3>
+        <div id="userConfirmDesc" style="font-size:13px; color:#595959; margin:0; line-height:1.5;">确认继续此操作？</div>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button class="action-btn" id="userConfirmCancelBtn" type="button" style="padding:5px 14px; font-size:13px;">取消</button>
+      <button class="danger-button" id="userConfirmOkBtn" type="button" style="padding:5px 16px; font-size:13px; background:#ff4d4f; color:#fff; border:1px solid #ff4d4f; font-weight:600;">确定</button>
     </div>
   </dialog>
 

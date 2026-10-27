@@ -89,9 +89,8 @@ function createVideoStreams({ client }) {
       if (bounds) control.videoSettings = { ...control.videoSettings, bounds };
     });
     entry.refresh = () => {
-      // A refresh reconfigures the cloud encoder and invalidates its reference
-      // chain. Keep it rare; it is a recovery operation, not viewer setup.
-      if (entry.closed || !control.ready || Date.now() - entry.lastRefreshAt < 10000) return;
+      // Keep refresh rate-limited to avoid encoder thrashing, but responsive for viewer setup.
+      if (entry.closed || !control.ready || Date.now() - entry.lastRefreshAt < 1500) return;
       entry.lastRefreshAt = Date.now();
       entry.refreshBit = !entry.refreshBit;
       try { control.setVideoSettings({ bitrate: SETTINGS.bitrate - Number(entry.refreshBit) }); }

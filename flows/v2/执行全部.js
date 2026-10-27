@@ -11,12 +11,11 @@ async function writeReport(directory, report) {
   await fs.writeFile(path.join(directory, 'results.json'), JSON.stringify(report, null, 2));
   const statusName = { pending: '待执行', running: '执行中', completed: '完成', failed: '失败' };
   const lines = [
-    '# 八步流程执行记录', '', `设备 ID：${report.deviceId}`, '',
+    '# 全流程执行记录 (V2)', '', `设备 ID：${report.deviceId}`, '',
     `开始时间（UTC）：${report.startedAt}`, '',
     '| 顺序 | 名称 | 状态 | 执行次数 | 最近耗时(ms) | 截图核对 |', '|---|---|---|---|---|---|',
     ...report.steps.map(step => `| ${step.order} | ${step.name} | ${statusName[step.status]} | ${step.attempts.length} | ${step.attempts.at(-1)?.durationMs ?? '-'} | ${step.review?.passed ? step.review.note : '待核对'} |`),
-    '', '每次执行的日志、手机截图和 OCR 过程截图保存在对应步骤目录。',
-    '第八步以点击“同意并继续”并停留在后续页面为协议分支的终点；此终点不代表后续键盘向导或最终讯飞切换已经完成。', '',
+    '', '每次执行的日志、手机截图和 OCR 过程截图保存在对应步骤目录。', '',
   ];
   await fs.writeFile(path.join(directory, '执行记录.md'), lines.join('\n'));
 }
@@ -79,7 +78,7 @@ async function main() {
     record.review = { passed: true, at: new Date().toISOString(), note: redact(note) };
     if (report.steps.every(step => step.status === 'completed' && step.review?.passed)) report.finishedAt = new Date().toISOString();
     await writeReport(directory, report);
-    console.log(`已记录 ${reviewStep}/8 的核对结果；不会自动运行下一步。`);
+    console.log(`已记录 ${reviewStep}/${stepsList.length} 的核对结果；不会自动运行下一步。`);
     return;
   }
   if (onlyStep !== null) {
@@ -115,7 +114,7 @@ async function main() {
       attempt.finishedAt = new Date().toISOString();
       attempt.durationMs = Math.round((performance.now() - attemptStarted) * 100) / 100;
       await writeReport(directory, report);
-      console.log(`完成 ${step.order}/8：${step.name}`);
+      console.log(`完成 ${step.order}/${stepsList.length}：${step.name}`);
     } catch (error) {
       attempt.status = record.status = 'failed';
       attempt.finishedAt = new Date().toISOString();
@@ -133,7 +132,7 @@ async function main() {
   }
   if (report.steps.every(step => step.status === 'completed') && onlyStep === null) report.finishedAt = new Date().toISOString();
   await writeReport(directory, report);
-  console.log(onlyStep === null ? '八个脚本已全部执行完成，记录目录：' + directory
+  console.log(onlyStep === null ? `全流程共 ${stepsList.length} 个脚本已全部执行完成，记录目录：` + directory
     : `第 ${onlyStep} 步已结束，请核对日志和截图；没有运行下一步。`);
 }
 

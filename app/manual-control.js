@@ -123,17 +123,28 @@ function latestControlFrameAt() {
 
 function getImageDisplayGeometry() {
   const image = activeControlCanvas();
-  if (!image || image.hidden || !latestControlFrameAt()) {
-    const w = surface.clientWidth || 360, h = surface.clientHeight || 640;
-    return { left: 0, top: 0, width: w, height: h, scale: 1, imgW: w, imgH: h };
+  const natW = (image && image.width) || manual.visionImageWidth || manual.width || 720;
+  const natH = (image && image.height) || manual.visionImageHeight || manual.height || 1280;
+  const sw = surface.clientWidth || 360;
+  const sh = surface.clientHeight || 640;
+
+  if (!image || image.hidden) {
+    const scale = Math.min(sw / natW, sh / natH);
+    const width = natW * scale;
+    const height = natH * scale;
+    const left = (sw - width) / 2;
+    const top = (sh - height) / 2;
+    return { left, top, width, height, scale, imgW: natW, imgH: natH };
   }
   const rect = image.getBoundingClientRect();
-  const scale = Math.min(rect.width / image.width, rect.height / image.height);
-  const width = image.width * scale;
-  const height = image.height * scale;
+  const imgW = (image.width && image.width > 0) ? image.width : natW;
+  const imgH = (image.height && image.height > 0) ? image.height : natH;
+  const scale = Math.min(rect.width / imgW, rect.height / imgH);
+  const width = imgW * scale;
+  const height = imgH * scale;
   const left = (rect.width - width) / 2;
   const top = (rect.height - height) / 2;
-  return { left, top, width, height, scale, imgW: image.width, imgH: image.height };
+  return { left, top, width, height, scale, imgW, imgH };
 }
 
 function clearVisionCanvas() {
@@ -273,6 +284,8 @@ async function inspectVisionCurrentFrame() {
   if (!isControlOpen() || !deviceId) return;
   if (manual.visionLoading) return;
   manual.visionLoading = true;
+  if (toggleVisionBtn) toggleVisionBtn.textContent = '识别中…';
+  showToast('正在进行 AI 视觉透视分析…');
   const generation = manual.generation;
   try {
     const res = await requestJson('/api/vision-inspect?deviceId=' + encodeURIComponent(deviceId));
@@ -288,18 +301,29 @@ async function inspectVisionCurrentFrame() {
     showToast('AI 视觉识别失败: ' + error.message);
   } finally {
     manual.visionLoading = false;
+    if (toggleVisionBtn) {
+      toggleVisionBtn.textContent = manual.visionActive ? '视觉✓' : '视觉';
+    }
   }
 }
 
 function setVisionActive(active) {
   manual.visionActive = active;
-  if (toggleVisionBtn) toggleVisionBtn.classList.toggle('active', active);
-  if (visionCanvas) visionCanvas.hidden = !active;
+  if (toggleVisionBtn) {
+    toggleVisionBtn.classList.toggle('active', active);
+    toggleVisionBtn.textContent = active ? '视觉✓' : '视觉';
+    toggleVisionBtn.title = active ? 'AI 视觉透视开启中（点击关闭）' : '切换 AI 视觉透视';
+  }
+  if (visionCanvas) {
+    visionCanvas.hidden = !active;
+    visionCanvas.style.display = active ? 'block' : 'none';
+  }
   if (!active) {
     manual.visionItems = [];
     manual.hoveredItem = null;
     if (visionTooltip) visionTooltip.hidden = true;
     clearVisionCanvas();
+    showToast('AI 视觉透视已关闭');
   } else {
     inspectVisionCurrentFrame();
   }
@@ -562,7 +586,6 @@ function startManualInput() {
 
 function startManualVideo() {
   if (!isControlOpen()) return;
-  if (manual.player && !manual.player.closed) return;
 
   const deviceId = getActiveDeviceId();
   if (!deviceId) return;
@@ -573,6 +596,33 @@ function startManualVideo() {
   manual.videoRetryTimer = null;
   const generation = ++manual.videoGeneration;
   manual.frameAt = 0;
+
+  // 极速同步机制：若左侧预览流已在正常解码，直接接入 mirrorCanvas，0 延迟、0 丢包！
+  const previewPlayer = window.state?.previewPlayers?.get(deviceId);
+  if (previewPlayer && !previewPlayer.closed && previewPlayer.socket?.readyState === WebSocket.OPEN) {
+    previewPlayer.mirrorCanvas = controlImage;
+    previewPlayer.mirrorContext = null;
+    previewPlayer.onMirrorFrame = ({ width, height, frameAt }) => {
+      if (generation !== manual.videoGeneration || !isControlOpen()) return;
+      manual.videoRetryAttempt = 0;
+      manual.frameAt = frameAt;
+      controlLoading.hidden = true;
+      controlLoading.style.display = 'none';
+      manual.width = width;
+      manual.height = height;
+      controlImage.hidden = false;
+      controlImage.style.display = 'block';
+      if (manual.visionActive) renderVisionOverlay();
+    };
+    controlLoading.hidden = true;
+    controlLoading.style.display = 'none';
+    controlImage.hidden = false;
+    controlImage.style.display = 'block';
+    controlStatus.textContent = '手动控制已就绪 · 原画实时同步';
+    return;
+  }
+
+  if (manual.player && !manual.player.closed) return;
 
   const player = manual.player = new CloudVideoPlayer({
     canvas: controlImage,
@@ -627,6 +677,15 @@ function stopManualVideo() {
   clearTimeout(manual.videoRetryTimer);
   manual.videoRetryTimer = null;
   manual.videoRetryAttempt = 0;
+  const deviceId = getActiveDeviceId();
+  if (deviceId) {
+    const previewPlayer = window.state?.previewPlayers?.get(deviceId);
+    if (previewPlayer) {
+      previewPlayer.mirrorCanvas = null;
+      previewPlayer.mirrorContext = null;
+      previewPlayer.onMirrorFrame = null;
+    }
+  }
   if (manual.player) {
     try { manual.player.close(); } catch {}
     manual.player = null;
@@ -870,10 +929,25 @@ window.addEventListener('online', () => {
 });
 
 const previewSize = getEl('previewSize');
-if (previewSize) {
-  previewSize.value = '340';
-  document.documentElement.style.setProperty('--device-width', '340px');
-  try { localStorage.removeItem('yunmomo.previewWidth'); } catch {}
+const previewSizeValue = getEl('previewSizeValue');
+
+function updatePreviewSize(val) {
+  const width = Math.min(650, Math.max(220, Number(val) || 340));
+  document.documentElement.style.setProperty('--device-width', width + 'px');
+  if (previewSize) previewSize.value = String(width);
+  if (previewSizeValue) previewSizeValue.textContent = width + 'px';
+  try { localStorage.setItem('yunmomo.previewWidth', String(width)); } catch {}
 }
+
+if (previewSize) {
+  let saved = 340;
+  try {
+    const s = Number(localStorage.getItem('yunmomo.previewWidth'));
+    if (s >= 220 && s <= 650) saved = s;
+  } catch {}
+  updatePreviewSize(saved);
+  previewSize.addEventListener('input', e => updatePreviewSize(e.target.value));
+}
+window.updatePreviewSize = updatePreviewSize;
 
 })(window);

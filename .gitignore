@@ -14,3 +14,5 @@ __pycache__/
 .runtime/
 midscene_run/
 scratch/
+*.zip
+sdk-xuanwu/

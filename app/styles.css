@@ -9,7 +9,7 @@
 
 :root {
   /* 基础画幅与圆角 */
-  --device-width: 330px;
+  --device-width: 340px;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
@@ -311,12 +311,13 @@ body {
 
 /* ==========================================================================
    2. 极简双区工作台核心布局 (Workspace Dual-Zone)
-   左侧 380px 独占超清大屏，右侧自适应指令工作台
+   左侧固定占用横向 2/5 (40%) 独占超清大屏，右侧占用 3/5 (60%) 指令工作台
+   分割线固定不随云机画面缩放变动
    ========================================================================== */
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   height: calc(100vh - 50px);
   min-height: 0;
   overflow: hidden;
@@ -359,6 +360,47 @@ body {
   gap: 6px;
 }
 
+.preview-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.preview-zoom-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  height: 28px;
+}
+
+.preview-zoom-ctrl .zoom-icon {
+  font-size: 12px;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.zoom-slider {
+  width: 76px;
+  height: 4px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.zoom-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: right;
+  user-select: none;
+}
+
 /* 舞台容器 */
 .preview-stage {
   flex: 1;
@@ -386,7 +428,7 @@ body {
    -------------------------------------------------------------------------- */
 .device-card.selected {
   width: 100%;
-  max-width: 340px;
+  max-width: var(--device-width, 340px);
   background: #ffffff;
   border: 2px solid var(--primary);
   border-radius: var(--radius-lg);
@@ -401,7 +443,7 @@ body {
 
 .device-card:not(.selected) {
   width: 100%;
-  max-width: 340px;
+  max-width: var(--device-width, 340px);
   height: 44px;
   min-height: 44px;
   background: #ffffff;
@@ -459,13 +501,89 @@ body {
 }
 
 .device-name {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--text-title);
+  display: none !important;
+}
+
+/* 当前云机运行的 IP / 域名 Badge (顶部居中展示) */
+.device-ip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 1.5px 7px;
+  border-radius: var(--radius-sm);
+  max-width: 170px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.device-ip-badge .ip-icon {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.device-ip-badge .ip-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+}
+
+/* 已配置 IP / 域名：清新工控蓝 */
+.device-ip-badge.configured {
+  background: #e6f4ff;
+  color: #0958d9;
+  border: 1px solid #91caff;
+}
+
+.device-ip-badge.configured:hover {
+  background: #bae0ff;
+  border-color: #69b1ff;
+  box-shadow: 0 1px 3px rgba(9, 88, 217, 0.15);
+}
+
+/* 未配置：直观醒目橙 */
+.device-ip-badge.unconfigured {
+  background: #fffbe6;
+  color: #d46b08;
+  border: 1px solid #ffe58f;
+}
+
+.device-ip-badge.unconfigured:hover {
+  background: #fff1b8;
+}
+
+/* 架构版本 Tag (靠右对齐) */
+.device-version-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: #f0f0f0;
+  color: #595959;
+  border: 1px solid #d9d9d9;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.device-version-tag.v3 {
+  background: #f6ffed;
+  color: #389e0d;
+  border-color: #b7eb8f;
+}
+
+.device-version-tag.v2 {
+  background: #e6f4ff;
+  color: #0958d9;
+  border-color: #91caff;
 }
 
 .device-status-pill {
@@ -571,31 +689,12 @@ body {
   padding: 6px 12px 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 6px;
 }
 
 .device-id-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-muted);
-  background: #fafafa;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-subtle);
-}
-
-.id-tag {
-  font-weight: 700;
-  color: var(--text-dim);
-}
-
-.id-digits {
-  color: var(--text-title);
-  font-weight: 600;
+  display: none !important;
 }
 
 .device-copy-btn {
@@ -1572,12 +1671,13 @@ body {
 /* Toast 提示浮条 */
 .toast {
   position: fixed;
-  bottom: 24px;
+  top: 18px;
+  bottom: auto;
   left: 50%;
-  transform: translateX(-50%) translateY(20px);
+  transform: translateX(-50%) translateY(-20px);
   background: #1f1f1f;
   color: #ffffff;
-  padding: 8px 18px;
+  padding: 0 16px;
   border-radius: var(--radius-sm);
   font-size: 13.5px;
   font-weight: 500;
@@ -1585,10 +1685,19 @@ body {
   opacity: 0;
   pointer-events: none;
   transition: all 0.2s var(--ease-smooth);
-  z-index: 1000;
+  z-index: 999999;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  line-height: 36px;
+  max-height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
 }
 
 .toast.visible {
   transform: translateX(-50%) translateY(0);
   opacity: 1;
+  pointer-events: auto;
 }

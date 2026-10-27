@@ -1,5 +1,31 @@
 'use strict';
 
+// 全局防御：彻底封杀浏览器原生的 alert, confirm, prompt，永远不再弹窗干扰
+window.alert = function (message) {
+  if (typeof showToast === 'function') {
+    showToast(String(message));
+  } else {
+    console.warn('[Alert Blocked]:', message);
+  }
+};
+window.confirm = function (message) {
+  console.warn('[Confirm Blocked - please use in-page modal]:', message);
+  return false;
+};
+window.prompt = function (message, defaultValue) {
+  return defaultValue || '';
+};
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function createPageId() {
   return globalThis.crypto?.randomUUID?.() ||
     ('page_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2));
@@ -177,7 +203,10 @@ function updateMiniStepperForDevice(deviceId) {
   if (!card) return;
   const miniStepper = card.querySelector('.device-mini-stepper');
   if (!miniStepper) return;
-  for (const meta of STEPS_META) {
+  const dev = state.devices.find(d => String(d.deviceId) === String(deviceId));
+  const isV2 = String(dev?.sdkVersion || '').toLowerCase() === 'v2';
+  const metaList = STEPS_META.filter(s => isV2 ? s.order !== 8 : s.order !== 2.1);
+  for (const meta of metaList) {
     const dot = miniStepper.querySelector(`[data-step="${meta.order}"]`);
     if (!dot) continue;
     dot.className = 'mini-step-dot';
@@ -202,17 +231,18 @@ function renderPipelineStepper() {
     }
   }
 
+  const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
   if (elements.stepperRunAllBtn) {
-    const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
     const label = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
     const labelSpan = elements.stepperRunAllBtn.querySelector('span:last-child');
     if (labelSpan) labelSpan.textContent = label;
     else elements.stepperRunAllBtn.textContent = label;
-    elements.stepperRunAllBtn.title = isV2 ? '执行全流程 01–08 (V2)' : '执行全流程 01–08 (V3)';
+    elements.stepperRunAllBtn.title = isV2 ? '执行全流程 01–07 (V2)' : '执行全流程 01–08 (V3)';
   }
 
   elements.pipelineStepper.replaceChildren();
-  for (const step of STEPS_META) {
+  const visibleSteps = STEPS_META.filter(step => isV2 ? step.order !== 8 : step.order !== 2.1);
+  for (const step of visibleSteps) {
     const status = target ? getStepState(target.deviceId, step.order) : 'idle';
     const node = document.createElement('div');
     node.className = `step-node ${status}`;
@@ -553,12 +583,28 @@ function createDeviceCard(device) {
   badge.className = 'device-num-badge';
   badge.textContent = numBadgeText;
 
-  const name = document.createElement('strong');
-  name.className = 'device-name';
-  name.textContent = device.name;
-  name.title = device.name;
+  titleWrap.append(badge);
 
-  titleWrap.append(badge, name);
+  const ipBadge = document.createElement('span');
+  ipBadge.className = 'device-ip-badge' + (device.currentIp ? ' configured' : ' unconfigured');
+  if (device.currentIp) {
+    ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text">${device.currentIp}</span>`;
+    ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
+    ipBadge.addEventListener('click', event => {
+      event.stopPropagation();
+      copyToClipboard(device.currentIp, `已复制当前 IP/域名: ${device.currentIp}`);
+      const textEl = ipBadge.querySelector('.ip-text');
+      if (textEl) {
+        const orig = textEl.textContent;
+        textEl.textContent = '已复制✓';
+        setTimeout(() => { textEl.textContent = orig; }, 1500);
+      }
+    });
+  } else {
+    ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
+    ipBadge.title = '当前云机未配置代理 IP 或域名';
+  }
+  titleWrap.append(ipBadge);
 
   const ver = String(device.sdkVersion || '').toUpperCase();
   if (ver) {
@@ -590,12 +636,14 @@ function createDeviceCard(device) {
     expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
   }
 
-  // 01~08 微型步进指示条
+  // 流程微型步进指示条
   const miniStepper = document.createElement('div');
   miniStepper.className = 'device-mini-stepper';
   miniStepper.dataset.deviceId = device.deviceId;
   miniStepper.title = '初始化全流程进度';
-  for (const meta of STEPS_META) {
+  const isV2 = String(device.sdkVersion || '').toLowerCase() === 'v2';
+  const metaList = STEPS_META.filter(s => isV2 ? s.order !== 8 : s.order !== 2.1);
+  for (const meta of metaList) {
     const dot = document.createElement('span');
     dot.className = 'mini-step-dot';
     dot.dataset.step = String(meta.order);
@@ -661,14 +709,9 @@ function createDeviceCard(device) {
     launchControl();
   });
 
-  // 底部业务工具条：解决“数字看着没什么用”的问题，集成一键复制虚拟机 ID
+  // 底部业务工具条：集成一键复制虚拟机 ID
   const footer = document.createElement('div');
   footer.className = 'device-card-footer';
-
-  const idBadge = document.createElement('div');
-  idBadge.className = 'device-id-badge';
-  idBadge.title = `完整虚拟机 ID: ${device.deviceId} (点击右侧按钮复制)`;
-  idBadge.innerHTML = `<span class="id-tag">ID</span><span class="id-digits">${shortDeviceId(device)}</span>`;
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'device-copy-btn';
@@ -692,7 +735,7 @@ function createDeviceCard(device) {
     }, 1800);
   });
 
-  footer.append(idBadge, copyBtn);
+  footer.append(copyBtn);
 
   // 目标标记
   const targetTag = document.createElement('div');
@@ -720,11 +763,8 @@ function updateDeviceCard(card, device, index) {
   const badge = card.querySelector('.device-num-badge');
   if (badge && badge.textContent !== numBadgeText) badge.textContent = numBadgeText;
 
-  const name = card.querySelector('.device-name');
-  if (name && name.textContent !== device.name) {
-    name.textContent = device.name;
-    name.title = device.name;
-  }
+  // 彻底移除无需展示的冗余名称 (SF)
+  card.querySelector('.device-name')?.remove();
 
   const status = card.querySelector('.device-status');
   if (status) {
@@ -733,6 +773,32 @@ function updateDeviceCard(card, device, index) {
     const label = status.querySelector('.status-label');
     if (label) label.textContent = online ? '在线' : '连接中';
   }
+
+  // 更新或插入当前使用的 IP / 域名 Badge
+  let ipBadge = card.querySelector('.device-ip-badge');
+  const configured = Boolean(device.currentIp);
+  if (!ipBadge) {
+    ipBadge = document.createElement('span');
+    const titleWrap = card.querySelector('.device-title-wrap');
+    if (titleWrap) {
+      const verTag = titleWrap.querySelector('.device-version-tag');
+      if (verTag) titleWrap.insertBefore(ipBadge, verTag);
+      else titleWrap.append(ipBadge);
+    }
+  }
+  if (ipBadge) {
+    ipBadge.className = 'device-ip-badge' + (configured ? ' configured' : ' unconfigured');
+    if (configured) {
+      ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text">${device.currentIp}</span>`;
+      ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
+    } else {
+      ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
+      ipBadge.title = '当前云机未配置代理 IP 或域名';
+    }
+  }
+
+  // 确保底部不再显示旧的 ID Badge
+  card.querySelector('.device-id-badge')?.remove();
 
   let expireBar = card.querySelector('.device-expire-bar');
   if (device.expireAt) {
@@ -993,9 +1059,15 @@ function createScriptCard(script) {
       } else {
         if (!field.multiline) input.type = 'text';
         else input.rows = 3;
-        input.autocomplete = 'off';
+        input.name = `param_${script.id}_${field.name}`;
+        input.autocomplete = 'new-password';
+        input.setAttribute('autocomplete', 'new-password');
+        input.setAttribute('data-lpignore', 'true');
+        input.setAttribute('data-1p-ignore', 'true');
+        input.setAttribute('data-form-type', 'other');
         input.spellcheck = false;
         if (field.maxLength) input.maxLength = field.maxLength;
+        if (field.placeholder) input.placeholder = field.placeholder;
       }
       input.value = field.defaultValue ?? '';
       label.append(input);
@@ -1028,11 +1100,15 @@ function createScriptCard(script) {
       input.type = 'text';
       input.className = 'script-inline-input';
       input.dataset.parameter = field.name;
+      input.name = `inline_${script.id}_${field.name}`;
+      input.setAttribute('autocomplete', 'new-password');
+      input.setAttribute('data-lpignore', 'true');
+      input.setAttribute('data-form-type', 'other');
       input.setAttribute('aria-label', field.label);
       input.title = `${field.label}: ${field.defaultValue ?? ''}`;
       input.value = field.defaultValue ?? '';
       input.spellcheck = false;
-      input.autocomplete = 'off';
+      if (field.placeholder) input.placeholder = field.placeholder;
       actions.append(input);
     }
   }
@@ -1190,7 +1266,7 @@ function renderScripts() {
   columnsContainer.className = 'scripts-columns-container';
 
   if (v2Scripts.length > 0) {
-    const v2Section = createVersionSection('V2', 'V2 流程架构 (01~08)', v2Scripts, false);
+    const v2Section = createVersionSection('V2', 'V2 流程架构 (01~07)', v2Scripts, false);
     columnsContainer.append(v2Section);
   }
 
@@ -1410,14 +1486,69 @@ async function executeScript(script, button, card) {
     }
   }
 
-  const resetConfirmed = script.destructive ? window.confirm(
-    script.id === 'flow-09-v2'
-      ? '确认对 ' + deviceLabel(currentDevice()) + ' 执行“重置数据”？\n\n警告：即将重置该设备，此操作不可恢复！\n此操作会清空该设备所有数据并恢复出厂设置。取消将不执行。'
-      : '确认对 ' + deviceLabel(currentDevice()) + ' 执行“改机重置”？\n' +
-        '机型范围：Android ' + (options.androidVersion || '16') + '；国家：' + (options.countryCode || 'CN') +
-        '。\n此操作会清除该设备数据，不能撤销。取消将不执行。'
-  ) : false;
-  if (script.destructive && !resetConfirmed) return;
+  function showInPageConfirm({ title, message, okText = '确定', cancelText = '取消', isDanger = true, icon = '⚠️' } = {}) {
+    return new Promise(resolve => {
+      const dialog = document.getElementById('userConfirmDialog');
+      if (!dialog) return resolve(false);
+      const titleEl = document.getElementById('userConfirmTitle');
+      const descEl = document.getElementById('userConfirmDesc');
+      const okBtn = document.getElementById('userConfirmOkBtn');
+      const cancelBtn = document.getElementById('userConfirmCancelBtn');
+      const iconEl = document.getElementById('userConfirmIcon');
+
+      if (titleEl) titleEl.textContent = title;
+      if (descEl) descEl.innerHTML = message;
+      if (okBtn) {
+        okBtn.textContent = okText;
+        okBtn.style.background = isDanger ? '#ff4d4f' : '#1677ff';
+        okBtn.style.borderColor = isDanger ? '#ff4d4f' : '#1677ff';
+        okBtn.style.color = '#fff';
+      }
+      if (cancelBtn) cancelBtn.textContent = cancelText;
+      if (iconEl) {
+        iconEl.textContent = icon;
+        iconEl.style.background = isDanger ? '#fff2f0' : '#e6f4ff';
+        iconEl.style.borderColor = isDanger ? '#ffccc7' : '#91caff';
+        iconEl.style.color = isDanger ? '#ff4d4f' : '#1677ff';
+      }
+
+      const cleanup = () => {
+        try { dialog.close(); } catch {}
+        okBtn?.removeEventListener('click', onOk);
+        cancelBtn?.removeEventListener('click', onCancel);
+        dialog.removeEventListener('keydown', onKeyDown);
+        dialog.removeEventListener('cancel', onCancel);
+      };
+
+      const onOk = () => { cleanup(); resolve(true); };
+      const onCancel = () => { cleanup(); resolve(false); };
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(); resolve(false); }
+      };
+
+      okBtn?.addEventListener('click', onOk);
+      cancelBtn?.addEventListener('click', onCancel);
+      dialog.addEventListener('keydown', onKeyDown);
+      dialog.addEventListener('cancel', onCancel, { once: true });
+
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    });
+  }
+
+  if (script.destructive) {
+    const isV2 = script.id === 'flow-09-v2';
+    const resetConfirmed = await showInPageConfirm({
+      title: isV2 ? '确认执行【重置数据】？' : '确认执行【改机重置】？',
+      message: isV2
+        ? `确认对 <strong>${escapeHtml(deviceLabel(currentDevice()))}</strong> 执行“重置数据”？<br><span style="color:#ff4d4f; font-weight:600;">警告：即将重置该设备，此操作不可恢复！</span><br>清空该设备所有数据并恢复出厂设置。`
+        : `确认对 <strong>${escapeHtml(deviceLabel(currentDevice()))}</strong> 执行“改机重置”？<br>机型范围：Android ${options.androidVersion || '16'}；国家：${options.countryCode || 'CN'}。<br><span style="color:#ff4d4f; font-weight:600;">警告：此操作会清除该设备所有数据且不可撤销。</span>`,
+      okText: isV2 ? '确认重置' : '确认改机重置',
+      isDanger: true,
+      icon: '⚠️'
+    });
+    if (!resetConfirmed) return;
+  }
   const scriptRunId = createScriptRunId();
   const run = { id: scriptRunId, scriptId: script.id, deviceId: targetId, stopping: false, stopConfirmed: false };
   state.activeRun = run;
@@ -1715,6 +1846,7 @@ function initTabs() {
   const panes = document.querySelectorAll('.tab-pane');
 
   function switchTab(targetTab) {
+    if (targetTab !== 'flow' && targetTab !== 'ai') targetTab = 'flow';
     for (const btn of tabBtns) {
       const active = btn.dataset.tab === targetTab;
       btn.classList.toggle('active', active);
@@ -1790,6 +1922,9 @@ function initTerminalTabs() {
 
   if (elements.tabTerminalSystem) {
     elements.tabTerminalSystem.addEventListener('click', () => {
+      const isEmbed = location.search.includes('view=admin-embed');
+      const isAdmin = state.currentUser?.role === 'admin' || isEmbed;
+      if (!isAdmin) return;
       activeTerminalTab = 'system';
       elements.tabTerminalSystem.classList.add('active');
       elements.tabTerminalScript?.classList.remove('active');
@@ -1902,7 +2037,7 @@ if (elements.submitRedeemBtn) {
     const cardCode = elements.redeemCardInput.value.trim();
     if (!cardCode) {
       elements.redeemAlert.textContent = '请输入卡密代码';
-      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:rgba(248,81,73,0.15); border:1px solid rgba(248,81,73,0.35); color:#ff7b72;';
+      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:#fff2f0; border:1px solid #ffccc7; color:#cf1322;';
       return;
     }
     elements.submitRedeemBtn.disabled = true;
@@ -1914,18 +2049,22 @@ if (elements.submitRedeemBtn) {
         body: JSON.stringify({ cardCode })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+      if (!data.ok) throw new Error(data.error || '兑换失败，请联系客服');
 
-      elements.redeemAlert.textContent = `🎉 兑换成功！已为您分配新云手机 [${data.result.deviceName}]，有效期至 ${new Date(data.result.expireAt).toLocaleString()}`;
+      const summary = data.result.summary || (data.result.deviceName ? `已为您分配新云手机 [${data.result.deviceName}]，有效期至 ${new Date(data.result.expireAt).toLocaleString()}` : '权益已成功充值到账！');
+      elements.redeemAlert.innerHTML = `🎉 <strong>兑换成功！</strong><div style="margin-top:4px; line-height:1.4;">${summary}</div>`;
       elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:rgba(46,160,67,0.15); border:1px solid rgba(46,160,67,0.35); color:#3fb950;';
       setTimeout(async () => {
         elements.redeemDialog?.close();
-        await loadDevices();
-        showToast(`已成功分配并加载新云机 [${data.result.deviceName}]`);
-      }, 1200);
+        if (data.result.deviceId || data.result.deviceName) {
+          await loadDevices();
+        }
+        showToast(`兑换成功: ${summary}`);
+      }, 1500);
     } catch (err) {
-      elements.redeemAlert.textContent = err.message;
-      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:rgba(248,81,73,0.15); border:1px solid rgba(248,81,73,0.35); color:#ff7b72;';
+      console.warn('[Redeem] Failed:', err.message);
+      elements.redeemAlert.textContent = '兑换失败，请联系客服';
+      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:#fff2f0; border:1px solid #ffccc7; color:#cf1322;';
     } finally {
       elements.submitRedeemBtn.disabled = false;
       elements.submitRedeemBtn.textContent = '立即兑换';
@@ -1964,14 +2103,21 @@ async function checkAuth() {
       return null;
     }
     state.currentUser = data.user;
+    const isAdmin = data.user.role === 'admin' || isEmbed;
+    if (elements.tabTerminalSystem) {
+      elements.tabTerminalSystem.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+    if (elements.diagReportBtn) {
+      elements.diagReportBtn.style.display = isAdmin ? 'inline-block' : 'none';
+    }
     if (elements.userPill && !isEmbed) {
       elements.userPill.style.display = 'block';
-      elements.userPill.textContent = `${data.user.role === 'admin' ? '管理员' : '用户'}: ${data.user.email}`;
+      elements.userPill.textContent = `${isAdmin ? '管理员' : '用户'}: ${data.user.email}`;
     }
     if (elements.userLogoutBtn && !isEmbed) {
       elements.userLogoutBtn.style.display = 'inline-flex';
     }
-    if (data.user.role === 'admin' && elements.adminPortalLink && !isEmbed) {
+    if (isAdmin && elements.adminPortalLink && !isEmbed) {
       elements.adminPortalLink.style.display = 'inline-flex';
     }
     return data.user;

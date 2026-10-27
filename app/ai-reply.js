@@ -7,8 +7,6 @@
   let pollTimer = null;
 
   const els = {
-    apiKey: document.getElementById('aiApiKey'),
-    model: document.getElementById('aiModel'),
     mode: document.getElementById('aiMode'),
     systemPrompt: document.getElementById('aiSystemPrompt'),
     contactName: document.getElementById('aiContactName'),
@@ -44,12 +42,8 @@
       if (data.ok && data.settings) {
         const s = data.settings;
         currentRevision = s.revision || 1;
-        if (els.model) els.model.value = s.model || 'deepseek-chat';
         if (els.systemPrompt) els.systemPrompt.value = s.systemPrompt || '';
-        if (els.apiKey) {
-          els.apiKey.value = '';
-          els.apiKey.placeholder = s.hasApiKey ? `已配置: ${s.apiKeyMasked} (留空保持)` : '请输入 DeepSeek API Key (sk-...)';
-        }
+        showStatus(s.ready ? 'AI已就绪' : '后台未配Key', s.ready ? 'success' : 'normal');
       }
     } catch {}
   }
@@ -59,11 +53,8 @@
       showStatus('正在保存…', 'running');
       const payload = {
         expectedRevision: currentRevision,
-        model: els.model?.value?.trim() || 'deepseek-chat',
         systemPrompt: els.systemPrompt?.value?.trim() || ''
       };
-      const keyVal = els.apiKey?.value?.trim();
-      if (keyVal) payload.apiKey = keyVal;
 
       const res = await fetch('/api/ai-reply/settings', {
         method: 'POST',
@@ -73,14 +64,10 @@
       const data = await res.json();
       if (data.ok && data.settings) {
         currentRevision = data.settings.revision;
-        showStatus('已保存', 'success');
-        if (els.apiKey) {
-          els.apiKey.value = '';
-          els.apiKey.placeholder = data.settings.hasApiKey ? `已配置: ${data.settings.apiKeyMasked}` : '请输入 API Key';
-        }
+        showStatus('提示词已保存', 'success');
       } else {
         showStatus('保存失败', 'error');
-        displayResult(data.error || '保存配置失败');
+        displayResult(data.error || '保存提示词失败');
       }
     } catch (err) {
       showStatus('保存出错', 'error');
@@ -91,28 +78,23 @@
   async function testApi() {
     try {
       showStatus('测试连接…', 'running');
-      displayResult('正在请求 DeepSeek API (https://api.deepseek.com)...');
-      const payload = {
-        model: els.model?.value?.trim() || 'deepseek-chat'
-      };
-      const keyVal = els.apiKey?.value?.trim();
-      if (keyVal) payload.apiKey = keyVal;
+      displayResult('正在请求后台配置的统一全局 AI 接口进行握手测试...');
 
       const res = await fetch('/api/ai-reply/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({})
       });
       const data = await res.json();
       if (data.ok) {
-        showStatus('连接成功', 'success');
-        displayResult(`DeepSeek 连接正常！\n模型: ${data.model}\n回复: ${data.response}\nRequest ID: ${data.requestId}`);
+        showStatus('连接正常', 'success');
+        displayResult(`🎉 AI 接口握手成功！\n模型: ${data.model}\n测试回复: ${data.response}\n请求编号: ${data.requestId || 'ok'}`);
       } else {
         showStatus('连接失败', 'error');
-        displayResult(data.error);
+        displayResult(data.error?.message || '测试失败，请联系管理员检查后台 AI 接口与 Key 配置');
       }
     } catch (err) {
-      showStatus('测试失败', 'error');
+      showStatus('连接异常', 'error');
       displayResult(err.message);
     }
   }
@@ -129,9 +111,7 @@
 
     if (!selectedDeviceId || selectedDeviceId === '--') {
       if (typeof window.showToast === 'function') {
-        window.showToast('请先在左侧选择目标云手机');
-      } else {
-        alert('请先在左侧选择目标云手机');
+        window.showToast('请先在左侧选择目标云手机', 'error');
       }
       return;
     }

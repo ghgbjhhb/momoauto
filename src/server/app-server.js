@@ -22,9 +22,16 @@ const { BrainManager } = require('../brain/manager');
 const { activeRuns } = require('./ai-reply-routes');
 const { getAuthService } = require('./auth/service');
 const authService = getAuthService();
+const { getSmsService } = require('./sms/service');
+const { extractDeviceInfo } = require('../workflows/v2/import-real-params');
 
 const { PROJECT_ROOT } = require('../automation/runtime');
 const APP_ROOT = path.join(PROJECT_ROOT, 'app');
+const CLOUD_DISK_ROOT = path.join(PROJECT_ROOT, 'storage', 'cloud-disk');
+try {
+  fs.mkdirSync(path.join(CLOUD_DISK_ROOT, '真参'), { recursive: true });
+  fs.mkdirSync(path.join(CLOUD_DISK_ROOT, '头像'), { recursive: true });
+} catch {}
 const LOCAL_ENV_FILE = path.join(PROJECT_ROOT, '.env.local');
 const HOST = process.env.YUNMOMO_APP_HOST || '127.0.0.1';
 const DEFAULT_PORT = 4318;
@@ -215,7 +222,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     category: 'momo',
     parameters: [
       { name: 'mode', label: '运行模式', choices: ['execute', 'draft'], defaultValue: 'execute' },
-      { name: 'contactName', label: '指定联系人姓名', defaultValue: '', maxLength: 120 }
+      { name: 'contactName', label: '指定联系人姓名', defaultValue: '', placeholder: '留空自动扫描未读联系人', maxLength: 120 }
     ]
   },
   {
@@ -274,6 +281,50 @@ function deviceNameOf(record) {
   return String(record?.deviceName ?? record?.name ?? record?.cloudNo ?? 'SF');
 }
 
+function extractHost(address) {
+  if (!address) return null;
+  const str = String(address).trim();
+  if (!str) return null;
+  if (str.startsWith('[')) {
+    const end = str.indexOf(']');
+    if (end > 0) return str.slice(1, end);
+  }
+  const host = str.replace(/:\d+$/, '').trim();
+  return host || str;
+}
+
+async function resolveDeviceProxy(owner, deviceId, useIpFallback = null) {
+  try {
+    const phone = owner.device(deviceId);
+    const v1 = await phone.getProxy('v1').catch(() => null);
+    if (v1 && (Number(v1.status) === 1 || v1.status === true) && v1.address) {
+      const raw = String(v1.address).trim();
+      const host = extractHost(raw);
+      if (host) return { host, raw, source: 'v1' };
+    }
+  } catch {}
+
+  try {
+    const phone = owner.device(deviceId);
+    const legacy = await phone.getProxy('legacy').catch(() => null);
+    const addr = legacy?.addr || legacy?.address || legacy?.data?.addr;
+    const status = Number(legacy?.status ?? legacy?.data?.status);
+    if ((status === 1 || Boolean(addr)) && addr) {
+      const raw = String(addr).trim();
+      const host = extractHost(raw);
+      if (host) return { host, raw, source: 'legacy' };
+    }
+  } catch {}
+
+  if (useIpFallback) {
+    const raw = String(useIpFallback).trim();
+    const host = extractHost(raw);
+    if (host) return { host, raw, source: 'useIp' };
+  }
+
+  return null;
+}
+
 function publicDevice(record) {
   return {
     deviceId: deviceIdOf(record),
@@ -282,7 +333,9 @@ function publicDevice(record) {
     status: record?.status ?? null,
     online: record?.online ?? null,
     cloudNo: record?.cloudNo ?? record?.cloudNumber ?? null,
-    sdkVersion: record?.sdkVersion ? String(record.sdkVersion).toLowerCase() : null
+    sdkVersion: record?.sdkVersion ? String(record.sdkVersion).toLowerCase() : null,
+    currentIp: record?.currentIp || null,
+    proxyAddress: record?.proxyAddress || null
   };
 }
 
@@ -294,9 +347,23 @@ async function listDevices() {
   const listing = { owner };
   listing.pending = (async () => {
     const result = await owner.listDevices({ current: 1, size: 50000 });
-    const records = result.records.map(publicDevice).filter(record => record.deviceId);
-    if (sharedClient === owner) deviceCache = { records, expires: Date.now() + 3000 };
-    return records;
+    const rawRecords = Array.isArray(result?.records) ? result.records : [];
+    const records = await Promise.all(rawRecords.map(async raw => {
+      const base = publicDevice(raw);
+      if (!base.deviceId) return null;
+      try {
+        const proxy = await resolveDeviceProxy(owner, base.deviceId, raw.useIp);
+        base.currentIp = proxy?.host || null;
+        base.proxyAddress = proxy?.raw || null;
+      } catch {
+        base.currentIp = null;
+        base.proxyAddress = null;
+      }
+      return base;
+    }));
+    const validRecords = records.filter(Boolean);
+    if (sharedClient === owner) deviceCache = { records: validRecords, expires: Date.now() + 5000 };
+    return validRecords;
   })().finally(() => { if (deviceListing === listing) deviceListing = null; });
   deviceListing = listing;
   return listing.pending;
@@ -792,11 +859,11 @@ function configureScript(script, body, env) {
   }
 }
 
-async function readJsonBody(request) {
+async function readJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   let body = '';
   for await (const chunk of request) {
     body += chunk;
-    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
+    if (Buffer.byteLength(body, 'utf8') > maxBytes) {
       throw new Error('请求内容过大');
     }
   }
@@ -806,6 +873,55 @@ async function readJsonBody(request) {
   } catch {
     throw new Error('请求 JSON 无效');
   }
+}
+
+function safeCloudDiskDir(dir) {
+  return dir === '头像' ? '头像' : '真参';
+}
+
+function getCloudDiskFiles(dirName) {
+  const dir = safeCloudDiskDir(dirName);
+  const dirPath = path.join(CLOUD_DISK_ROOT, dir);
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const filePath = path.join(dirPath, entry.name);
+    try {
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(entry.name).toLowerCase();
+      const isImage = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(ext);
+      const isText = ['.txt', '.json', '.xml', '.log', '.csv'].includes(ext);
+      let previewInfo = null;
+      if (dir === '真参' && (ext === '.txt' || ext === '.json')) {
+        try {
+          const raw = fs.readFileSync(filePath, 'utf8');
+          const parsed = JSON.parse(raw);
+          const info = extractDeviceInfo(parsed);
+          if (info.brand || info.model) {
+            previewInfo = info;
+          }
+        } catch {}
+      }
+      files.push({
+        name: entry.name,
+        size: stat.size,
+        sizeFormatted: stat.size > 1024 * 1024
+          ? (stat.size / (1024 * 1024)).toFixed(2) + ' MB'
+          : (stat.size / 1024).toFixed(1) + ' KB',
+        mtime: stat.mtimeMs,
+        ext,
+        isImage,
+        isText,
+        previewInfo
+      });
+    } catch {}
+  }
+  files.sort((a, b) => b.mtime - a.mtime);
+  return files;
 }
 
 function json(response, status, value, headers = {}) {
@@ -822,7 +938,7 @@ function json(response, status, value, headers = {}) {
 async function staticFile(response, pathname) {
   let requested = pathname === '/' ? 'index.html' : pathname.slice(1);
   if (pathname === '/login' || pathname === '/login/') requested = 'login.html';
-  if (pathname === '/admin' || pathname === '/admin/') requested = 'admin.html';
+  if (pathname === '/admin' || pathname === '/admin/' || pathname.startsWith('/admin/')) requested = 'admin.html';
   if (!requested || requested.includes('..') || requested.includes('\\')) {
     json(response, 404, { ok: false, error: '页面不存在' });
     return;
@@ -849,7 +965,7 @@ function errorStatus(error) {
   if (error.status === 400) return 400;
   if (/正在执行脚本|手动控制/.test(error.message)) return 409;
   if (error.status === 401 || error.status === 403) return 401;
-  if (/请选择|未知脚本|YUNMOMO_CERT_PATH|请求内容|请求 JSON|浏览器会话令牌/.test(error.message)) return 400;
+  if (/请选择|未知脚本|YUNMOMO_CERT_PATH|请求内容|请求 JSON|浏览器会话令牌|邮箱或密码不正确|卡密|验证码/.test(error.message)) return 400;
   if (/YUNMOMO_TOKEN/.test(error.message)) return 401;
   return 500;
 }
@@ -928,10 +1044,25 @@ async function handler(request, response) {
       const userTag = currentUser ? `[${currentUser.email}]` : '[guest]';
       const logLine = `${reqMethod} ${reqUrl} -> ${status} (${duration}ms) ${userTag}`;
 
-      if (status >= 400) {
+      // 忽略日志自轮询等无意义的噪音请求
+      if (reqUrl.includes('/api/client-logs') || reqUrl.includes('/api/server-logs')) {
+        return;
+      }
+
+      // 未登录游客访问受保护接口（如打开网页时自动探测设备列表），属正常未认证拦截，静默避免刷屏
+      const isGuestAuthProbe = !currentUser && (status === 401 || status === 403) && (reqUrl.startsWith('/api/devices') || reqUrl.startsWith('/api/cloud-disk') || reqUrl.startsWith('/api/user'));
+
+      if (status >= 500) {
+        // 5xx 属于真正的服务端系统错误
         console.error(`[API ERROR] ${logLine}`);
         appendServerLog('ERROR', logLine);
-      } else if (!reqUrl.includes('/api/client-logs')) {
+      } else if (status >= 400) {
+        // 4xx 属于客户端行为、业务校验不通过或安全防护拦截，归为 WARN
+        if (!isGuestAuthProbe) {
+          console.warn(`[API WARN] ${logLine}`);
+          appendServerLog('WARN', logLine);
+        }
+      } else {
         console.log(`[API] ${logLine}`);
       }
     });
@@ -1015,14 +1146,24 @@ async function handler(request, response) {
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/server-logs') {
+      if (!requireAdmin(response)) return;
       try {
         const logPath = path.join(PROJECT_ROOT, 'logs', 'server.log');
         const content = await fs.promises.readFile(logPath, 'utf8');
-        const lines = content.trim().split('\n').filter(Boolean).slice(-100);
+        const lines = content.trim().split('\n').filter(Boolean).slice(-300);
         json(response, 200, { ok: true, logs: lines });
       } catch {
         json(response, 200, { ok: true, logs: [] });
       }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/server-logs/clear') {
+      if (!requireAdmin(response)) return;
+      try {
+        const logPath = path.join(PROJECT_ROOT, 'logs', 'server.log');
+        await fs.promises.writeFile(logPath, '', 'utf8');
+      } catch {}
+      json(response, 200, { ok: true, message: '系统运行日志已清空' });
       return;
     }
 
@@ -1034,16 +1175,27 @@ async function handler(request, response) {
       json(response, 200, { ok: true, devices });
       return;
     }
+    if (request.method === 'GET' && url.pathname === '/api/user/assets') {
+      if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
+      const assets = authService.db.getUserAssets(user.id);
+      json(response, 200, { ok: true, assets });
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/api/user/redeem') {
       if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
-      const body = await readJsonBody(request);
-      const master = await listDevices();
-      const result = authService.redeemCardForNewDevice({
-        userId: user.id,
-        cardCode: body?.cardCode,
-        masterDevices: master
-      });
-      json(response, 200, { ok: true, result });
+      try {
+        const body = await readJsonBody(request);
+        const master = await listDevices();
+        const result = authService.redeemCard({
+          userId: user.id,
+          cardCode: body?.cardCode,
+          masterDevices: master
+        });
+        json(response, 200, { ok: true, result });
+      } catch (err) {
+        console.warn(`[User Redeem Failed] user=${user.username || user.id} reason=${err.message}`);
+        json(response, 400, { ok: false, error: '兑换失败，请联系客服', detail: err.message });
+      }
       return;
     }
 
@@ -1055,31 +1207,44 @@ async function handler(request, response) {
     }
     if (request.method === 'POST' && url.pathname === '/api/admin/users/status') {
       if (!requireAdmin(response)) return;
-      const body = await readJsonBody(request);
-      authService.db.updateUserStatus(body.userId, body.status);
-      json(response, 200, { ok: true });
+      try {
+        const body = await readJsonBody(request);
+        authService.db.updateUserStatus(body.userId, body.status);
+        json(response, 200, { ok: true });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/admin/cards') {
       if (!requireAdmin(response)) return;
       const status = url.searchParams.get('status') || '';
       const batchTag = url.searchParams.get('batchTag') || '';
-      const cards = authService.listCards({ status, batchTag });
+      const type = url.searchParams.get('type') || '';
+      const cards = authService.listCards({ status, batchTag, type });
       json(response, 200, { ok: true, cards });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/api/admin/cards/generate') {
       if (!requireAdmin(response)) return;
-      const body = await readJsonBody(request);
-      const cards = authService.generateCards(body || {});
-      json(response, 200, { ok: true, cards });
+      try {
+        const body = await readJsonBody(request);
+        const cards = authService.generateCards(body || {});
+        json(response, 200, { ok: true, cards });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
       return;
     }
     if (request.method === 'POST' && url.pathname === '/api/admin/cards/revoke') {
       if (!requireAdmin(response)) return;
-      const body = await readJsonBody(request);
-      authService.revokeCard(body?.cardId);
-      json(response, 200, { ok: true });
+      try {
+        const body = await readJsonBody(request);
+        authService.revokeCard(body?.cardId);
+        json(response, 200, { ok: true });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/admin/pool') {
@@ -1116,6 +1281,281 @@ async function handler(request, response) {
       }
       json(response, 200, { ok: true });
       return;
+    }
+
+    // --- 管理员 AI 设置与多供应商管理 API ---
+    if (request.method === 'GET' && url.pathname === '/api/admin/ai-settings') {
+      if (!requireAdmin(response)) return;
+      const { getEffectiveConfig, listProviders, loadSettings, maskApiKey } = require('../ai/config');
+      const cfg = getEffectiveConfig();
+      const settings = loadSettings();
+      json(response, 200, {
+        ok: true,
+        activeProviderId: settings.activeProviderId,
+        providers: listProviders(),
+        systemPrompt: cfg.systemPrompt || '',
+        settings: {
+          activeProviderId: settings.activeProviderId,
+          provider: cfg.provider || 'openai',
+          endpoint: cfg.endpoint || 'https://api.deepseek.com',
+          model: cfg.model || 'deepseek-chat',
+          apiKeyMasked: maskApiKey(cfg.apiKey),
+          hasApiKey: Boolean(cfg.apiKey && cfg.apiKey.trim())
+        }
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/ai-providers') {
+      if (!requireAdmin(response)) return;
+      try {
+        const body = await readJsonBody(request);
+        const { saveProvider, listProviders } = require('../ai/config');
+        saveProvider(body);
+        json(response, 200, { ok: true, providers: listProviders() });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname.startsWith('/api/admin/ai-providers/') && url.pathname.endsWith('/set-default')) {
+      if (!requireAdmin(response)) return;
+      try {
+        const parts = url.pathname.split('/');
+        const id = parts[4];
+        const { setDefaultProvider, listProviders } = require('../ai/config');
+        setDefaultProvider(id);
+        json(response, 200, { ok: true, providers: listProviders() });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+
+    if (request.method === 'DELETE' && url.pathname.startsWith('/api/admin/ai-providers/')) {
+      if (!requireAdmin(response)) return;
+      try {
+        const parts = url.pathname.split('/');
+        const id = parts[4];
+        const { deleteProvider, listProviders } = require('../ai/config');
+        deleteProvider(id);
+        json(response, 200, { ok: true, providers: listProviders() });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/ai-settings') {
+      if (!requireAdmin(response)) return;
+      try {
+        const body = await readJsonBody(request);
+        const { saveSettings, getSanitizedSettings, listProviders } = require('../ai/config');
+        const updates = {};
+        if (body.systemPrompt !== undefined) updates.systemPrompt = String(body.systemPrompt).trim();
+        saveSettings(updates, body.expectedRevision);
+        json(response, 200, { ok: true, settings: getSanitizedSettings(), providers: listProviders() });
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/ai-settings/test') {
+      if (!requireAdmin(response)) return;
+      try {
+        const body = await readJsonBody(request);
+        const { getEffectiveConfig, loadSettings } = require('../ai/config');
+        const { DeepSeekProvider } = require('../ai/provider');
+        let testConfig;
+        if (body?.id) {
+          const settings = loadSettings();
+          const found = (settings.providers || []).find(p => p.id === body.id);
+          if (!found) throw new Error('供应商不存在');
+          testConfig = {
+            provider: found.provider,
+            endpoint: found.endpoint,
+            apiKey: found.apiKey,
+            model: found.model,
+            timeoutMs: found.timeoutMs || 15000
+          };
+        } else {
+          const current = getEffectiveConfig();
+          let apiKey = '';
+          if (body?.apiKey && !body.apiKey.includes('***')) {
+            apiKey = body.apiKey.trim();
+          } else if (body?.providerId) {
+            const settings = loadSettings();
+            const found = (settings.providers || []).find(p => p.id === body.providerId);
+            apiKey = found ? found.apiKey : current.apiKey;
+          } else {
+            apiKey = current.apiKey;
+          }
+          testConfig = {
+            provider: body?.provider || current.provider || 'openai',
+            endpoint: body?.endpoint || current.endpoint || 'https://api.deepseek.com',
+            apiKey,
+            model: body?.model || current.model || 'deepseek-chat',
+            temperature: 0.7,
+            maxTokens: 50,
+            timeoutMs: 15000
+          };
+        }
+        if (!testConfig.apiKey) {
+          throw new Error('未配置 API Key，无法测试连接');
+        }
+        const testRes = await DeepSeekProvider.chat([
+          { role: 'user', content: '测试API连接，请回复：连接成功' }
+        ], testConfig);
+        json(response, 200, {
+          ok: true,
+          message: '连接测试成功',
+          reply: testRes.text,
+          model: testRes.model,
+          requestId: testRes.requestId
+        });
+      } catch (err) {
+        json(response, 200, {
+          ok: false,
+          error: err.message || '连接测试失败',
+          code: err.code || null
+        });
+      }
+      return;
+    }
+
+    // --- 接码平台管理 (玄武 OpenAPI) ---
+    if (url.pathname.startsWith('/api/admin/sms/')) {
+      if (!requireAdmin(response)) return;
+      const smsService = getSmsService();
+
+      try {
+        if (request.method === 'GET' && url.pathname === '/api/admin/sms/config') {
+          json(response, 200, { ok: true, config: smsService.getConfig() });
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/sms/config') {
+          const body = await readJsonBody(request);
+          const config = smsService.saveConfig(body);
+          json(response, 200, { ok: true, config });
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/sms/test') {
+          const body = await readJsonBody(request);
+          const result = await smsService.testConnection(body);
+          json(response, 200, result);
+          return;
+        }
+
+        if (request.method === 'GET' && url.pathname === '/api/admin/sms/projects') {
+          const page = url.searchParams.get('page') || 1;
+          const limit = url.searchParams.get('limit') || 100;
+          const data = await smsService.listProjects({ page, limit });
+          json(response, 200, { ok: true, ...data });
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/sms/phone/get') {
+          const body = await readJsonBody(request);
+          const result = await smsService.grabPhone(body);
+          json(response, 200, result);
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/sms/code/get') {
+          const body = await readJsonBody(request);
+          const result = await smsService.querySmsCode(body);
+          json(response, 200, result);
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/sms/record/status') {
+          const body = await readJsonBody(request);
+          smsService.markRecordStatus(body.recordId, body.status, body.message);
+          json(response, 200, { ok: true });
+          return;
+        }
+
+        if (request.method === 'GET' && url.pathname === '/api/admin/sms/records') {
+          const limit = parseInt(url.searchParams.get('limit'), 10) || 50;
+          const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
+          const status = url.searchParams.get('status') || '';
+          const search = url.searchParams.get('search') || '';
+          const data = smsService.listRecords({ limit, offset, status, search });
+          const stats = smsService.getStats();
+          json(response, 200, { ok: true, ...data, stats });
+          return;
+        }
+
+        if (request.method === 'GET' && url.pathname === '/api/admin/sms/logs') {
+          const limit = parseInt(url.searchParams.get('limit'), 10) || 100;
+          const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
+          const status = url.searchParams.get('status') || '';
+          const search = url.searchParams.get('search') || '';
+          const data = smsService.listCallLogs({ limit, offset, status, search });
+          json(response, 200, { ok: true, ...data });
+          return;
+        }
+
+        if (request.method === 'DELETE' && url.pathname === '/api/admin/sms/logs') {
+          smsService.clearCallLogs();
+          json(response, 200, { ok: true });
+          return;
+        }
+
+        if (request.method === 'DELETE' && url.pathname === '/api/admin/sms/records') {
+          smsService.clearRecords();
+          json(response, 200, { ok: true });
+          return;
+        }
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message, code: err.code || null });
+        return;
+      }
+    }
+
+    // --- 脚本显隐控制与自定义脚本组合 (Admin Only) ---
+    if (url.pathname.startsWith('/api/admin/scripts/')) {
+      if (!requireAdmin(response)) return;
+      const db = authService.db;
+
+      try {
+        if (request.method === 'GET' && url.pathname === '/api/admin/scripts/config') {
+          json(response, 200, {
+            ok: true,
+            visibility: db.getScriptVisibility(),
+            bundles: db.getScriptBundles()
+          });
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/scripts/visibility') {
+          const body = await readJsonBody(request);
+          const updated = db.setScriptVisibility(body);
+          json(response, 200, { ok: true, visibility: updated });
+          return;
+        }
+
+        if (request.method === 'POST' && url.pathname === '/api/admin/scripts/bundles') {
+          const body = await readJsonBody(request);
+          const bundle = db.saveScriptBundle(body);
+          json(response, 200, { ok: true, bundle });
+          return;
+        }
+
+        if (request.method === 'DELETE' && url.pathname === '/api/admin/scripts/bundles') {
+          const body = await readJsonBody(request);
+          db.deleteScriptBundle(body?.id);
+          json(response, 200, { ok: true });
+          return;
+        }
+      } catch (err) {
+        json(response, 400, { ok: false, error: err.message });
+        return;
+      }
     }
 
     if (url.pathname.startsWith('/api/momo-brain/')) {
@@ -1214,7 +1654,18 @@ async function handler(request, response) {
         return;
       }
       if (url.pathname === '/api/scripts') {
-        json(response, 200, { ok: true, scripts: SCRIPT_DEFINITIONS });
+        const db = authService.db;
+        const visibility = db.getScriptVisibility();
+        const bundles = db.getScriptBundles();
+        const isAdmin = Boolean(user && user.role === 'admin');
+
+        json(response, 200, {
+          ok: true,
+          scripts: SCRIPT_DEFINITIONS,
+          bundles,
+          visibility,
+          isAdmin
+        });
         return;
       }
       if (url.pathname === '/api/devices') {
@@ -1255,6 +1706,53 @@ async function handler(request, response) {
           'X-Frame-Decoded-At': result.decodedAt
         });
         response.end(result.data);
+        return;
+      }
+      if (url.pathname === '/api/cloud-disk/files') {
+        if (!requireAdmin(response)) return;
+        const dir = safeCloudDiskDir(url.searchParams.get('dir'));
+        const files = getCloudDiskFiles(dir);
+        const counts = {
+          '真参': getCloudDiskFiles('真参').length,
+          '头像': getCloudDiskFiles('头像').length
+        };
+        json(response, 200, { ok: true, dir, files, counts });
+        return;
+      }
+      if (url.pathname === '/api/cloud-disk/file' || url.pathname === '/api/cloud-disk/preview' || url.pathname === '/api/cloud-disk/download') {
+        if (!requireAdmin(response)) return;
+        const dir = safeCloudDiskDir(url.searchParams.get('dir'));
+        const rawName = url.searchParams.get('name') || '';
+        const name = path.basename(rawName);
+        if (!name) {
+          json(response, 400, { ok: false, error: '缺少文件名' });
+          return;
+        }
+        const filePath = path.join(CLOUD_DISK_ROOT, dir, name);
+        if (!fs.existsSync(filePath)) {
+          json(response, 404, { ok: false, error: '文件不存在' });
+          return;
+        }
+        const ext = path.extname(name).toLowerCase();
+        const mimeTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.webp': 'image/webp',
+          '.gif': 'image/gif',
+          '.bmp': 'image/bmp',
+          '.txt': 'text/plain; charset=utf-8',
+          '.json': 'application/json; charset=utf-8'
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const fileBuffer = fs.readFileSync(filePath);
+        response.writeHead(200, {
+          'Content-Type': contentType,
+          'Content-Length': fileBuffer.length,
+          'Cache-Control': 'public, max-age=3600',
+          ...(url.pathname.includes('download') ? { 'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"` } : {})
+        });
+        response.end(fileBuffer);
         return;
       }
       json(response, 404, { ok: false, error: 'API 不存在' });
@@ -1298,6 +1796,121 @@ async function handler(request, response) {
       json(response, 200, result);
       return;
     }
+    if (request.method === 'POST' && url.pathname === '/api/cloud-disk/upload') {
+      if (!requireAdmin(response)) return;
+      const body = await readJsonBody(request, 50 * 1024 * 1024);
+      const dir = safeCloudDiskDir(body?.dir);
+      const rawName = body?.name || '';
+      const name = path.basename(rawName.trim());
+      const base64Data = body?.contentBase64 || '';
+      if (!name || !base64Data) {
+        json(response, 400, { ok: false, error: '缺少文件名或文件内容' });
+        return;
+      }
+      const buffer = Buffer.from(base64Data, 'base64');
+      const targetPath = path.join(CLOUD_DISK_ROOT, dir, name);
+      fs.writeFileSync(targetPath, buffer);
+      json(response, 200, { ok: true, name, dir, size: buffer.length });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/cloud-disk/delete') {
+      if (!requireAdmin(response)) return;
+      const body = await readJsonBody(request);
+      const dir = safeCloudDiskDir(body?.dir);
+      const rawName = body?.name || '';
+      const name = path.basename(rawName.trim());
+      if (!name) {
+        json(response, 400, { ok: false, error: '缺少文件名' });
+        return;
+      }
+      const targetPath = path.join(CLOUD_DISK_ROOT, dir, name);
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+      }
+      json(response, 200, { ok: true, name, dir });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/cloud-disk/send-to-device') {
+      if (!requireAdmin(response)) return;
+      const body = await readJsonBody(request);
+      const deviceId = String(body?.deviceId || '').trim();
+      const dir = safeCloudDiskDir(body?.dir);
+      const rawName = body?.name || '';
+      const name = path.basename(rawName.trim());
+
+      if (!deviceId) {
+        json(response, 400, { ok: false, error: '请先选择目标云机' });
+        return;
+      }
+      if (!name) {
+        json(response, 400, { ok: false, error: '缺少目标文件名' });
+        return;
+      }
+      if (user.role !== 'admin' && !authService.canAccessDevice(user, deviceId)) {
+        json(response, 403, { ok: false, error: '无权操作此设备或该设备已到期回收' });
+        return;
+      }
+
+      const filePath = path.join(CLOUD_DISK_ROOT, dir, name);
+      if (!fs.existsSync(filePath)) {
+        json(response, 404, { ok: false, error: `文件 [${name}] 在 ${dir} 目录中不存在` });
+        return;
+      }
+
+      const c = client();
+      if (!c.token) {
+        json(response, 400, { ok: false, error: '平台会话令牌尚未配置，无法下发到云机' });
+        return;
+      }
+
+      if (dir === '真参') {
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        let parsed;
+        try {
+          parsed = JSON.parse(fileContent);
+        } catch (err) {
+          json(response, 400, { ok: false, error: `真参文件不是合法的 JSON 格式: ${err.message}` });
+          return;
+        }
+        const deviceInfo = extractDeviceInfo(parsed);
+        if (!deviceInfo.brand || !deviceInfo.model) {
+          json(response, 400, { ok: false, error: '真参文件中未解析到有效的手机品牌或型号' });
+          return;
+        }
+        const cloudRes = await c.device(deviceId).setDeviceInfo({
+          brand: deviceInfo.brand,
+          marketName: deviceInfo.marketName,
+          model: deviceInfo.model,
+          androidVersion: deviceInfo.androidVersion,
+          devinfo: fileContent
+        });
+        const replyMsg = typeof cloudRes === 'string' ? cloudRes : (cloudRes?.message || cloudRes?.data || '设置成功');
+        json(response, 200, {
+          ok: true,
+          message: `真参配置 [${name}] 已成功下发并应用到云机！品牌: ${deviceInfo.brand}, 型号: ${deviceInfo.model}`,
+          deviceInfo,
+          cloudResult: replyMsg
+        });
+        return;
+      }
+
+      if (dir === '头像') {
+        const fileBuffer = fs.readFileSync(filePath);
+        const uploadRes = await c.cloudDisk().upload(fileBuffer, { fileName: name });
+        const fileRecord = uploadRes?.data ?? uploadRes;
+        const sendRes = await c.cloudDisk().sendToDevices([deviceId], [fileRecord], { fileType: 'picture' });
+        json(response, 200, {
+          ok: true,
+          message: `头像图片 [${name}] 已成功推送到云机相册！`,
+          uploadResult: uploadRes,
+          sendResult: sendRes
+        });
+        return;
+      }
+
+      json(response, 400, { ok: false, error: '不支持的目录类别' });
+      return;
+    }
     if (request.method !== 'GET') {
       json(response, 405, { ok: false, error: '只支持 GET 和 POST' });
       return;
@@ -1306,8 +1919,14 @@ async function handler(request, response) {
   } catch (error) {
     const message = redact(error?.message || error);
     const status = errorStatus({ message, status: error?.status });
-    console.error(`[API UNHANDLED] ${request.method} ${request.url} -> ${status}:`, error);
-    appendServerLog('ERROR', `UNHANDLED ${request.method} ${request.url} -> ${status}: ${message}`, error?.stack || '');
+    const level = status >= 500 ? 'ERROR' : 'WARN';
+    if (level === 'ERROR') {
+      console.error(`[API UNHANDLED] ${request.method} ${request.url} -> ${status}:`, error);
+      appendServerLog('ERROR', `UNHANDLED ${request.method} ${request.url} -> ${status}: ${message}`, error?.stack || '');
+    } else {
+      console.warn(`[API REJECTED] ${request.method} ${request.url} -> ${status}: ${message}`);
+      appendServerLog('WARN', `REJECTED ${request.method} ${request.url} -> ${status}: ${message}`);
+    }
     json(response, status, { ok: false, error: message,
       ...(error?.name === 'StreamScreenshotError' ? { code: error.code } : {}), ...(error?.timing || {}) });
   }

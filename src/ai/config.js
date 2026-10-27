@@ -1,13 +1,12 @@
 'use strict';
 
 /**
- * AI 回复配置与密钥管理模块 (AI Reply Configuration)
+ * AI 回复配置与多供应商管理模块 (AI Multi-Provider Configuration)
  *
- * 遵循计划第 6.1、6.2 节与 P2 门禁：
- * 1. 默认对接 DeepSeek 官方 API (https://api.deepseek.com)。
- * 2. 存储在受控隔离目录 .runtime/ai-reply/settings.json 中。
+ * 1. 支持管理多个 AI 供应商（如 DeepSeek 官方、硅基流动、OpenAI、通用自定义等）。
+ * 2. 支持设置默认启用供应商（activeProviderId），业务调用与调度统一使用默认供应商。
  * 3. 密钥屏蔽：对外只暴露 hasApiKey 及脱敏掩码 (sk-***abcd)，禁止明文返回 API Key。
- * 4. 版本化增量与并发冲突保护：使用 revision 递增，修改时校验 expectedRevision。
+ * 4. 版本化增量与并发冲突保护：使用 revision 递增。
  */
 
 const fs = require('node:fs');
@@ -19,11 +18,13 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
 
 const DEFAULT_SETTINGS = {
   revision: 1,
+  activeProviderId: 'prov_default',
+  providers: null,
   provider: 'deepseek',
   endpoint: 'https://api.deepseek.com',
   apiKey: '',
   model: 'deepseek-chat',
-  systemPrompt: '你是一个友好自然的真人，正在与朋友在社交App上聊天。\n【回复要求】：\n1. 语言简短真实、口语生活化，每次只回复一两句话，严禁出现AI助手或客服腔调。\n2. 务必使用常见高频的日常字词（例如用\"躺着/歇着/呆着/玩呢\"代替低频生僻字，避免使用\"瘫/憩\"等非首屏汉字），便于手机输入法直接输入。\n3. 严禁使用生僻词、文言词、成语或火星文。',
+  systemPrompt: '你是一个友好自然的真人，正在与朋友在社交App上聊天。\n【回复要求】：\n1. 语言简短真实、口语生活化，每次只回复一两句话，严禁出现AI助手或客服腔调。\n2. 务必使用常见高频的日常字词（例如用"躺着/歇着/呆着/玩呢"代替低频生僻字，避免使用"瘫/憩"等非首屏汉字），便于手机输入法直接输入。\n3. 严禁使用生僻词、文言词、成语或火星文。',
   temperature: 0.7,
   maxTokens: 150,
   timeoutMs: 15000,
@@ -44,10 +45,64 @@ function ensureConfigDir() {
   }
 }
 
+function normalizeSettings(parsed) {
+  const settings = { ...DEFAULT_SETTINGS, ...(parsed || {}) };
+  const rawProviders = Array.isArray(parsed?.providers) ? parsed.providers : null;
+  if (!rawProviders || rawProviders.length === 0) {
+    const defaultProvider = {
+      id: 'prov_default',
+      name: settings.provider === 'deepseek' ? 'DeepSeek 官方' : (settings.provider === 'openai' ? 'OpenAI 兼容' : '默认供应商'),
+      provider: settings.provider || 'deepseek',
+      endpoint: settings.endpoint || 'https://api.deepseek.com',
+      apiKey: settings.apiKey || '',
+      model: settings.model || 'deepseek-chat',
+      temperature: Number(settings.temperature ?? 0.7),
+      maxTokens: Number(settings.maxTokens ?? 150),
+      timeoutMs: Number(settings.timeoutMs ?? 15000),
+      createdAt: settings.createdAt || new Date().toISOString(),
+      updatedAt: settings.updatedAt || new Date().toISOString()
+    };
+    settings.providers = [defaultProvider];
+    settings.activeProviderId = 'prov_default';
+  } else {
+    settings.providers = settings.providers.map((p, idx) => ({
+      id: p.id || `prov_${idx + 1}`,
+      name: p.name || `供应商 ${idx + 1}`,
+      provider: p.provider || 'openai',
+      endpoint: p.endpoint || 'https://api.deepseek.com',
+      apiKey: p.apiKey || '',
+      model: p.model || 'deepseek-chat',
+      temperature: Number(p.temperature ?? 0.7),
+      maxTokens: Number(p.maxTokens ?? 150),
+      timeoutMs: Number(p.timeoutMs ?? 15000),
+      createdAt: p.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || new Date().toISOString()
+    }));
+  }
+
+  const hasActive = settings.providers.some(p => p.id === settings.activeProviderId);
+  if (!hasActive && settings.providers.length > 0) {
+    settings.activeProviderId = settings.providers[0].id;
+  }
+
+  const active = settings.providers.find(p => p.id === settings.activeProviderId) || settings.providers[0];
+  if (active) {
+    settings.provider = active.provider;
+    settings.endpoint = active.endpoint;
+    settings.apiKey = active.apiKey;
+    settings.model = active.model;
+    settings.temperature = active.temperature;
+    settings.maxTokens = active.maxTokens;
+    settings.timeoutMs = active.timeoutMs;
+  }
+
+  return settings;
+}
+
 function loadSettings() {
   ensureConfigDir();
   if (!fs.existsSync(CONFIG_FILE)) {
-    const initial = { ...DEFAULT_SETTINGS, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const initial = normalizeSettings({ createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(initial, null, 2), 'utf8');
     return initial;
   }
@@ -55,10 +110,29 @@ function loadSettings() {
   try {
     const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    return normalizeSettings(parsed);
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return normalizeSettings({});
   }
+}
+
+function listProviders() {
+  const settings = loadSettings();
+  return (settings.providers || []).map(p => ({
+    id: p.id,
+    name: p.name,
+    provider: p.provider,
+    endpoint: p.endpoint,
+    model: p.model,
+    apiKeyMasked: maskApiKey(p.apiKey),
+    hasApiKey: Boolean(p.apiKey && p.apiKey.trim()),
+    temperature: p.temperature ?? 0.7,
+    maxTokens: p.maxTokens ?? 150,
+    timeoutMs: p.timeoutMs ?? 15000,
+    isDefault: p.id === settings.activeProviderId,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt
+  }));
 }
 
 function getSanitizedSettings(deviceId = null) {
@@ -67,6 +141,7 @@ function getSanitizedSettings(deviceId = null) {
 
   return {
     revision: settings.revision,
+    activeProviderId: settings.activeProviderId,
     provider: effective.provider,
     endpoint: effective.endpoint,
     model: effective.model,
@@ -96,10 +171,9 @@ function saveSettings(updates = {}, expectedRevision = null) {
   const newRevision = (current.revision || 1) + 1;
   const now = new Date().toISOString();
 
-  // 处理 API Key 更新逻辑：如果更新传入了屏蔽字符或空，且已有原 Key，保留原 Key
   let finalApiKey = current.apiKey;
   if (updates.apiKey !== undefined) {
-    const rawInput = updates.apiKey.trim();
+    const rawInput = String(updates.apiKey).trim();
     if (rawInput && !rawInput.includes('***')) {
       finalApiKey = rawInput;
     } else if (updates.clearApiKey === true) {
@@ -107,16 +181,15 @@ function saveSettings(updates = {}, expectedRevision = null) {
     }
   }
 
-  const merged = {
+  const merged = normalizeSettings({
     ...current,
     ...updates,
     apiKey: finalApiKey,
     revision: newRevision,
     updatedAt: now
-  };
+  });
   delete merged.clearApiKey;
 
-  // 写入临时文件后重命名保证原子性
   const tmpFile = CONFIG_FILE + '.tmp';
   fs.writeFileSync(tmpFile, JSON.stringify(merged, null, 2), 'utf8');
   fs.renameSync(tmpFile, CONFIG_FILE);
@@ -124,12 +197,130 @@ function saveSettings(updates = {}, expectedRevision = null) {
   return merged;
 }
 
+function saveProvider(providerData = {}) {
+  ensureConfigDir();
+  const current = loadSettings();
+  const now = new Date().toISOString();
+  const providers = [...(current.providers || [])];
+
+  const targetId = providerData.id ? String(providerData.id).trim() : '';
+  const existingIndex = targetId ? providers.findIndex(p => p.id === targetId) : -1;
+  const existing = existingIndex >= 0 ? providers[existingIndex] : null;
+
+  let finalApiKey = existing ? existing.apiKey : '';
+  if (providerData.apiKey !== undefined) {
+    const rawInput = String(providerData.apiKey).trim();
+    if (rawInput && !rawInput.includes('***')) {
+      finalApiKey = rawInput;
+    } else if (providerData.clearApiKey === true) {
+      finalApiKey = '';
+    }
+  }
+
+  const updatedProvider = {
+    id: existing ? existing.id : (targetId || `prov_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`),
+    name: providerData.name ? String(providerData.name).trim() : (existing ? existing.name : '新供应商'),
+    provider: providerData.provider ? String(providerData.provider).trim() : (existing ? existing.provider : 'openai'),
+    endpoint: providerData.endpoint ? String(providerData.endpoint).trim() : (existing ? existing.endpoint : 'https://api.deepseek.com'),
+    apiKey: finalApiKey,
+    model: providerData.model ? String(providerData.model).trim() : (existing ? existing.model : 'deepseek-chat'),
+    temperature: Number(providerData.temperature ?? (existing ? existing.temperature : 0.7)),
+    maxTokens: Number(providerData.maxTokens ?? (existing ? existing.maxTokens : 150)),
+    timeoutMs: Number(providerData.timeoutMs ?? (existing ? existing.timeoutMs : 15000)),
+    createdAt: existing ? existing.createdAt : now,
+    updatedAt: now
+  };
+
+  if (existingIndex >= 0) {
+    providers[existingIndex] = updatedProvider;
+  } else {
+    providers.push(updatedProvider);
+  }
+
+  let activeProviderId = current.activeProviderId;
+  if (providerData.isDefault === true || providers.length === 1) {
+    activeProviderId = updatedProvider.id;
+  }
+
+  return saveSettings({
+    providers,
+    activeProviderId,
+    updatedAt: now
+  });
+}
+
+function deleteProvider(providerId) {
+  ensureConfigDir();
+  const current = loadSettings();
+  const providers = [...(current.providers || [])];
+
+  if (providers.length <= 1) {
+    const err = new Error('系统至少需要保留一个 AI 供应商');
+    err.code = 'LAST_PROVIDER';
+    throw err;
+  }
+
+  const remaining = providers.filter(p => p.id !== providerId);
+  if (remaining.length === providers.length) {
+    const err = new Error('指定的供应商不存在');
+    err.code = 'PROVIDER_NOT_FOUND';
+    throw err;
+  }
+
+  let activeProviderId = current.activeProviderId;
+  if (activeProviderId === providerId) {
+    activeProviderId = remaining[0].id;
+  }
+
+  return saveSettings({
+    providers: remaining,
+    activeProviderId,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+function setDefaultProvider(providerId) {
+  ensureConfigDir();
+  const current = loadSettings();
+  const found = (current.providers || []).find(p => p.id === providerId);
+  if (!found) {
+    const err = new Error('指定的供应商不存在');
+    err.code = 'PROVIDER_NOT_FOUND';
+    throw err;
+  }
+
+  return saveSettings({
+    activeProviderId: providerId,
+    updatedAt: new Date().toISOString()
+  });
+}
+
 function getEffectiveConfig(deviceId = null) {
   const settings = loadSettings();
-  if (deviceId && settings.deviceOverrides && settings.deviceOverrides[deviceId]) {
-    return { ...settings, ...settings.deviceOverrides[deviceId] };
+  let activeProvider = null;
+  if (Array.isArray(settings.providers) && settings.providers.length > 0) {
+    activeProvider = settings.providers.find(p => p.id === settings.activeProviderId) || settings.providers[0];
   }
-  return settings;
+
+  const baseConfig = {
+    ...settings,
+    ...(activeProvider ? {
+      activeProviderId: activeProvider.id,
+      activeProviderName: activeProvider.name,
+      provider: activeProvider.provider,
+      endpoint: activeProvider.endpoint,
+      apiKey: activeProvider.apiKey,
+      model: activeProvider.model,
+      temperature: activeProvider.temperature,
+      maxTokens: activeProvider.maxTokens,
+      timeoutMs: activeProvider.timeoutMs
+    } : {})
+  };
+
+  if (deviceId && settings.deviceOverrides && settings.deviceOverrides[deviceId]) {
+    return { ...baseConfig, ...settings.deviceOverrides[deviceId] };
+  }
+  return baseConfig;
 }
 
 module.exports = {
@@ -137,6 +328,10 @@ module.exports = {
   DEFAULT_SETTINGS,
   maskApiKey,
   loadSettings,
+  listProviders,
+  saveProvider,
+  deleteProvider,
+  setDefaultProvider,
   getSanitizedSettings,
   saveSettings,
   getEffectiveConfig

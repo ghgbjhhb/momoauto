@@ -17,7 +17,7 @@ async function generateReply(rawMessages = [], config = null, options = {}) {
   const effectiveConfig = config || getEffectiveConfig(options.deviceId);
 
   if (!effectiveConfig.apiKey || !effectiveConfig.apiKey.trim()) {
-    const err = new Error('DeepSeek API Key is not configured');
+    const err = new Error('AI API Key 未配置，请联系管理员在后台设置');
     err.code = 'CONFIG_INCOMPLETE';
     throw err;
   }

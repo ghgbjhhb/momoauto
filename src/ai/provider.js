@@ -1,11 +1,17 @@
 'use strict';
 const { redact } = require('../automation/runtime');
 const { checkSignal, waitFor } = require('../automation/cancellation');
+function resolveChatCompletionsUrl(endpoint) {
+  let url = String(endpoint || 'https://api.deepseek.com').trim().replace(/\/+$/, '');
+  if (url.endsWith('/chat/completions')) return url;
+  return url + '/chat/completions';
+}
+
 class DeepSeekProvider {
   static async chat(messages, config = {}, options = {}) {
     checkSignal(options.signal);
     const apiKey = (config.apiKey || '').trim();
-    if (!apiKey) throw Object.assign(new Error('DeepSeek API Key is not configured'), { code: 'CONFIG_INCOMPLETE' });
+    if (!apiKey) throw Object.assign(new Error('AI API Key 未配置，请联系管理员在后台设置'), { code: 'CONFIG_INCOMPLETE' });
     const timeoutMs = Number(config.timeoutMs ?? 15000);
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw Object.assign(new Error('Invalid API timeout'), { code: 'INVALID_CONFIG' });
     const controller = new AbortController();
@@ -16,18 +22,39 @@ class DeepSeekProvider {
     const bounded = pending => waitFor(pending, { signal: controller.signal, timeoutMs: deadline - Date.now(), timeoutCode: 'API_TIMEOUT' });
     try {
       checkSignal(options.signal);
+      const targetUrl = resolveChatCompletionsUrl(config.endpoint);
       const response = await bounded((options.fetchFn || globalThis.fetch)(
-        (config.endpoint || 'https://api.deepseek.com').replace(/\/+$/, '') + '/chat/completions', {
+        targetUrl, {
           method: 'POST', signal: controller.signal,
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey, Accept: 'application/json' },
           body: JSON.stringify({ model: config.model || 'deepseek-chat', messages,
             temperature: Number(config.temperature ?? .7), max_tokens: Number(config.maxTokens ?? 150), stream: false })
         }));
       if (!response.ok) {
-        await bounded(response.text());
+        let serverErrorMsg = '';
+        try {
+          const rawErr = await bounded(response.text());
+          const parsed = JSON.parse(rawErr);
+          serverErrorMsg = parsed?.error?.message || parsed?.message || '';
+        } catch {}
+
         const status = response.status;
         const code = [401, 403].includes(status) ? 'API_AUTH_FAILED' : status === 429 ? 'API_RATE_LIMITED' : status >= 500 ? 'API_UNAVAILABLE' : 'API_INVALID_RESPONSE';
-        const err = Object.assign(new Error('DeepSeek request failed (' + status + ')'), { code, status });
+        
+        let friendlyDesc = `AI 接口请求失败 (${status})`;
+        if (status === 401 || status === 403) {
+          friendlyDesc = `API Key 鉴权失败 (${status})：密钥无效或未授权，请核对输入的 API Key`;
+        } else if (status === 404) {
+          friendlyDesc = `接口地址未找到 (404)：请核对请求链接`;
+        } else if (status === 429) {
+          friendlyDesc = `接口限流或余额不足 (429)`;
+        }
+
+        if (serverErrorMsg && serverErrorMsg.length < 150) {
+          friendlyDesc += ` (${serverErrorMsg})`;
+        }
+
+        const err = Object.assign(new Error(friendlyDesc), { code, status, serverErrorMsg });
         if (status === 429) {
           const value = response.headers?.get('retry-after');
           err.retryAfter = value ? (Number.isFinite(Number(value)) ? Number(value) : Math.max(0, (Date.parse(value) - Date.now()) / 1000)) : null;

@@ -55,6 +55,9 @@
       } catch {}
       this.socket = new WebSocket(url);
       this.socket.binaryType = 'arraybuffer';
+      this.socket.onopen = () => {
+        if (!this.closed) this.refresh();
+      };
       this.lastMessageAt = Date.now();
       this.visibleSince = Date.now();
       this.firstFrameDeadline = Date.now() + 15000;
@@ -283,6 +286,13 @@
           // high-rate H.264 frames are being replaced during screen motion.
           const ctx = this.context ||= this.canvas.getContext('2d', { alpha: false });
           ctx.drawImage(image, 0, 0, this.canvas.width, this.canvas.height);
+          if (this.mirrorCanvas && !this.mirrorCanvas.hidden) {
+            if (this.mirrorCanvas.width !== image.displayWidth) this.mirrorCanvas.width = image.displayWidth;
+            if (this.mirrorCanvas.height !== image.displayHeight) this.mirrorCanvas.height = image.displayHeight;
+            const mirrorCtx = this.mirrorContext ||= this.mirrorCanvas.getContext('2d', { alpha: false });
+            mirrorCtx.drawImage(image, 0, 0, this.mirrorCanvas.width, this.mirrorCanvas.height);
+            this.onMirrorFrame?.({ width: image.displayWidth, height: image.displayHeight, frameAt: latest.receivedAt });
+          }
           this.stats.rendered++;
           this.stats.frameAt = latest.receivedAt;
           this.stats.decodeMs = Date.now() - latest.receivedAt;
