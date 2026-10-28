@@ -395,7 +395,7 @@
       flex: 1;
       min-height: 0;
       background: #141414;
-      padding: 14px 18px;
+      padding: 12px 14px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -405,11 +405,135 @@
       margin: 0;
       color: #d4d4d4;
       font-family: Consolas, "SF Mono", Monaco, Menlo, monospace;
-      font-size: 12.5px;
+      font-size: 12px;
       line-height: 1.6;
-      white-space: pre-wrap;
       word-break: break-all;
     }
+
+    /* 现代工业级日志配色标准 (Catppuccin Mocha / DevTools APM 规范) */
+    .log-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background 0.12s ease;
+      font-family: inherit;
+    }
+    .log-row:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .log-row.log-row-error {
+      background: rgba(243, 139, 168, 0.08);
+    }
+    .log-row.log-row-error:hover {
+      background: rgba(243, 139, 168, 0.14);
+    }
+    .log-row.log-row-warn {
+      background: rgba(249, 226, 175, 0.05);
+    }
+    .log-row.log-row-warn:hover {
+      background: rgba(249, 226, 175, 0.11);
+    }
+
+    .log-time {
+      color: #6c7086;
+      font-size: 11.5px;
+      white-space: nowrap;
+      user-select: none;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .log-badge {
+      display: inline-block;
+      padding: 0 5px;
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 17px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      flex-shrink: 0;
+      text-align: center;
+      min-width: 44px;
+      user-select: none;
+    }
+    .log-badge-error {
+      background: rgba(243, 139, 168, 0.22);
+      color: #f38ba8;
+      border: 1px solid rgba(243, 139, 168, 0.38);
+    }
+    .log-badge-warn {
+      background: rgba(249, 226, 175, 0.18);
+      color: #fab387;
+      border: 1px solid rgba(250, 179, 135, 0.35);
+    }
+    .log-badge-info {
+      background: rgba(137, 180, 250, 0.18);
+      color: #89b4fa;
+      border: 1px solid rgba(137, 180, 250, 0.32);
+    }
+    .log-badge-http {
+      background: rgba(203, 166, 247, 0.18);
+      color: #cba6f7;
+      border: 1px solid rgba(203, 166, 247, 0.32);
+    }
+    .log-badge-debug {
+      background: rgba(108, 112, 134, 0.20);
+      color: #a6adc8;
+      border: 1px solid rgba(108, 112, 134, 0.3);
+    }
+
+    .log-tag {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 0 4px;
+      line-height: 17px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      user-select: none;
+      letter-spacing: 0.3px;
+    }
+    .log-tag-server {
+      color: #94e2d5;
+      background: rgba(148, 226, 213, 0.14);
+    }
+    .log-tag-client {
+      color: #a6e3a1;
+      background: rgba(166, 227, 161, 0.14);
+    }
+    .log-tag-http {
+      color: #cba6f7;
+      background: rgba(203, 166, 247, 0.14);
+    }
+
+    .log-content {
+      color: #cdd6f4;
+      flex: 1;
+      word-break: break-all;
+    }
+
+    .log-method {
+      font-weight: 700;
+      padding-right: 2px;
+    }
+    .log-method-get { color: #a6e3a1; }
+    .log-method-post { color: #89b4fa; }
+    .log-method-delete { color: #f38ba8; }
+    .log-method-put { color: #f9e2af; }
+    .log-method-patch { color: #f9e2af; }
+
+    .log-status-2xx { color: #a6e3a1; font-weight: 600; }
+    .log-status-3xx { color: #89dceb; font-weight: 600; }
+    .log-status-4xx { color: #fab387; font-weight: 700; }
+    .log-status-5xx { color: #f38ba8; font-weight: 700; }
+    .log-status-failed { color: #f38ba8; font-weight: 700; }
+
+    .log-duration { color: #7f849c; font-size: 11px; }
+    .log-user { color: #f5c2e7; }
+    .log-arrow { color: #6c7086; padding: 0 3px; }
+    .log-details { color: #7f849c; font-size: 11px; margin-left: 6px; }
 
     /* Buttons */
     .btn-action-sm {
@@ -470,6 +594,12 @@
       color: #bfbfbf;
       border-color: #e8e8e8;
       cursor: not-allowed;
+    }
+    input[type="search"]::-webkit-search-cancel-button,
+    input[type="search"]::-webkit-search-decoration {
+      -webkit-appearance: none;
+      appearance: none;
+      display: none;
     }
 
     /* Clean Card Benefits Form Controls */
@@ -1049,12 +1179,16 @@
             </div>
           </div>
 
-          <form id="smsConfigForm" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <form id="smsConfigForm" autocomplete="off" onsubmit="return false;" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <!-- 隐藏的防自动填充陷阱：彻底阻断浏览器密码管理器扫描并将用户名串联填充到下方日志搜索框 -->
+            <input type="text" name="fake_user_trap" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
+            <input type="password" name="fake_pwd_trap" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
+
             <label for="smsApiKey" style="font-size: 13.5px; font-weight: 600; color: #1f1f1f; white-space: nowrap;">
               玄武 API Key：
             </label>
             <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 280px; max-width: 480px;">
-              <input id="smsApiKey" class="form-input" type="password" placeholder="请输入玄武平台 API Key" style="width: 100%; height: 34px; font-size: 13px; font-family: monospace;">
+              <input id="smsApiKey" name="xuanwu_openapi_key_not_login" class="form-input" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" spellcheck="false" placeholder="请输入玄武平台 API Key" style="width: 100%; height: 34px; font-size: 13px; font-family: monospace;">
               <button type="button" class="btn-action-sm" id="toggleSmsKeyVisBtn" title="显示/隐藏明文" style="height: 34px; padding: 0 10px;">👁️</button>
             </div>
 
@@ -1076,7 +1210,10 @@
               <span style="font-size:12px; font-weight:normal; color:#8c8c8c;" id="smsLogTotalCount">共 0 条记录</span>
             </div>
             <div style="display:flex; gap:10px; align-items:center;">
-              <input id="smsRecordSearch" class="form-input" type="text" placeholder="搜索手机号 / 动作" style="width: 170px; height: 32px; font-size: 12.5px;">
+              <div style="position: relative; display: inline-flex; align-items: center;">
+                <input id="smsRecordSearch" name="sms_log_search_query_no_autofill" class="form-input" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly','readonly');" placeholder="搜索手机号 / 动作" style="width: 175px; height: 32px; font-size: 12.5px; padding-right: 22px;">
+                <button type="button" id="clearSmsSearchBtn" title="清空搜索" style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; color: #8c8c8c; font-size: 13px; display: none; line-height: 1; padding: 2px;">✕</button>
+              </div>
               <select id="smsRecordStatusFilter" class="form-input" style="width: 100px; height: 32px; font-size: 12.5px;">
                 <option value="">全部状态</option>
                 <option value="success">调用成功</option>

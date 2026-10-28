@@ -788,26 +788,79 @@ window.recycleDevice = async (allocationId, deviceId, devName = '') => {
 if (refreshPoolBtn) refreshPoolBtn.addEventListener('click', loadPool);
 
 // 6. Admin Dedicated System Logs
+function parseServerLogLine(line) {
+  let level = 'INFO';
+  let cleanMsg = line;
+  let logTime = null;
+
+  const match = line.match(/^\[Server\s+([A-Z]+)\]\s+(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\s*(.*)$/);
+  if (match) {
+    level = match[1].toUpperCase();
+    const isoDate = new Date(match[2]);
+    if (!isNaN(isoDate.getTime())) {
+      const pad = n => String(n).padStart(2, '0');
+      const padMs = n => String(n).padStart(3, '0');
+      logTime = `${pad(isoDate.getHours())}:${pad(isoDate.getMinutes())}:${pad(isoDate.getSeconds())}.${padMs(isoDate.getMilliseconds())}`;
+    }
+    cleanMsg = match[3] || '';
+  } else {
+    if (line.includes('[Server ERROR]') || line.includes('[API ERROR]')) level = 'ERROR';
+    else if (line.includes('[Server WARN]')) level = 'WARN';
+    else if (line.includes('GET ') || line.includes('POST ')) level = 'HTTP';
+  }
+
+  if (level === 'INFO' && /^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(cleanMsg)) {
+    level = 'HTTP';
+  }
+
+  return {
+    source: 'server',
+    time: logTime || new Date().toLocaleTimeString(),
+    level,
+    tag: 'SERVER',
+    message: cleanMsg,
+    raw: line
+  };
+}
+
+function formatLogMessageHtml(rawMsg) {
+  if (!rawMsg) return '';
+  let safe = escapeHtml(rawMsg);
+
+  // 1. 高亮 HTTP 动作方法
+  safe = safe.replace(/\b(GET|POST|PUT|DELETE|PATCH|OPTIONS)\b/g, match => {
+    return `<span class="log-method log-method-${match.toLowerCase()}">${match}</span>`;
+  });
+
+  // 2. 状态码与箭头 -> (数字状态码或 FAILED)
+  safe = safe.replace(/(-&gt;|->)\s*(\d{3}|FAILED)/g, (match, arrow, code) => {
+    let statusCls = 'log-status-2xx';
+    if (code === 'FAILED' || code.startsWith('5')) statusCls = 'log-status-5xx';
+    else if (code.startsWith('4')) statusCls = 'log-status-4xx';
+    else if (code.startsWith('3')) statusCls = 'log-status-3xx';
+    return `<span class="log-arrow">-&gt;</span> <span class="${statusCls}">${code}</span>`;
+  });
+
+  // 3. 耗时 (\d+ms)
+  safe = safe.replace(/\((\d+ms)\)/g, '<span class="log-duration">($1)</span>');
+
+  // 4. 用户/身份标识 [guest] 或 [user@domain] 或 [secaudit-probe@...]
+  safe = safe.replace(/\[([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-.]+|guest)\]/g, '<span class="log-user">[$1]</span>');
+
+  // 5. 特殊状态关键词 REJECTED / UNHANDLED
+  safe = safe.replace(/\bREJECTED\b/g, '<span class="log-status-4xx" style="font-weight:700;">REJECTED</span>');
+  safe = safe.replace(/\bUNHANDLED\b/g, '<span class="log-status-5xx" style="font-weight:700;">UNHANDLED</span>');
+
+  return safe;
+}
+
 async function fetchServerLogs() {
   try {
     const res = await fetch('/api/server-logs');
     if (!res.ok) return;
     const data = await res.json();
     if (data.ok && Array.isArray(data.logs)) {
-      const serverEntries = data.logs.map(line => {
-        let level = 'INFO';
-        if (line.includes('[Server ERROR]') || line.includes('[API ERROR]')) level = 'ERROR';
-        else if (line.includes('[Server WARN]')) level = 'WARN';
-        else if (line.includes('GET ') || line.includes('POST ')) level = 'HTTP';
-        return {
-          source: 'server',
-          time: new Date().toLocaleTimeString(),
-          level,
-          tag: 'SERVER',
-          message: line,
-          raw: line
-        };
-      });
+      const serverEntries = data.logs.map(parseServerLogLine);
       mergeSystemLogs(serverEntries);
     }
   } catch {}
@@ -851,25 +904,33 @@ function renderSystemLogs() {
       }
     }
     if (keyword) {
-      const full = `${item.time} ${item.level} ${item.tag} ${item.message}`.toLowerCase();
+      const full = `${item.time} ${item.level} ${item.tag} ${item.message} ${item.details || ''}`.toLowerCase();
       if (!full.includes(keyword)) return false;
     }
     return true;
   });
 
   if (filtered.length === 0) {
-    adminTerminalOutput.textContent = allSystemLogs.length === 0 ? '暂无系统运行日志。' : '没有匹配当前过滤条件的日志。';
+    adminTerminalOutput.innerHTML = `<div style="color: #6c7086; padding: 12px 6px; font-style: italic;">${allSystemLogs.length === 0 ? '暂无系统运行日志。' : '没有匹配当前过滤条件的日志。'}</div>`;
     return;
   }
 
-  const lines = filtered.map(item => {
-    let prefix = `[${item.time}] [${item.level}]`;
-    if (item.tag) prefix += ` [${item.tag}]`;
-    const details = item.details ? ' ' + (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
-    return `${prefix} ${item.message}${details}`;
+  const htmlRows = filtered.map(item => {
+    const levelKey = (item.level || 'INFO').toLowerCase();
+    const tagKey = (item.tag || 'APP').toLowerCase();
+    const detailsText = item.details ? (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
+    const detailsHtml = detailsText ? `<span class="log-details">${escapeHtml(detailsText)}</span>` : '';
+    const formattedContent = formatLogMessageHtml(item.message);
+
+    return `<div class="log-row log-row-${levelKey}">` +
+      `<span class="log-time">[${escapeHtml(item.time)}]</span>` +
+      `<span class="log-badge log-badge-${levelKey}">${escapeHtml(item.level)}</span>` +
+      `<span class="log-tag log-tag-${tagKey}">${escapeHtml(item.tag)}</span>` +
+      `<span class="log-content">${formattedContent}${detailsHtml}</span>` +
+    `</div>`;
   });
 
-  adminTerminalOutput.textContent = lines.join('\n');
+  adminTerminalOutput.innerHTML = htmlRows.join('');
   if (adminLogAutoScroll && adminLogAutoScroll.checked && adminLogViewport) {
     adminLogViewport.scrollTop = adminLogViewport.scrollHeight;
   }
@@ -902,7 +963,7 @@ if (adminLogClearBtn) {
 
 if (adminLogCopyBtn) {
   adminLogCopyBtn.addEventListener('click', () => {
-    const text = adminTerminalOutput ? adminTerminalOutput.textContent : '';
+    const text = adminTerminalOutput ? (adminTerminalOutput.innerText || adminTerminalOutput.textContent).trim() : '';
     if (!text) {
       showToast('暂无日志可复制', 'error');
       return;
@@ -1711,12 +1772,43 @@ const smsConfigStatusBadge = document.getElementById('smsConfigStatusBadge');
 const smsLogTotalCount = document.getElementById('smsLogTotalCount');
 
 const smsRecordSearch = document.getElementById('smsRecordSearch');
+const clearSmsSearchBtn = document.getElementById('clearSmsSearchBtn');
 const smsRecordStatusFilter = document.getElementById('smsRecordStatusFilter');
 const refreshSmsRecordsBtn = document.getElementById('refreshSmsRecordsBtn');
 const clearSmsRecordsBtn = document.getElementById('clearSmsRecordsBtn');
 const smsRecordsTableBody = document.getElementById('smsRecordsTableBody');
 
+// 校验并清洗搜索框输入：彻底防止浏览器密码管理器误把管理员账号/邮箱填入搜索框导致查询为空
+function getSanitizedSmsSearch() {
+  if (!smsRecordSearch) return '';
+  let val = smsRecordSearch.value.trim();
+  const userEmail = (currentUser && currentUser.email) ? currentUser.email.toLowerCase() : '';
+  const adminEmailText = adminUserEmail ? adminUserEmail.textContent.toLowerCase() : '';
+
+  if (val) {
+    const lower = val.toLowerCase();
+    if (
+      (userEmail && lower === userEmail) ||
+      (adminEmailText && adminEmailText.includes(lower) && lower.includes('@')) ||
+      (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower))
+    ) {
+      smsRecordSearch.value = '';
+      if (clearSmsSearchBtn) clearSmsSearchBtn.style.display = 'none';
+      return '';
+    }
+  }
+  return val;
+}
+
+function syncSmsSearchClearBtn() {
+  if (clearSmsSearchBtn && smsRecordSearch) {
+    clearSmsSearchBtn.style.display = smsRecordSearch.value ? 'inline-block' : 'none';
+  }
+}
+
 async function loadSmsManagement() {
+  getSanitizedSmsSearch();
+  syncSmsSearchClearBtn();
   await loadSmsConfig();
   await loadSmsLogs();
 }
@@ -1850,6 +1942,7 @@ if (testSmsConnBtn) {
     } finally {
       testSmsConnBtn.disabled = false;
       testSmsConnBtn.textContent = '⚡ 测试连通性';
+      getSanitizedSmsSearch();
       loadSmsLogs();
     }
   });
@@ -1859,7 +1952,8 @@ if (testSmsConnBtn) {
 async function loadSmsLogs() {
   if (!smsRecordsTableBody) return;
   try {
-    const search = smsRecordSearch ? smsRecordSearch.value.trim() : '';
+    const search = getSanitizedSmsSearch();
+    syncSmsSearchClearBtn();
     const status = smsRecordStatusFilter ? smsRecordStatusFilter.value : '';
 
     const params = new URLSearchParams({ limit: '100' });
@@ -1982,8 +2076,26 @@ window.toggleLogDetail = (logId, event) => {
   }
 };
 
-if (refreshSmsRecordsBtn) refreshSmsRecordsBtn.addEventListener('click', loadSmsLogs);
-if (smsRecordSearch) smsRecordSearch.addEventListener('input', debounce(loadSmsLogs, 300));
+if (refreshSmsRecordsBtn) refreshSmsRecordsBtn.addEventListener('click', () => {
+  getSanitizedSmsSearch();
+  loadSmsLogs();
+});
+if (smsRecordSearch) {
+  smsRecordSearch.addEventListener('input', () => {
+    syncSmsSearchClearBtn();
+    debounce(loadSmsLogs, 300)();
+  });
+}
+if (clearSmsSearchBtn) {
+  clearSmsSearchBtn.addEventListener('click', () => {
+    if (smsRecordSearch) {
+      smsRecordSearch.value = '';
+      syncSmsSearchClearBtn();
+      loadSmsLogs();
+      smsRecordSearch.focus();
+    }
+  });
+}
 if (smsRecordStatusFilter) smsRecordStatusFilter.addEventListener('change', loadSmsLogs);
 
 // 清空调用日志

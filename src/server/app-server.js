@@ -28,6 +28,7 @@ const { getSmsService } = require('./sms/service');
 const { extractDeviceInfo } = require('../workflows/v2/import-real-params');
 
 const { PROJECT_ROOT } = require('../automation/runtime');
+const { appendLogLine } = require('../automation/log-file');
 const APP_ROOT = path.join(PROJECT_ROOT, 'app');
 const CLOUD_DISK_ROOT = path.join(PROJECT_ROOT, 'storage', 'cloud-disk');
 try {
@@ -348,8 +349,24 @@ async function listDevices() {
   if (deviceListing?.owner === owner) return deviceListing.pending;
   const listing = { owner };
   listing.pending = (async () => {
-    const result = await owner.listDevices({ current: 1, size: 50000 });
-    const rawRecords = Array.isArray(result?.records) ? result.records : [];
+    let rawRecords = [];
+    try {
+      const result = await owner.listDevices({ current: 1, size: 50000 });
+      rawRecords = Array.isArray(result?.records) ? result.records : [];
+    } catch {}
+
+    if (rawRecords.length === 0) {
+      try {
+        const allocatedDeviceIds = authService.db.getActiveAllocatedDeviceIds();
+        if (Array.isArray(allocatedDeviceIds) && allocatedDeviceIds.length > 0) {
+          const fetched = await Promise.all(allocatedDeviceIds.map(async id => {
+            try { return await owner.getDevice(id); } catch { return null; }
+          }));
+          rawRecords = fetched.filter(Boolean);
+        }
+      } catch {}
+    }
+
     const records = await Promise.all(rawRecords.map(async raw => {
       const base = publicDevice(raw);
       if (!base.deviceId) return null;
@@ -1091,12 +1108,8 @@ async function inspectVision(deviceId) {
 }
 
 async function appendServerLog(level, message, details = '') {
-  try {
-    const logsDir = path.join(PROJECT_ROOT, 'logs');
-    await fs.promises.mkdir(logsDir, { recursive: true });
-    const logLine = `[Server ${level.toUpperCase()}] ${new Date().toISOString()} ${message}${details ? ' ' + details : ''}\n`;
-    await fs.promises.appendFile(path.join(logsDir, 'server.log'), logLine, 'utf8');
-  } catch {}
+  const logLine = `[Server ${level.toUpperCase()}] ${new Date().toISOString()} ${message}${details ? ' ' + details : ''}\n`;
+  await appendLogLine(path.join(PROJECT_ROOT, 'logs', 'server.log'), logLine);
 }
 
 async function handler(request, response) {
@@ -1236,11 +1249,7 @@ async function handler(request, response) {
       const details = flatten(rawDetails).slice(0, 2000);
       const userTag = user ? `[${user.email}]` : '[guest]';
       const logLine = `[Client ${level}] ${new Date().toISOString()} ${userTag} ${message} ${details}\n`;
-      try {
-        const clientLogDir = path.join(PROJECT_ROOT, 'logs');
-        await fs.promises.mkdir(clientLogDir, { recursive: true });
-        await fs.promises.appendFile(path.join(clientLogDir, 'client.log'), logLine, 'utf8');
-      } catch {}
+      await appendLogLine(path.join(PROJECT_ROOT, 'logs', 'client.log'), logLine);
       console.log(`[ClientLog] ${level} ${userTag}: ${message}`);
       json(response, 200, { ok: true });
       return;
@@ -1604,7 +1613,10 @@ async function handler(request, response) {
           const limit = parseInt(url.searchParams.get('limit'), 10) || 50;
           const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
           const status = url.searchParams.get('status') || '';
-          const search = url.searchParams.get('search') || '';
+          let search = (url.searchParams.get('search') || '').trim();
+          if (search && user && user.email && search.toLowerCase() === user.email.toLowerCase()) {
+            search = '';
+          }
           const data = smsService.listRecords({ limit, offset, status, search });
           const stats = smsService.getStats();
           json(response, 200, { ok: true, ...data, stats });
@@ -1615,7 +1627,11 @@ async function handler(request, response) {
           const limit = parseInt(url.searchParams.get('limit'), 10) || 100;
           const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
           const status = url.searchParams.get('status') || '';
-          const search = url.searchParams.get('search') || '';
+          let search = (url.searchParams.get('search') || '').trim();
+          // 后端兜底防御：若搜索内容与管理员邮箱一致，忽略该搜索条件，避免由于浏览器自动填充返回空列表
+          if (search && user && user.email && search.toLowerCase() === user.email.toLowerCase()) {
+            search = '';
+          }
           const data = smsService.listCallLogs({ limit, offset, status, search });
           json(response, 200, { ok: true, ...data });
           return;
