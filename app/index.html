@@ -29,6 +29,7 @@
         <div class="user-pill" id="userPill" style="display:none;">--</div>
         <button class="action-btn" id="openRedeemModalBtn" type="button">兑换卡密</button>
         <a class="action-btn" id="adminPortalLink" href="/admin.html" style="display:none;">管理后台</a>
+        <button class="action-btn" id="openPasswordModalBtn" type="button" style="display:none;">改密</button>
         <button class="action-btn" id="userLogoutBtn" type="button" style="display:none;">退出</button>
         <button class="action-btn" id="refreshDevices" type="button">刷新设备</button>
         <details class="session-settings" id="sessionSettings" hidden>
@@ -287,13 +288,42 @@
     </div>
     <div style="margin-bottom:14px;">
       <label for="redeemCardInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">卡密代码</label>
-      <input id="redeemCardInput" type="text" placeholder="YM-XXXX-XXXX-XXXX-XXXX" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-family:monospace; font-size:13px; box-sizing:border-box;">
+      <input id="redeemCardInput" name="user_redeem_card_no_autofill" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="YM-XXXX-XXXX-XXXX-XXXX" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-family:monospace; font-size:13px; box-sizing:border-box;">
     </div>
     <div id="redeemAlert" style="display:none; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px;"></div>
     <div style="display:flex; justify-content:flex-end; gap:8px;">
       <button class="action-btn" id="cancelRedeemBtn" type="button">取消</button>
       <button class="run-button" id="submitRedeemBtn" type="button">立即兑换</button>
     </div>
+  </dialog>
+
+  <!-- 修改登录密码弹窗 -->
+  <dialog class="redeem-dialog" id="passwordDialog">
+    <form id="userPasswordForm" autocomplete="off" onsubmit="return false;">
+      <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="margin:0; font-size:16px; color:#1f1f1f;">修改登录密码</h3>
+        <button class="action-btn small" id="closePasswordModalBtn" type="button">✕</button>
+      </div>
+      <p style="margin:0 0 14px; font-size:12px; color:#8c8c8c; line-height:1.5;">保存后所有设备上的旧登录状态立即失效，需要用新密码重新登录。</p>
+      <div style="margin-bottom:12px;">
+        <label for="pwdCurrentInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">当前密码</label>
+        <input id="pwdCurrentInput" type="password" autocomplete="current-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="请输入当前登录密码" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-size:13px; box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:12px;">
+        <label for="pwdNewInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">新密码</label>
+        <input id="pwdNewInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="至少 8 位" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-size:13px; box-sizing:border-box;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label for="pwdConfirmInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">确认新密码</label>
+        <input id="pwdConfirmInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="再次输入新密码" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-size:13px; box-sizing:border-box;">
+      </div>
+      <div id="passwordAlert" style="display:none; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="action-btn" id="cancelPasswordBtn" type="button">取消</button>
+        <button class="run-button" id="submitPasswordBtn" type="submit">保存新密码</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- 原生风格通用模态确认弹窗 (告别丑陋的 window.confirm) -->

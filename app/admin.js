@@ -77,6 +77,7 @@ const refreshPoolBtn = document.getElementById('refreshPoolBtn');
 const adminTerminalOutput = document.getElementById('adminTerminalOutput');
 const adminLogViewport = document.getElementById('adminLogViewport');
 const adminLogSearch = document.getElementById('adminLogSearch');
+const clearAdminLogSearchBtn = document.getElementById('clearAdminLogSearchBtn');
 const adminLogAutoScroll = document.getElementById('adminLogAutoScroll');
 const adminLogCopyBtn = document.getElementById('adminLogCopyBtn');
 const adminLogClearBtn = document.getElementById('adminLogClearBtn');
@@ -268,6 +269,8 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   else if (targetTab === 'cards') loadCards();
   else if (targetTab === 'pool') loadPool();
   else if (targetTab === 'logs') {
+    getSanitizedLogSearch();
+    syncAdminLogSearchClearBtn();
     renderSystemLogs();
     fetchServerLogs();
   }
@@ -301,6 +304,60 @@ if (adminLogoutBtn) {
     await fetch('/api/auth/logout', { method: 'POST' });
     location.href = '/login.html';
   });
+}
+
+// 修改当前账号密码
+const adminPasswordBtn = document.getElementById('adminPasswordBtn');
+const adminPasswordModal = document.getElementById('adminPasswordModal');
+if (adminPasswordBtn && adminPasswordModal) {
+  const currentInput = document.getElementById('pwdCurrentInput');
+  const newInput = document.getElementById('pwdNewInput');
+  const confirmInput = document.getElementById('pwdConfirmInput');
+  const errorBox = document.getElementById('pwdModalError');
+  const okBtn = document.getElementById('pwdModalOkBtn');
+  const cancelBtn = document.getElementById('pwdModalCancelBtn');
+
+  const closePasswordModal = () => {
+    adminPasswordModal.style.display = 'none';
+    [currentInput, newInput, confirmInput].forEach(input => { if (input) input.value = ''; });
+    if (errorBox) errorBox.textContent = '';
+  };
+
+  adminPasswordBtn.addEventListener('click', () => {
+    adminPasswordModal.style.display = 'flex';
+    if (currentInput) currentInput.focus();
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', closePasswordModal);
+
+  if (okBtn) {
+    okBtn.addEventListener('click', async () => {
+      const currentPassword = currentInput?.value || '';
+      const newPassword = newInput?.value || '';
+      if (newPassword.length < 8) {
+        if (errorBox) errorBox.textContent = '新密码长度至少需要 8 位';
+        return;
+      }
+      if (newPassword !== confirmInput?.value) {
+        if (errorBox) errorBox.textContent = '两次输入的新密码不一致';
+        return;
+      }
+      okBtn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '密码修改失败');
+        showToast('密码已更新，即将跳转到登录页…', 'success');
+        setTimeout(() => { location.href = '/login.html'; }, 1200);
+      } catch (err) {
+        if (errorBox) errorBox.textContent = err.message;
+        okBtn.disabled = false;
+      }
+    });
+  }
 }
 
 // 3. Users Management
@@ -478,32 +535,45 @@ async function loadCards() {
   }
 }
 
-// 复制卡密 (仅弹出优雅 Toast，不弹窗打扰)
-window.copyCardCode = code => {
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(code)
-      .then(() => showToast(`已复制卡密代码: ${code}`, 'success'))
-      .catch(() => fallbackCopy(code));
-  } else {
-    fallbackCopy(code);
+// 通用剪贴板复制封装（优先 Clipboard API，优雅降级为离屏 textarea execCommand）
+async function copyToClipboard(text, successMsg = '已成功复制到剪贴板！') {
+  if (!text) {
+    showToast('暂无内容可复制', 'error');
+    return false;
   }
-};
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      showToast(successMsg, 'success');
+      return true;
+    }
+  } catch {}
 
-function fallbackCopy(text) {
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
+    ta.setAttribute('readonly', '');
     ta.style.position = 'fixed';
     ta.style.left = '-9999px';
+    ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand('copy');
+    const ok = document.execCommand('copy');
     document.body.removeChild(ta);
-    showToast(`已复制卡密代码: ${text}`, 'success');
-  } catch {
-    showToast('复制失败，请手动选取', 'error');
-  }
+    if (ok) {
+      showToast(successMsg, 'success');
+      return true;
+    }
+  } catch {}
+
+  showToast('复制失败，请手动选取', 'error');
+  return false;
 }
+
+// 复制单张卡密 (仅弹出优雅 Toast)
+window.copyCardCode = code => {
+  copyToClipboard(code, `已复制卡密代码: ${code}`);
+};
 
 // 作废卡密 (弹出页面居中自定义模态弹窗，保持全站一致设计风格)
 window.revokeCard = async (cardId, cardCode = '') => {
@@ -612,34 +682,8 @@ if (closeCardsModalBtn) {
 if (copyAllCardsBtn) {
   copyAllCardsBtn.addEventListener('click', () => {
     const val = batchCardsOutput ? batchCardsOutput.value : '';
-    if (!val) {
-      showToast('暂无卡密内容可复制', 'error');
-      return;
-    }
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(val)
-        .then(() => showToast('已成功复制全部卡密到剪贴板！', 'success'))
-        .catch(() => fallbackCopyAll(val));
-    } else {
-      fallbackCopyAll(val);
-    }
+    copyToClipboard(val, '已成功复制全部卡密到剪贴板！');
   });
-}
-
-function fallbackCopyAll(text) {
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('已成功复制全部卡密到剪贴板！', 'success');
-  } catch {
-    showToast('复制失败，请手动选取', 'error');
-  }
 }
 
 if (downloadCardsTxtBtn) {
@@ -734,26 +778,79 @@ window.recycleDevice = async (allocationId, deviceId, devName = '') => {
 if (refreshPoolBtn) refreshPoolBtn.addEventListener('click', loadPool);
 
 // 6. Admin Dedicated System Logs
+function parseServerLogLine(line) {
+  let level = 'INFO';
+  let cleanMsg = line;
+  let logTime = null;
+
+  const match = line.match(/^\[Server\s+([A-Z]+)\]\s+(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\s*(.*)$/);
+  if (match) {
+    level = match[1].toUpperCase();
+    const isoDate = new Date(match[2]);
+    if (!isNaN(isoDate.getTime())) {
+      const pad = n => String(n).padStart(2, '0');
+      const padMs = n => String(n).padStart(3, '0');
+      logTime = `${pad(isoDate.getHours())}:${pad(isoDate.getMinutes())}:${pad(isoDate.getSeconds())}.${padMs(isoDate.getMilliseconds())}`;
+    }
+    cleanMsg = match[3] || '';
+  } else {
+    if (line.includes('[Server ERROR]') || line.includes('[API ERROR]')) level = 'ERROR';
+    else if (line.includes('[Server WARN]')) level = 'WARN';
+    else if (line.includes('GET ') || line.includes('POST ')) level = 'HTTP';
+  }
+
+  if (level === 'INFO' && /^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(cleanMsg)) {
+    level = 'HTTP';
+  }
+
+  return {
+    source: 'server',
+    time: logTime || new Date().toLocaleTimeString(),
+    level,
+    tag: 'SERVER',
+    message: cleanMsg,
+    raw: line
+  };
+}
+
+function formatLogMessageHtml(rawMsg) {
+  if (!rawMsg) return '';
+  let safe = escapeHtml(rawMsg);
+
+  // 1. 高亮 HTTP 动作方法
+  safe = safe.replace(/\b(GET|POST|PUT|DELETE|PATCH|OPTIONS)\b/g, match => {
+    return `<span class="log-method log-method-${match.toLowerCase()}">${match}</span>`;
+  });
+
+  // 2. 状态码与箭头 -> (数字状态码或 FAILED)
+  safe = safe.replace(/(-&gt;|->)\s*(\d{3}|FAILED)/g, (match, arrow, code) => {
+    let statusCls = 'log-status-2xx';
+    if (code === 'FAILED' || code.startsWith('5')) statusCls = 'log-status-5xx';
+    else if (code.startsWith('4')) statusCls = 'log-status-4xx';
+    else if (code.startsWith('3')) statusCls = 'log-status-3xx';
+    return `<span class="log-arrow">-&gt;</span> <span class="${statusCls}">${code}</span>`;
+  });
+
+  // 3. 耗时 (\d+ms)
+  safe = safe.replace(/\((\d+ms)\)/g, '<span class="log-duration">($1)</span>');
+
+  // 4. 用户/身份标识 [guest] 或 [user@domain] 或 [secaudit-probe@...]
+  safe = safe.replace(/\[([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-.]+|guest)\]/g, '<span class="log-user">[$1]</span>');
+
+  // 5. 特殊状态关键词 REJECTED / UNHANDLED
+  safe = safe.replace(/\bREJECTED\b/g, '<span class="log-status-4xx" style="font-weight:700;">REJECTED</span>');
+  safe = safe.replace(/\bUNHANDLED\b/g, '<span class="log-status-5xx" style="font-weight:700;">UNHANDLED</span>');
+
+  return safe;
+}
+
 async function fetchServerLogs() {
   try {
     const res = await fetch('/api/server-logs');
     if (!res.ok) return;
     const data = await res.json();
     if (data.ok && Array.isArray(data.logs)) {
-      const serverEntries = data.logs.map(line => {
-        let level = 'INFO';
-        if (line.includes('[Server ERROR]') || line.includes('[API ERROR]')) level = 'ERROR';
-        else if (line.includes('[Server WARN]')) level = 'WARN';
-        else if (line.includes('GET ') || line.includes('POST ')) level = 'HTTP';
-        return {
-          source: 'server',
-          time: new Date().toLocaleTimeString(),
-          level,
-          tag: 'SERVER',
-          message: line,
-          raw: line
-        };
-      });
+      const serverEntries = data.logs.map(parseServerLogLine);
       mergeSystemLogs(serverEntries);
     }
   } catch {}
@@ -784,9 +881,38 @@ function updateNavErrorBadge() {
   navErrorBadge.style.display = errorCount > 0 ? 'inline-block' : 'none';
 }
 
+// 校验并清洗系统日志搜索输入：彻底杜绝浏览器密码管理器误把管理员账号/邮箱填入搜索框导致日志过滤为空
+function getSanitizedLogSearch() {
+  if (!adminLogSearch) return '';
+  let val = adminLogSearch.value.trim();
+  const userEmail = (currentUser && currentUser.email) ? currentUser.email.toLowerCase() : '';
+  const adminEmailText = adminUserEmail ? adminUserEmail.textContent.toLowerCase() : '';
+
+  if (val) {
+    const lower = val.toLowerCase();
+    if (
+      (userEmail && lower === userEmail) ||
+      (adminEmailText && adminEmailText.includes(lower) && lower.includes('@')) ||
+      (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower))
+    ) {
+      adminLogSearch.value = '';
+      if (clearAdminLogSearchBtn) clearAdminLogSearchBtn.style.display = 'none';
+      return '';
+    }
+  }
+  return val;
+}
+
+function syncAdminLogSearchClearBtn() {
+  if (clearAdminLogSearchBtn && adminLogSearch) {
+    clearAdminLogSearchBtn.style.display = adminLogSearch.value ? 'inline-block' : 'none';
+  }
+}
+
 function renderSystemLogs() {
   if (!adminTerminalOutput) return;
-  const keyword = (adminLogSearch ? adminLogSearch.value.trim().toLowerCase() : '');
+  const keyword = getSanitizedLogSearch().toLowerCase();
+  syncAdminLogSearchClearBtn();
   
   const filtered = allSystemLogs.filter(item => {
     if (activeLogLevel !== 'ALL') {
@@ -797,25 +923,33 @@ function renderSystemLogs() {
       }
     }
     if (keyword) {
-      const full = `${item.time} ${item.level} ${item.tag} ${item.message}`.toLowerCase();
+      const full = `${item.time} ${item.level} ${item.tag} ${item.message} ${item.details || ''}`.toLowerCase();
       if (!full.includes(keyword)) return false;
     }
     return true;
   });
 
   if (filtered.length === 0) {
-    adminTerminalOutput.textContent = allSystemLogs.length === 0 ? '暂无系统运行日志。' : '没有匹配当前过滤条件的日志。';
+    adminTerminalOutput.innerHTML = `<div style="color: #6c7086; padding: 12px 6px; font-style: italic;">${allSystemLogs.length === 0 ? '暂无系统运行日志。' : '没有匹配当前过滤条件的日志。'}</div>`;
     return;
   }
 
-  const lines = filtered.map(item => {
-    let prefix = `[${item.time}] [${item.level}]`;
-    if (item.tag) prefix += ` [${item.tag}]`;
-    const details = item.details ? ' ' + (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
-    return `${prefix} ${item.message}${details}`;
+  const htmlRows = filtered.map(item => {
+    const levelKey = (item.level || 'INFO').toLowerCase();
+    const tagKey = (item.tag || 'APP').toLowerCase();
+    const detailsText = item.details ? (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
+    const detailsHtml = detailsText ? `<span class="log-details">${escapeHtml(detailsText)}</span>` : '';
+    const formattedContent = formatLogMessageHtml(item.message);
+
+    return `<div class="log-row log-row-${levelKey}">` +
+      `<span class="log-time">[${escapeHtml(item.time)}]</span>` +
+      `<span class="log-badge log-badge-${levelKey}">${escapeHtml(item.level)}</span>` +
+      `<span class="log-tag log-tag-${tagKey}">${escapeHtml(item.tag)}</span>` +
+      `<span class="log-content">${formattedContent}${detailsHtml}</span>` +
+    `</div>`;
   });
 
-  adminTerminalOutput.textContent = lines.join('\n');
+  adminTerminalOutput.innerHTML = htmlRows.join('');
   if (adminLogAutoScroll && adminLogAutoScroll.checked && adminLogViewport) {
     adminLogViewport.scrollTop = adminLogViewport.scrollHeight;
   }
@@ -831,7 +965,23 @@ logLevelButtons.forEach(btn => {
   });
 });
 
-if (adminLogSearch) adminLogSearch.addEventListener('input', renderSystemLogs);
+if (adminLogSearch) {
+  adminLogSearch.addEventListener('input', () => {
+    syncAdminLogSearchClearBtn();
+    renderSystemLogs();
+  });
+}
+
+if (clearAdminLogSearchBtn) {
+  clearAdminLogSearchBtn.addEventListener('click', () => {
+    if (adminLogSearch) {
+      adminLogSearch.value = '';
+      syncAdminLogSearchClearBtn();
+      renderSystemLogs();
+      adminLogSearch.focus();
+    }
+  });
+}
 
 if (adminLogClearBtn) {
   adminLogClearBtn.addEventListener('click', async () => {
@@ -848,16 +998,16 @@ if (adminLogClearBtn) {
 
 if (adminLogCopyBtn) {
   adminLogCopyBtn.addEventListener('click', () => {
-    const text = adminTerminalOutput ? adminTerminalOutput.textContent : '';
-    if (!text) {
+    // 复制前先确保清洗可能在此瞬间误填的管理员账号并重新渲染
+    getSanitizedLogSearch();
+    syncAdminLogSearchClearBtn();
+
+    const text = adminTerminalOutput ? (adminTerminalOutput.innerText || adminTerminalOutput.textContent).trim() : '';
+    if (!text || text === '暂无系统运行日志。' || text === '没有匹配当前过滤条件的日志。' || text.startsWith('正在读取')) {
       showToast('暂无日志可复制', 'error');
       return;
     }
-    navigator.clipboard.writeText(text)
-      .then(() => showToast('已成功复制当前系统运行日志到剪贴板！', 'success'))
-      .catch(() => {
-        fallbackCopy(text);
-      });
+    copyToClipboard(text, '已成功复制当前系统运行日志到剪贴板！');
   });
 }
 
@@ -897,6 +1047,7 @@ let adminDiskInitialized = false;
 let adminDiskCurrentDir = '真参';
 let adminDiskFiles = [];
 let adminDiskDevices = [];
+let adminDiskSelectedFile = null;
 
 async function loadAdminDiskDevices() {
   const select = document.getElementById('adminDiskDeviceSelect');
@@ -907,18 +1058,16 @@ async function loadAdminDiskDevices() {
     if (data.ok && Array.isArray(data.devices)) {
       adminDiskDevices = data.devices;
       if (adminDiskDevices.length === 0) {
-        select.innerHTML = '<option value="">暂无在线云机</option>';
+        select.innerHTML = '<option value="">暂无可用云机</option>';
       } else {
         select.innerHTML = adminDiskDevices.map(d => {
-          const name = d.name || d.deviceName || '云机';
-          return `<option value="${escapeHtml(d.deviceId)}">${escapeHtml(name)} (${escapeHtml(d.deviceId)})</option>`;
+          const name = d.name ? (d.name + ' (' + d.deviceId + ')') : d.deviceId;
+          return '<option value="' + escapeHtml(d.deviceId) + '">' + escapeHtml(name) + '</option>';
         }).join('');
       }
-    } else {
-      select.innerHTML = '<option value="">加载设备失败</option>';
     }
-  } catch {
-    select.innerHTML = '<option value="">网络异常，无法获取设备</option>';
+  } catch (err) {
+    console.error('加载设备列表失败:', err);
   }
 }
 
@@ -929,9 +1078,12 @@ async function loadAdminDiskFiles() {
   const refreshBtn = document.getElementById('adminDiskRefreshBtn');
 
   if (refreshBtn) refreshBtn.classList.add('spinning');
+  if (listEl) {
+    listEl.innerHTML = '<div class="disk-empty-state"><p>正在读取云盘文件…</p></div>';
+  }
 
   try {
-    const res = await fetch(`/api/cloud-disk/files?dir=${encodeURIComponent(adminDiskCurrentDir)}`);
+    const res = await fetch('/api/cloud-disk/files?dir=' + encodeURIComponent(adminDiskCurrentDir));
     const data = await res.json();
     if (data.ok) {
       adminDiskFiles = data.files || [];
@@ -942,85 +1094,166 @@ async function loadAdminDiskFiles() {
       renderAdminDiskFileList();
     } else {
       if (listEl) {
-        listEl.innerHTML = `<div class="disk-empty-state error"><p>读取失败: ${escapeHtml(data.error || '权限不足')}</p></div>`;
+        listEl.innerHTML = '<div class="disk-empty-state error"><p>读取失败: ' + escapeHtml(data.error || '权限不足') + '</p></div>';
       }
     }
   } catch (err) {
     if (listEl) {
-      listEl.innerHTML = `<div class="disk-empty-state error"><p>网络异常: ${escapeHtml(err.message)}</p></div>`;
+      listEl.innerHTML = '<div class="disk-empty-state error"><p>网络异常: ' + escapeHtml(err.message) + '</p></div>';
     }
   } finally {
     if (refreshBtn) refreshBtn.classList.remove('spinning');
   }
 }
 
+window.selectAdminDiskFile = function(fileName, event) {
+  if (event) event.stopPropagation();
+
+  // 点击已选中的项目时：若是单击则取消选中；双击则保持选中状态以便后续操作
+  if (adminDiskSelectedFile === fileName) {
+    if (!event || event.detail <= 1) {
+      adminDiskSelectedFile = null;
+    }
+  } else {
+    adminDiskSelectedFile = fileName;
+  }
+
+  updateAvatarOperationBar();
+
+  const items = document.querySelectorAll('.disk-grid-item');
+  items.forEach(el => {
+    if (adminDiskSelectedFile && el.dataset.filename === adminDiskSelectedFile) {
+      el.classList.add('selected');
+    } else {
+      el.classList.remove('selected');
+    }
+  });
+};
+
+function updateAvatarOperationBar() {
+  const bar = document.getElementById('avatarOperationBar');
+  if (!bar) return;
+
+  // 仅在头像目录下且选中了图片时展示操作栏，其余情况完全隐藏，保持界面极简干净
+  if (adminDiskCurrentDir !== '头像' || !adminDiskSelectedFile) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  const selected = adminDiskFiles.find(f => f.name === adminDiskSelectedFile);
+  if (!selected) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = 'flex';
+
+  const nameEl = document.getElementById('avatarSelectedName');
+  const sizeEl = document.getElementById('avatarSelectedSize');
+  const btnPush = document.getElementById('btnPushSelectedAvatar');
+  const btnDel = document.getElementById('btnDeleteSelectedAvatar');
+
+  if (nameEl) nameEl.textContent = selected.name;
+  if (sizeEl) sizeEl.textContent = '(' + selected.sizeFormatted + ')';
+  if (btnPush) btnPush.disabled = false;
+  if (btnDel) btnDel.disabled = false;
+}
+
 function renderAdminDiskFileList() {
   const listEl = document.getElementById('adminDiskFileList');
   if (!listEl) return;
 
-  if (adminDiskFiles.length === 0) {
-    listEl.innerHTML = `
-      <div class="disk-empty-state" style="padding: 36px 20px;">
-        <p style="font-size:14px; color:#595959; margin:0;">暂无文件，点击右上角【上传文件】或直接将文件拖拽至此</p>
-      </div>
-    `;
+  const isAvatarDir = adminDiskCurrentDir === '头像';
+
+  if (isAvatarDir) {
+    listEl.className = 'disk-grid-view';
+
+    if (adminDiskFiles.length === 0) {
+      adminDiskSelectedFile = null;
+      updateAvatarOperationBar();
+      listEl.innerHTML = '<div class="disk-empty-state" style="padding: 36px 20px; grid-column: 1 / -1; width:100%; text-align:center;">' +
+        '<p style="font-size:14px; color:#595959; margin:0;">暂无头像图片，点击右上角【上传文件】或直接将图片拖拽至此</p>' +
+      '</div>';
+      return;
+    }
+
+    // 若此前选中的文件已不存在则清空，严禁在初始加载时强行选中第一项
+    const hasCurrent = adminDiskFiles.some(f => f.name === adminDiskSelectedFile);
+    if (!hasCurrent) {
+      adminDiskSelectedFile = null;
+    }
+    updateAvatarOperationBar();
+
+    // 点击空白处取消选中
+    listEl.onclick = function(e) {
+      if (!e.target.closest('.disk-grid-item')) {
+        adminDiskSelectedFile = null;
+        updateAvatarOperationBar();
+        document.querySelectorAll('.disk-grid-item').forEach(el => el.classList.remove('selected'));
+      }
+    };
+
+    listEl.innerHTML = adminDiskFiles.map(file => {
+      const isSelected = file.name === adminDiskSelectedFile;
+      const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(file.name);
+      return '<div class="disk-grid-item ' + (isSelected ? 'selected' : '') + '" data-filename="' + escapeHtml(file.name) + '" onclick="selectAdminDiskFile(\'' + escapeHtml(file.name) + '\', event)" ondblclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();" title="双击放大预览，单击选中">' +
+        '<div class="disk-grid-check">✓</div>' +
+        '<div class="disk-grid-thumb">' +
+          '<img src="' + previewUrl + '" alt="' + escapeHtml(file.name) + '" loading="lazy" />' +
+        '</div>' +
+        '<div class="disk-grid-info">' +
+          '<div class="disk-grid-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</div>' +
+          '<div class="disk-grid-size">' + file.sizeFormatted + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
     return;
   }
 
-  const isParamsDir = adminDiskCurrentDir === '真参';
+  // 真机参数列表展示
+  listEl.className = 'disk-file-list';
+  updateAvatarOperationBar();
+
+  if (adminDiskFiles.length === 0) {
+    listEl.innerHTML = '<div class="disk-empty-state" style="padding: 36px 20px;">' +
+      '<p style="font-size:14px; color:#595959; margin:0;">暂无真参文件，点击右上角【上传文件】或直接将文件拖拽至此</p>' +
+    '</div>';
+    return;
+  }
 
   listEl.innerHTML = adminDiskFiles.map(file => {
-    const previewUrl = `/api/cloud-disk/preview?dir=${encodeURIComponent(adminDiskCurrentDir)}&name=${encodeURIComponent(file.name)}`;
-
-    let thumbHtml = '';
-    if (file.isImage) {
-      thumbHtml = `
-        <div class="disk-file-thumb image-thumb" onclick="previewAdminDiskFile('${escapeHtml(file.name)}', true, false)" title="点击预览大图">
-          <img src="${previewUrl}" alt="${escapeHtml(file.name)}" loading="lazy" />
-        </div>
-      `;
-    } else {
-      thumbHtml = `
-        <div class="disk-file-thumb params-thumb" style="font-size:22px; display:flex; align-items:center; justify-content:center;">
-          ⚙️
-        </div>
-      `;
-    }
+    let thumbHtml = '<div class="disk-file-thumb params-thumb" style="font-size:22px; display:flex; align-items:center; justify-content:center;">⚙️</div>';
 
     let metaText = '';
-    if (isParamsDir && file.previewInfo) {
+    if (file.previewInfo) {
       const p = file.previewInfo;
       const parts = [];
-      if (p.brand || p.model) parts.push(`<strong>${escapeHtml(p.brand)} ${escapeHtml(p.model)}</strong>`);
-      if (p.androidVersion) parts.push(`Android ${escapeHtml(p.androidVersion)}`);
+      if (p.brand || p.model) parts.push('<strong>' + escapeHtml(p.brand) + ' ' + escapeHtml(p.model) + '</strong>');
+      if (p.androidVersion) parts.push('Android ' + escapeHtml(p.androidVersion));
       parts.push(file.sizeFormatted);
       metaText = parts.join(' · ');
     } else {
       metaText = file.sizeFormatted;
     }
 
-    const sendBtnText = isParamsDir ? '🚀 推送到云机' : '🚀 推送到相册';
-
-    return `
-      <div class="disk-file-card" data-filename="${escapeHtml(file.name)}">
-        ${thumbHtml}
-        <div class="disk-file-main">
-          <div class="disk-file-title" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
-          <div class="disk-file-meta">${metaText}</div>
-        </div>
-        <div class="disk-file-actions">
-          <button type="button" class="disk-action-btn primary push-btn" onclick="sendAdminDiskFileToDevice('${escapeHtml(file.name)}')">
-            ${sendBtnText}
-          </button>
-          <button type="button" class="disk-action-btn view-btn" onclick="previewAdminDiskFile('${escapeHtml(file.name)}', ${file.isImage}, ${file.isText})">
-            预览
-          </button>
-          <button type="button" class="disk-action-btn danger delete-btn" onclick="deleteAdminDiskFile('${escapeHtml(file.name)}')">
-            删除
-          </button>
-        </div>
-      </div>
-    `;
+    return '<div class="disk-file-card" data-filename="' + escapeHtml(file.name) + '">' +
+      thumbHtml +
+      '<div class="disk-file-main">' +
+        '<div class="disk-file-title" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</div>' +
+        '<div class="disk-file-meta">' + metaText + '</div>' +
+      '</div>' +
+      '<div class="disk-file-actions">' +
+        '<button type="button" class="disk-action-btn primary push-btn" onclick="sendAdminDiskFileToDevice(\'' + escapeHtml(file.name) + '\')">' +
+          '🚀 推送到云机' +
+        '</button>' +
+        '<button type="button" class="disk-action-btn view-btn" onclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', false, ' + file.isText + ')">' +
+          '预览' +
+        '</button>' +
+        '<button type="button" class="disk-action-btn danger delete-btn" onclick="deleteAdminDiskFile(\'' + escapeHtml(file.name) + '\')">' +
+          '删除' +
+        '</button>' +
+      '</div>' +
+    '</div>';
   }).join('');
 }
 
@@ -1030,44 +1263,38 @@ window.previewAdminDiskFile = async (fileName, isImage, isText) => {
   const bodyEl = document.getElementById('adminDiskPreviewBody');
   if (!dialog || !titleEl || !bodyEl) return;
 
-  titleEl.textContent = `文件预览: ${fileName}`;
+  titleEl.textContent = '文件预览: ' + fileName;
   bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#595959;">加载中…</div>';
   dialog.showModal();
 
-  const fileUrl = `/api/cloud-disk/file?dir=${encodeURIComponent(adminDiskCurrentDir)}&name=${encodeURIComponent(fileName)}`;
+  const fileUrl = '/api/cloud-disk/file?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(fileName);
 
   if (isImage) {
-    bodyEl.innerHTML = `
-      <div style="text-align:center; padding:12px; max-height:70vh; overflow:auto;">
-        <img src="${fileUrl}" alt="${escapeHtml(fileName)}" style="max-width:100%; max-height:65vh; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1);" />
-      </div>
-    `;
+    bodyEl.innerHTML = '<div style="text-align:center; padding:12px; max-height:70vh; overflow:auto;">' +
+      '<img src="' + fileUrl + '" alt="' + escapeHtml(fileName) + '" style="max-width:100%; max-height:65vh; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1);" />' +
+    '</div>';
   } else if (isText) {
     try {
       const res = await fetch(fileUrl);
       const text = await res.text();
-      bodyEl.innerHTML = `
-        <div style="max-height:65vh; overflow:auto; padding:12px; background:#f8fafc; border-radius:4px; border:1px solid #e2e8f0;">
-          <pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all;">${escapeHtml(text)}</pre>
-        </div>
-      `;
+      bodyEl.innerHTML = '<div style="max-height:65vh; overflow:auto; padding:12px; background:#f8fafc; border-radius:4px; border:1px solid #e2e8f0;">' +
+        '<pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all;">' + escapeHtml(text) + '</pre>' +
+      '</div>';
     } catch (err) {
-      bodyEl.innerHTML = `<div style="padding:16px; color:#ff4d4f;">加载文本失败: ${escapeHtml(err.message)}</div>`;
+      bodyEl.innerHTML = '<div style="padding:20px; color:#cf1322;">读取文件内容失败: ' + escapeHtml(err.message) + '</div>';
     }
   } else {
-    bodyEl.innerHTML = `
-      <div style="padding:24px; text-align:center;">
-        <p>该文件格式不支持直接文本预览。</p>
-        <a href="${fileUrl}&download=1" download="${escapeHtml(fileName)}" class="run-button" style="display:inline-block; text-decoration:none;">下载该文件</a>
-      </div>
-    `;
+    bodyEl.innerHTML = '<div style="padding:30px; text-align:center;">' +
+      '<p style="color:#595959; margin-bottom:14px;">此文件类型不支持在线预览，请下载查看</p>' +
+      '<a href="' + fileUrl + '" download class="btn-action-sm" style="display:inline-block; text-decoration:none;">下载文件</a>' +
+    '</div>';
   }
 };
 
 window.deleteAdminDiskFile = async (fileName) => {
   const confirmed = await showConfirm({
     title: '确认删除该文件？',
-    desc: `确定要从【${escapeHtml(adminDiskCurrentDir)}】目录删除文件 <strong style="color:#1f1f1f;">${escapeHtml(fileName)}</strong> 吗？此操作无法撤销。`,
+    desc: '确定要从【' + escapeHtml(adminDiskCurrentDir) + '】目录删除文件 <strong style="color:#1f1f1f;">' + escapeHtml(fileName) + '</strong> 吗？此操作无法撤销。',
     okText: '确认删除',
     cancelText: '取消',
     isDanger: true,
@@ -1084,13 +1311,16 @@ window.deleteAdminDiskFile = async (fileName) => {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast(`已成功删除文件 "${fileName}"`, 'success');
+      showToast('已成功删除文件 "' + fileName + '"', 'success');
+      if (adminDiskSelectedFile === fileName) {
+        adminDiskSelectedFile = null;
+      }
       loadAdminDiskFiles();
     } else {
-      showToast(`删除失败: ${data.error || '未知错误'}`, 'error');
+      showToast('删除失败: ' + (data.error || '未知错误'), 'error');
     }
   } catch (err) {
-    showToast(`删除请求失败: ${err.message}`, 'error');
+    showToast('删除请求失败: ' + err.message, 'error');
   }
 };
 
@@ -1108,8 +1338,8 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
   const confirmed = await showConfirm({
     title: isParamsDir ? '确认推送真参配置到云机？' : '确认推送图片到云机相册？',
     desc: isParamsDir
-      ? `确认将真参文件 <strong style="color:#1677ff;">${escapeHtml(fileName)}</strong> 推送并应用到云机 <strong>${escapeHtml(deviceName)}</strong>？<br><span style="color:#8c8c8c; font-size:12px;">该操作会实时修改目标云机的底层硬件型号属性。</span>`
-      : `确认将图片 <strong style="color:#1677ff;">${escapeHtml(fileName)}</strong> 立即推送到云机 <strong>${escapeHtml(deviceName)}</strong> 的相册？`,
+      ? ('确认将真参文件 <strong style="color:#1677ff;">' + escapeHtml(fileName) + '</strong> 推送并应用到云机 <strong>' + escapeHtml(deviceName) + '</strong>？')
+      : ('确认将图片 <strong style="color:#1677ff;">' + escapeHtml(fileName) + '</strong> 立即推送到云机 <strong>' + escapeHtml(deviceName) + '</strong> 的相册？'),
     okText: '立即推送',
     cancelText: '取消',
     isDanger: false,
@@ -1118,12 +1348,19 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
 
   if (!confirmed) return;
 
-  const card = document.querySelector(`.disk-file-card[data-filename="${CSS.escape(fileName)}"]`);
-  const pushBtn = card?.querySelector('.push-btn');
+  const card = document.querySelector('.disk-file-card[data-filename="' + CSS.escape(fileName) + '"]');
+  const pushBtn = card ? card.querySelector('.push-btn') : null;
   const originalText = pushBtn ? pushBtn.innerHTML : '';
+  const topPushBtn = document.getElementById('btnPushSelectedAvatar');
+  const originalTopText = topPushBtn ? topPushBtn.innerHTML : '';
+
   if (pushBtn) {
     pushBtn.disabled = true;
     pushBtn.innerHTML = '⏳ 正在实时下发…';
+  }
+  if (topPushBtn) {
+    topPushBtn.disabled = true;
+    topPushBtn.innerHTML = '⏳ 正在下发…';
   }
 
   try {
@@ -1134,16 +1371,20 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast(`下发成功！${data.message || ''}`, 'success');
+      showToast('下发成功！' + (data.message || ''), 'success');
     } else {
-      showToast(`下发失败: ${data.error || '操作未能完成'}`, 'error');
+      showToast('下发失败: ' + (data.error || '操作未能完成'), 'error');
     }
   } catch (err) {
-    showToast(`网络或下发接口异常: ${err.message}`, 'error');
+    showToast('网络或下发接口异常: ' + err.message, 'error');
   } finally {
     if (pushBtn) {
       pushBtn.disabled = false;
       pushBtn.innerHTML = originalText;
+    }
+    if (topPushBtn) {
+      topPushBtn.disabled = false;
+      topPushBtn.innerHTML = originalTopText;
     }
   }
 };
@@ -1164,13 +1405,13 @@ async function uploadAdminDiskFiles(files) {
       });
       const data = await res.json();
       if (data.ok) successCount++;
-      else showToast(`文件 [${file.name}] 上传失败: ${data.error || '服务器错误'}`, 'error');
+      else showToast('文件 [' + file.name + '] 上传失败: ' + (data.error || '服务器错误'), 'error');
     } catch (err) {
-      showToast(`文件 [${file.name}] 读取或上传失败: ${err.message}`, 'error');
+      showToast('文件 [' + file.name + '] 读取或上传失败: ' + err.message, 'error');
     }
   }
 
-  showToast(`成功上传 ${successCount}/${total} 个文件到【${adminDiskCurrentDir}】`, 'success');
+  showToast('成功上传 ' + successCount + '/' + total + ' 个文件到【' + adminDiskCurrentDir + '】', 'success');
   loadAdminDiskFiles();
 }
 
@@ -1195,6 +1436,7 @@ function loadAdminDisk() {
     if (btnParams) {
       btnParams.addEventListener('click', () => {
         adminDiskCurrentDir = '真参';
+        adminDiskSelectedFile = null;
         btnParams.classList.add('active');
         btnAvatars?.classList.remove('active');
         const countP = document.getElementById('adminDiskCountParams');
@@ -1214,6 +1456,25 @@ function loadAdminDisk() {
         if (countA) { countA.style.background = '#1677ff'; countA.style.color = '#fff'; }
         if (countP) { countP.style.background = '#e8e8e8'; countP.style.color = '#595959'; }
         loadAdminDiskFiles();
+      });
+    }
+
+    const btnPushAvatar = document.getElementById('btnPushSelectedAvatar');
+    if (btnPushAvatar) {
+      btnPushAvatar.addEventListener('click', () => {
+        if (adminDiskSelectedFile) sendAdminDiskFileToDevice(adminDiskSelectedFile);
+      });
+    }
+    const btnPrevAvatar = document.getElementById('btnPreviewSelectedAvatar');
+    if (btnPrevAvatar) {
+      btnPrevAvatar.addEventListener('click', () => {
+        if (adminDiskSelectedFile) previewAdminDiskFile(adminDiskSelectedFile, true, false);
+      });
+    }
+    const btnDelAvatar = document.getElementById('btnDeleteSelectedAvatar');
+    if (btnDelAvatar) {
+      btnDelAvatar.addEventListener('click', () => {
+        if (adminDiskSelectedFile) deleteAdminDiskFile(adminDiskSelectedFile);
       });
     }
 
@@ -1272,7 +1533,8 @@ function loadAdminDisk() {
   loadAdminDiskFiles();
 }
 
-// ============================================================================
+
+
 // 8. AI 供应商管理模块 (AI Multi-Provider Management)
 // ============================================================================
 let adminAiProviders = [];
@@ -1657,12 +1919,43 @@ const smsConfigStatusBadge = document.getElementById('smsConfigStatusBadge');
 const smsLogTotalCount = document.getElementById('smsLogTotalCount');
 
 const smsRecordSearch = document.getElementById('smsRecordSearch');
+const clearSmsSearchBtn = document.getElementById('clearSmsSearchBtn');
 const smsRecordStatusFilter = document.getElementById('smsRecordStatusFilter');
 const refreshSmsRecordsBtn = document.getElementById('refreshSmsRecordsBtn');
 const clearSmsRecordsBtn = document.getElementById('clearSmsRecordsBtn');
 const smsRecordsTableBody = document.getElementById('smsRecordsTableBody');
 
+// 校验并清洗搜索框输入：彻底防止浏览器密码管理器误把管理员账号/邮箱填入搜索框导致查询为空
+function getSanitizedSmsSearch() {
+  if (!smsRecordSearch) return '';
+  let val = smsRecordSearch.value.trim();
+  const userEmail = (currentUser && currentUser.email) ? currentUser.email.toLowerCase() : '';
+  const adminEmailText = adminUserEmail ? adminUserEmail.textContent.toLowerCase() : '';
+
+  if (val) {
+    const lower = val.toLowerCase();
+    if (
+      (userEmail && lower === userEmail) ||
+      (adminEmailText && adminEmailText.includes(lower) && lower.includes('@')) ||
+      (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower))
+    ) {
+      smsRecordSearch.value = '';
+      if (clearSmsSearchBtn) clearSmsSearchBtn.style.display = 'none';
+      return '';
+    }
+  }
+  return val;
+}
+
+function syncSmsSearchClearBtn() {
+  if (clearSmsSearchBtn && smsRecordSearch) {
+    clearSmsSearchBtn.style.display = smsRecordSearch.value ? 'inline-block' : 'none';
+  }
+}
+
 async function loadSmsManagement() {
+  getSanitizedSmsSearch();
+  syncSmsSearchClearBtn();
   await loadSmsConfig();
   await loadSmsLogs();
 }
@@ -1796,6 +2089,7 @@ if (testSmsConnBtn) {
     } finally {
       testSmsConnBtn.disabled = false;
       testSmsConnBtn.textContent = '⚡ 测试连通性';
+      getSanitizedSmsSearch();
       loadSmsLogs();
     }
   });
@@ -1805,7 +2099,8 @@ if (testSmsConnBtn) {
 async function loadSmsLogs() {
   if (!smsRecordsTableBody) return;
   try {
-    const search = smsRecordSearch ? smsRecordSearch.value.trim() : '';
+    const search = getSanitizedSmsSearch();
+    syncSmsSearchClearBtn();
     const status = smsRecordStatusFilter ? smsRecordStatusFilter.value : '';
 
     const params = new URLSearchParams({ limit: '100' });
@@ -1928,8 +2223,26 @@ window.toggleLogDetail = (logId, event) => {
   }
 };
 
-if (refreshSmsRecordsBtn) refreshSmsRecordsBtn.addEventListener('click', loadSmsLogs);
-if (smsRecordSearch) smsRecordSearch.addEventListener('input', debounce(loadSmsLogs, 300));
+if (refreshSmsRecordsBtn) refreshSmsRecordsBtn.addEventListener('click', () => {
+  getSanitizedSmsSearch();
+  loadSmsLogs();
+});
+if (smsRecordSearch) {
+  smsRecordSearch.addEventListener('input', () => {
+    syncSmsSearchClearBtn();
+    debounce(loadSmsLogs, 300)();
+  });
+}
+if (clearSmsSearchBtn) {
+  clearSmsSearchBtn.addEventListener('click', () => {
+    if (smsRecordSearch) {
+      smsRecordSearch.value = '';
+      syncSmsSearchClearBtn();
+      loadSmsLogs();
+      smsRecordSearch.focus();
+    }
+  });
+}
 if (smsRecordStatusFilter) smsRecordStatusFilter.addEventListener('change', loadSmsLogs);
 
 // 清空调用日志

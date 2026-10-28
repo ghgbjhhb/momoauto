@@ -39,7 +39,11 @@ async function prepareChangeModelReset(client, deviceId, options = {}) {
   const { records } = await client.listDevices({ size: 50000 });
   const device = records.find(row => String(row.deviceId ?? row.id) === deviceId);
   if (!device) throw new Error('目标云机不在当前账号设备列表中：' + deviceId);
-  const expectedVersion = String(options.sdkVersion ?? process.env.YUNMOMO_SDK_VERSION ?? (args?.v2 ? 'v2' : 'v3')).trim().toLowerCase();
+  const expectedVersion = (
+    String(options.sdkVersion ?? '').trim()
+    || String(process.env.YUNMOMO_SDK_VERSION ?? '').trim()
+    || 'v3'
+  ).toLowerCase();
   const actualVersion = String(device.sdkVersion ?? '').trim().toLowerCase();
   if (actualVersion && actualVersion !== expectedVersion) {
     throw new Error(`此脚本对应网页 ${expectedVersion.toUpperCase()} 改机，目标云机当前为 ${actualVersion.toUpperCase()}`);

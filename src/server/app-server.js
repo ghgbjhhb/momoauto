@@ -16,6 +16,7 @@ const { STEPS: STEPS_V3 } = require('../../flows/v3/_common');
 const { parseVpcData } = require('../workflows/add-vpc-network');
 const { RapidOcrWorker } = require('../automation/ocr');
 const { handleAiReplyRoutes } = require('./ai-reply-routes');
+const urlGuard = require('../automation/url-guard');
 const { handleMomoBrainRoutes } = require('./momo-brain-routes');
 const { defaultArbiter } = require('./device-arbiter');
 const { BrainManager } = require('../brain/manager');
@@ -27,6 +28,7 @@ const { getSmsService } = require('./sms/service');
 const { extractDeviceInfo } = require('../workflows/v2/import-real-params');
 
 const { PROJECT_ROOT } = require('../automation/runtime');
+const { appendLogLine } = require('../automation/log-file');
 const APP_ROOT = path.join(PROJECT_ROOT, 'app');
 const CLOUD_DISK_ROOT = path.join(PROJECT_ROOT, 'storage', 'cloud-disk');
 try {
@@ -347,8 +349,24 @@ async function listDevices() {
   if (deviceListing?.owner === owner) return deviceListing.pending;
   const listing = { owner };
   listing.pending = (async () => {
-    const result = await owner.listDevices({ current: 1, size: 50000 });
-    const rawRecords = Array.isArray(result?.records) ? result.records : [];
+    let rawRecords = [];
+    try {
+      const result = await owner.listDevices({ current: 1, size: 50000 });
+      rawRecords = Array.isArray(result?.records) ? result.records : [];
+    } catch {}
+
+    if (rawRecords.length === 0) {
+      try {
+        const allocatedDeviceIds = authService.db.getActiveAllocatedDeviceIds();
+        if (Array.isArray(allocatedDeviceIds) && allocatedDeviceIds.length > 0) {
+          const fetched = await Promise.all(allocatedDeviceIds.map(async id => {
+            try { return await owner.getDevice(id); } catch { return null; }
+          }));
+          rawRecords = fetched.filter(Boolean);
+        }
+      } catch {}
+    }
+
     const records = await Promise.all(rawRecords.map(async raw => {
       const base = publicDevice(raw);
       if (!base.deviceId) return null;
@@ -410,7 +428,7 @@ function redact(value) {
   return output.replace(/([?&]token=)[^&\s]+/gi, '$1<redacted>');
 }
 
-function createScriptRunRecord(scriptRunId, script) {
+function createScriptRunRecord(scriptRunId, script, ownerUserId = '') {
   let resolveDone;
   const done = new Promise(resolve => { resolveDone = resolve; });
   return {
@@ -419,6 +437,7 @@ function createScriptRunRecord(scriptRunId, script) {
     scriptId: script.id,
     deviceId: '',
     ownerId: 'script_run_' + scriptRunId,
+    ownerUserId,
     child: null,
     childClosedPromise: null,
     childCloseResult: null,
@@ -430,6 +449,28 @@ function createScriptRunRecord(scriptRunId, script) {
     done,
     resolveDone
   };
+}
+
+// 运行归属侧车文件：进程退出后内存记录消失，日志文件仍需知道归属才能做越权控制
+function runOwnerFilePath(scriptRunId) {
+  return path.join(PROJECT_ROOT, 'logs', 'runs', `${scriptRunId}.owner`);
+}
+
+async function writeRunOwner(scriptRunId, ownerUserId) {
+  if (!ownerUserId) return;
+  try {
+    const target = runOwnerFilePath(scriptRunId);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.writeFile(target, ownerUserId, 'utf8');
+  } catch {}
+}
+
+async function readRunOwner(scriptRunId) {
+  try {
+    return (await fs.promises.readFile(runOwnerFilePath(scriptRunId), 'utf8')).trim();
+  } catch {
+    return '';
+  }
 }
 
 function pruneScriptStopState(now = Date.now()) {
@@ -617,7 +658,7 @@ async function runScriptMeasured(script, env, run) {
   });
 }
 
-async function stopActiveScript(body = {}) {
+async function stopActiveScript(body = {}, user = null) {
   const scriptRunId = String(body.scriptRunId || '');
   pruneScriptStopState();
   let run = scriptRunId ? activeScriptRuns.get(scriptRunId) : null;
@@ -628,6 +669,10 @@ async function stopActiveScript(body = {}) {
     if (matchingRuns.length === 1 && (!requestedDeviceId || !matchingRuns[0].deviceId || matchingRuns[0].deviceId === requestedDeviceId)) {
       run = matchingRuns[0];
     }
+  }
+  // 停止是写操作：非管理员只能停自己发起的运行，否则可打断他人云机上的脚本
+  if (run && user && user.role !== 'admin' && run.ownerUserId && run.ownerUserId !== user.id) {
+    return { ok: false, forbidden: true, message: '无权停止其他用户的脚本运行' };
   }
   if (!run) {
     if (scriptRunId && /^[A-Za-z0-9_-]{8,128}$/.test(scriptRunId) && !completedScriptRuns.has(scriptRunId)) {
@@ -672,12 +717,12 @@ async function stopActiveScript(body = {}) {
   };
 }
 
-async function executeScript(body) {
+async function executeScript(body, user = null) {
   const knownScriptId = SCRIPT_DEFINITIONS.some(script => script.id === body?.scriptId) ? body.scriptId : undefined;
   const span = require('../automation/timing').begin('script.request', { root: true, scriptId: knownScriptId, deviceId: body?.deviceId });
   return span.run(async () => {
     try {
-      const result = await executeScriptMeasured(body);
+      const result = await executeScriptMeasured(body, user);
       const { runId, startedAt, finishedAt, durationMs } = span.end(result);
       return { ...result, runId, startedAt, finishedAt, durationMs };
     } catch (error) {
@@ -687,8 +732,10 @@ async function executeScript(body) {
   });
 }
 
-async function executeScriptMeasured(body) {
+async function executeScriptMeasured(body, user = null) {
+  const ownerUserId = user?.id || '';
   const script = scriptById(body?.scriptId);
+  assertScriptVisibleToUser(script, user);
   const requestedScriptRunId = String(body?.scriptRunId || '');
   if (requestedScriptRunId && !/^[A-Za-z0-9_-]{8,128}$/.test(requestedScriptRunId)) throw invalidOptions('网页脚本运行编号无效');
   const scriptRunId = requestedScriptRunId || randomUUID();
@@ -698,11 +745,12 @@ async function executeScriptMeasured(body) {
   if (completedScriptRuns.has(scriptRunId)) throw Object.assign(new Error('脚本运行编号已结束，请重新执行'), { status: 409 });
   if (activeScriptRuns.has(scriptRunId)) throw Object.assign(new Error('脚本运行编号已被使用，请重新执行'), { status: 409 });
 
-  const run = createScriptRunRecord(scriptRunId, script);
+  const run = createScriptRunRecord(scriptRunId, script, ownerUserId);
   run.pageId = pageId;
   run.deviceId = script.requiresDevice ? String(body?.deviceId || '') : '';
   run.stopRequested = pendingScriptStops.delete(scriptRunId);
   activeScriptRuns.set(scriptRunId, run);
+  writeRunOwner(scriptRunId, ownerUserId);
   let selected = null;
   let lockedDeviceId = '';
   let accountScriptLocked = false;
@@ -776,6 +824,20 @@ async function executeScriptMeasured(body) {
 
 function invalidOptions(message) {
   return Object.assign(new Error(message), { status: 400 });
+}
+
+// 管理员的脚本显隐配置此前只作用于前端渲染，普通用户直接提交被隐藏的 scriptId 照样能执行；
+// 这里把它下沉到服务端，分组判定与 app.js 的 createVersionSection 分组保持一致（category 'all' 归入 momo 组）。
+function assertScriptVisibleToUser(script, user) {
+  if (!script || !user || user.role === 'admin') return;
+  const visibility = authService.db.getScriptVisibility();
+  if (visibility.scripts[script.id] === false) {
+    throw Object.assign(new Error('该脚本已被管理员关闭，无权执行'), { status: 403 });
+  }
+  const groupKey = script.category === 'v2' || script.category === 'v3' ? script.category : 'momo';
+  if (visibility.groups[groupKey] === false) {
+    throw Object.assign(new Error('该脚本分组已被管理员关闭，无权执行'), { status: 403 });
+  }
 }
 
 function configureScript(script, body, env) {
@@ -986,7 +1048,9 @@ async function staticFile(response, pathname) {
 function errorStatus(error) {
   if (error.status === 400) return 400;
   if (/正在执行脚本|手动控制/.test(error.message)) return 409;
-  if (error.status === 401 || error.status === 403) return 401;
+  if (error.status === 401) return 401;
+  // 403 不能并入 401：前端把 401 当作「登录态失效」处理并触发重新登录，权限不足应当直接呈现错误原因
+  if (error.status === 403) return 403;
   if (/请选择|未知脚本|YUNMOMO_CERT_PATH|请求内容|请求 JSON|浏览器会话令牌|邮箱或密码不正确|卡密|验证码/.test(error.message)) return 400;
   if (/YUNMOMO_TOKEN/.test(error.message)) return 401;
   return 500;
@@ -1044,12 +1108,8 @@ async function inspectVision(deviceId) {
 }
 
 async function appendServerLog(level, message, details = '') {
-  try {
-    const logsDir = path.join(PROJECT_ROOT, 'logs');
-    await fs.promises.mkdir(logsDir, { recursive: true });
-    const logLine = `[Server ${level.toUpperCase()}] ${new Date().toISOString()} ${message}${details ? ' ' + details : ''}\n`;
-    await fs.promises.appendFile(path.join(logsDir, 'server.log'), logLine, 'utf8');
-  } catch {}
+  const logLine = `[Server ${level.toUpperCase()}] ${new Date().toISOString()} ${message}${details ? ' ' + details : ''}\n`;
+  await appendLogLine(path.join(PROJECT_ROOT, 'logs', 'server.log'), logLine);
 }
 
 async function handler(request, response) {
@@ -1182,20 +1242,20 @@ async function handler(request, response) {
     if (request.method === 'POST' && url.pathname === '/api/client-logs') {
       const body = await readJsonBody(request);
       const level = String(body?.level || 'info').toUpperCase();
-      const message = String(body?.message || '');
-      const details = body?.details ? (typeof body.details === 'string' ? body.details : JSON.stringify(body.details)) : '';
+      // 换行必须压平：否则客户端可借 message 伪造整行日志（含冒充其他用户/管理员的记录）
+      const flatten = value => String(value).replace(/[\r\n]+/g, ' | ');
+      const message = flatten(body?.message || '').slice(0, 500);
+      const rawDetails = body?.details ? (typeof body.details === 'string' ? body.details : JSON.stringify(body.details)) : '';
+      const details = flatten(rawDetails).slice(0, 2000);
       const userTag = user ? `[${user.email}]` : '[guest]';
       const logLine = `[Client ${level}] ${new Date().toISOString()} ${userTag} ${message} ${details}\n`;
-      try {
-        const clientLogDir = path.join(PROJECT_ROOT, 'logs');
-        await fs.promises.mkdir(clientLogDir, { recursive: true });
-        await fs.promises.appendFile(path.join(clientLogDir, 'client.log'), logLine, 'utf8');
-      } catch {}
+      await appendLogLine(path.join(PROJECT_ROOT, 'logs', 'client.log'), logLine);
       console.log(`[ClientLog] ${level} ${userTag}: ${message}`);
       json(response, 200, { ok: true });
       return;
     }
     if (request.method === 'GET' && url.pathname === '/api/client-logs') {
+      if (!requireAdmin(response)) return;
       try {
         const logPath = path.join(PROJECT_ROOT, 'logs', 'client.log');
         const content = await fs.promises.readFile(logPath, 'utf8');
@@ -1470,6 +1530,11 @@ async function handler(request, response) {
         if (!testConfig.apiKey) {
           throw new Error('未配置 API Key，无法测试连接');
         }
+        // 管理员也不能把本机服务当成打内网的跳板：该请求会把 apiKey 一并发往 endpoint
+        await urlGuard.assertSafeOutboundUrl(testConfig.endpoint, {
+          allowLoopback: true,
+          allowPrivate: String(process.env.YUNMOMO_AI_ALLOW_PRIVATE || '').trim() === '1'
+        });
         const testRes = await DeepSeekProvider.chat([
           { role: 'user', content: '测试API连接，请回复：连接成功' }
         ], testConfig);
@@ -1548,7 +1613,10 @@ async function handler(request, response) {
           const limit = parseInt(url.searchParams.get('limit'), 10) || 50;
           const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
           const status = url.searchParams.get('status') || '';
-          const search = url.searchParams.get('search') || '';
+          let search = (url.searchParams.get('search') || '').trim();
+          if (search && user && user.email && search.toLowerCase() === user.email.toLowerCase()) {
+            search = '';
+          }
           const data = smsService.listRecords({ limit, offset, status, search });
           const stats = smsService.getStats();
           json(response, 200, { ok: true, ...data, stats });
@@ -1559,7 +1627,11 @@ async function handler(request, response) {
           const limit = parseInt(url.searchParams.get('limit'), 10) || 100;
           const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
           const status = url.searchParams.get('status') || '';
-          const search = url.searchParams.get('search') || '';
+          let search = (url.searchParams.get('search') || '').trim();
+          // 后端兜底防御：若搜索内容与管理员邮箱一致，忽略该搜索条件，避免由于浏览器自动填充返回空列表
+          if (search && user && user.email && search.toLowerCase() === user.email.toLowerCase()) {
+            search = '';
+          }
           const data = smsService.listCallLogs({ limit, offset, status, search });
           json(response, 200, { ok: true, ...data });
           return;
@@ -1623,21 +1695,61 @@ async function handler(request, response) {
       }
     }
 
-    if (url.pathname.startsWith('/api/momo-brain/')) {
+    // --- 云机自动化路由（AI 回复 / 调度中枢）：默认全部要求登录并按设备归属授权 ---
+    if (url.pathname.startsWith('/api/momo-brain/') || url.pathname.startsWith('/api/ai-reply/')) {
       let bodyJson = null;
       if (request.method === 'POST') {
         bodyJson = await readJsonBody(request);
       }
-      const handled = handleMomoBrainRoutes(request, response, url, bodyJson, brainManager());
-      if (handled) return;
-    }
-    if (url.pathname.startsWith('/api/ai-reply/')) {
-      let bodyJson = null;
-      if (request.method === 'POST') {
-        bodyJson = await readJsonBody(request);
+      if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
+
+      const deviceId = String(bodyJson?.deviceId || url.searchParams.get('deviceId') || '').trim();
+      // 子路由在 deviceId 缺省时会回落到 process.env.YUNMOMO_DEVICE_ID，越权校验必须跟着这个回落值走
+      const effectiveDeviceId = deviceId || String(process.env.YUNMOMO_DEVICE_ID || '').trim();
+      const actsOnDevice = url.pathname === '/api/momo-brain/start'
+        || url.pathname === '/api/momo-brain/pause'
+        || url.pathname === '/api/momo-brain/resume'
+        || url.pathname === '/api/momo-brain/stop'
+        || url.pathname === '/api/momo-brain/events'
+        || url.pathname === '/api/momo-brain/status'
+        || url.pathname === '/api/ai-reply/run';
+      const targetDevice = deviceId || (actsOnDevice ? effectiveDeviceId : '');
+      if (targetDevice && !authService.canAccessDevice(user, targetDevice)) {
+        json(response, 403, { ok: false, error: '无该设备的访问权限' });
+        return;
       }
-      const handled = handleAiReplyRoutes(request, response, url, bodyJson, client());
-      if (handled) return;
+
+      // 这三处写入作用于全局配置或消耗共享 API 额度，普通用户改动会波及其他人，仅管理员可操作
+      const isGlobalWrite = request.method === 'POST' && (
+        url.pathname === '/api/momo-brain/config'
+        || url.pathname === '/api/ai-reply/settings'
+        || url.pathname === '/api/ai-reply/test'
+      );
+      // 不带 deviceId 的聚合读取会返回全部云机状态或含 deviceOverrides 的全局配置
+      const isAggregateRead = request.method === 'GET' && (
+        (url.pathname === '/api/momo-brain/status' || url.pathname === '/api/momo-brain/config') && !deviceId
+      );
+      if ((isGlobalWrite || isAggregateRead) && user.role !== 'admin') {
+        json(response, 403, { ok: false, error: '无管理员访问权限' });
+        return;
+      }
+
+      // runId 里含联系人聊天记录，必须按任务创建时的设备归属复检，避免越权读取或取消他人任务
+      if (url.pathname.startsWith('/api/ai-reply/runs/')) {
+        const runRecord = activeRuns.get(url.pathname.split('/')[4]);
+        if (runRecord && !authService.canAccessDevice(user, runRecord.deviceId)) {
+          json(response, 403, { ok: false, error: '无该任务的访问权限' });
+          return;
+        }
+      }
+
+      if (url.pathname.startsWith('/api/momo-brain/')) {
+        const handled = handleMomoBrainRoutes(request, response, url, bodyJson, brainManager());
+        if (handled) return;
+      } else {
+        const handled = handleAiReplyRoutes(request, response, url, bodyJson, client());
+        if (handled) return;
+      }
     }
     if (request.method === 'GET' && url.pathname.startsWith('/api/')) {
       if (url.pathname === '/api/status') {
@@ -1650,9 +1762,12 @@ async function handler(request, response) {
         return;
       }
       if (url.pathname === '/api/runtime-state') {
+        if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
         const pageId = /^[A-Za-z0-9_-]{8,128}$/.test(url.searchParams.get('pageId') || '')
           ? url.searchParams.get('pageId') : '';
-        const runs = [...activeScriptRuns.values()].map(run => ({
+        const visibleRuns = [...activeScriptRuns.values()].filter(run =>
+          user.role === 'admin' || (run.ownerUserId && run.ownerUserId === user.id));
+        const runs = visibleRuns.map(run => ({
           scriptRunId: run.scriptRunId,
           scriptId: run.scriptId,
           title: scriptById(run.scriptId)?.title || run.scriptId,
@@ -1663,6 +1778,7 @@ async function handler(request, response) {
         const manualByDevice = new Map();
         for (const bridge of manualBridges) {
           for (const item of bridge.getState(pageId)) {
+            if (user.role !== 'admin' && !authService.canAccessDevice(user, item.deviceId)) continue;
             const current = manualByDevice.get(item.deviceId);
             if (!current) manualByDevice.set(item.deviceId, item);
             else {
@@ -1678,8 +1794,13 @@ async function handler(request, response) {
         return;
       }
       if (url.pathname === '/api/execute/output') {
+        if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
         const scriptRunId = String(url.searchParams.get('scriptRunId') || '');
         const run = activeScriptRuns.get(scriptRunId);
+        if (run && user.role !== 'admin' && run.ownerUserId && run.ownerUserId !== user.id) {
+          json(response, 403, { ok: false, error: '无权查看其他用户的脚本输出' });
+          return;
+        }
         if (run) {
           json(response, 200, {
             ok: true,
@@ -1704,21 +1825,28 @@ async function handler(request, response) {
         return;
       }
       if (url.pathname === '/api/logs') {
+        if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
         const scriptRunId = String(url.searchParams.get('scriptRunId') || url.searchParams.get('runId') || '').trim();
         if (!/^[A-Za-z0-9_-]{8,128}$/.test(scriptRunId)) {
           json(response, 400, { ok: false, error: '无效的日志调用编号' });
           return;
         }
+        const ownerUserId = await readRunOwner(scriptRunId);
+        if (user.role !== 'admin' && ownerUserId && ownerUserId !== user.id) {
+          json(response, 403, { ok: false, error: '无权读取其他用户的执行日志' });
+          return;
+        }
         const logPath = path.join(PROJECT_ROOT, 'logs', 'runs', `${scriptRunId}.log`);
         try {
           const content = await fs.promises.readFile(logPath, 'utf8');
-          json(response, 200, { ok: true, scriptRunId, content });
+          json(response, 200, { ok: true, scriptRunId, content: redact(content) });
         } catch {
           json(response, 404, { ok: false, error: '未找到指定调用的日志文件' });
         }
         return;
       }
       if (url.pathname === '/api/scripts') {
+        if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
         const db = authService.db;
         const visibility = db.getScriptVisibility();
         const bundles = db.getScriptBundles();
@@ -1852,12 +1980,14 @@ async function handler(request, response) {
         json(response, 403, { ok: false, error: '无权操作此设备或该设备已到期回收' });
         return;
       }
-      const result = await executeScript(body);
+      const result = await executeScript(body, user);
       json(response, 200, result);
       return;
     }
     if (request.method === 'POST' && (url.pathname === '/api/execute/stop' || url.pathname === '/api/scripts/stop')) {
-      const result = await stopActiveScript(await readJsonBody(request));
+      if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
+      const result = await stopActiveScript(await readJsonBody(request), user);
+      if (result && result.forbidden) { json(response, 403, { ok: false, error: result.message }); return; }
       json(response, 200, result);
       return;
     }
@@ -1985,12 +2115,13 @@ async function handler(request, response) {
     const message = redact(error?.message || error);
     const status = errorStatus({ message, status: error?.status });
     const level = status >= 500 ? 'ERROR' : 'WARN';
+    const safeUrl = authGuard.redact(request.url || '');
     if (level === 'ERROR') {
-      console.error(`[API UNHANDLED] ${request.method} ${request.url} -> ${status}:`, error);
-      appendServerLog('ERROR', `UNHANDLED ${request.method} ${request.url} -> ${status}: ${message}`, error?.stack || '');
+      console.error(`[API UNHANDLED] ${request.method} ${safeUrl} -> ${status}:`, error);
+      appendServerLog('ERROR', `UNHANDLED ${request.method} ${safeUrl} -> ${status}: ${message}`, error?.stack || '');
     } else {
-      console.warn(`[API REJECTED] ${request.method} ${request.url} -> ${status}: ${message}`);
-      appendServerLog('WARN', `REJECTED ${request.method} ${request.url} -> ${status}: ${message}`);
+      console.warn(`[API REJECTED] ${request.method} ${safeUrl} -> ${status}: ${message}`);
+      appendServerLog('WARN', `REJECTED ${request.method} ${safeUrl} -> ${status}: ${message}`);
     }
     json(response, status, { ok: false, error: message,
       ...(error?.name === 'StreamScreenshotError' ? { code: error.code } : {}), ...(error?.timing || {}) });

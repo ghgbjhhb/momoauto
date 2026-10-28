@@ -99,7 +99,7 @@
       listEl.innerHTML = `
         <div class="disk-empty-state error">
           <span class="disk-empty-icon">⚠️</span>
-          <p>加载失败: ${err.message}</p>
+          <p>加载失败: ${escapeHtml(err.message)}</p>
           <button type="button" class="disk-btn-subtle" onclick="window.CloudDisk.refresh()">重新加载</button>
         </div>
       `;
@@ -174,7 +174,7 @@
       let thumbHtml = '';
       if (file.isImage) {
         thumbHtml = `
-          <div class="disk-file-thumb image-thumb" onclick="window.CloudDisk.previewImage('${escapeHtml(file.name)}', '${previewUrl}')">
+          <div class="disk-file-thumb image-thumb" data-url="${previewUrl}" onclick="window.CloudDisk.previewImage(this.closest('.disk-file-card').dataset.filename, this.dataset.url)">
             <img src="${previewUrl}" alt="${escapeHtml(file.name)}" loading="lazy" />
           </div>
         `;
@@ -189,7 +189,7 @@
         thumbHtml = `
           <div class="disk-file-thumb doc-thumb">
             <span class="doc-icon">📄</span>
-            <span class="doc-label">${ext.toUpperCase().replace('.', '') || 'FILE'}</span>
+            <span class="doc-label">${escapeHtml(ext.toUpperCase().replace('.', '') || 'FILE')}</span>
           </div>
         `;
       }
@@ -210,24 +210,24 @@
       const sendBtnText = isParamsDir ? '🚀 推送真参到云机' : '🚀 推送到云机相册';
 
       return `
-        <div class="disk-file-card" data-filename="${escapeHtml(file.name)}">
+        <div class="disk-file-card" data-filename="${escapeHtml(file.name)}" data-isimage="${Boolean(file.isImage)}" data-istext="${Boolean(file.isText)}">
           ${thumbHtml}
           <div class="disk-file-main">
             <div class="disk-file-title" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
             <div class="disk-file-meta">
-              <span class="meta-item">📦 ${file.sizeFormatted}</span>
+              <span class="meta-item">📦 ${escapeHtml(file.sizeFormatted)}</span>
               <span class="meta-item">🕒 ${dateStr}</span>
             </div>
             ${extraBadgeHtml}
           </div>
           <div class="disk-file-actions">
-            <button type="button" class="disk-action-btn primary push-btn" ${sendBtnDisabled} onclick="window.CloudDisk.sendToDevice('${escapeHtml(file.name)}')">
+            <button type="button" class="disk-action-btn primary push-btn" ${sendBtnDisabled} onclick="window.CloudDisk.sendToDevice(this.closest('.disk-file-card').dataset.filename)">
               ${sendBtnText}
             </button>
-            <button type="button" class="disk-action-btn view-btn" onclick="window.CloudDisk.viewFile('${escapeHtml(file.name)}', ${file.isImage}, ${file.isText})">
+            <button type="button" class="disk-action-btn view-btn" onclick="var c = this.closest('.disk-file-card'); window.CloudDisk.viewFile(c.dataset.filename, c.dataset.isimage === 'true', c.dataset.istext === 'true')">
               👁️ 预览
             </button>
-            <button type="button" class="disk-action-btn danger delete-btn" onclick="window.CloudDisk.deleteFile('${escapeHtml(file.name)}')">
+            <button type="button" class="disk-action-btn danger delete-btn" onclick="window.CloudDisk.deleteFile(this.closest('.disk-file-card').dataset.filename)">
               🗑️
             </button>
           </div>
@@ -423,7 +423,7 @@
           </div>
         `;
       } catch (err) {
-        bodyEl.innerHTML = `<div style="padding:16px; color:#ff4d4f;">加载文本失败: ${err.message}</div>`;
+        bodyEl.innerHTML = `<div style="padding:16px; color:#ff4d4f;">加载文本失败: ${escapeHtml(err.message)}</div>`;
       }
     } else {
       bodyEl.innerHTML = `

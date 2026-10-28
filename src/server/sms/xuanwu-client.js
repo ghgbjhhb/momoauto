@@ -3,10 +3,24 @@
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const { assertSafeOutboundUrl, assertSafeOutboundUrlSync } = require('../../automation/url-guard');
 
 const DEFAULT_HOST = 'www.xuanwu.de';
 const DEFAULT_PREFIX = '/api/admin/openapi/v1';
 const IPV4_PATTERN = /^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$/;
+
+// SSRF 防护策略（玄武这条链路）：
+// 玄武接码网关是用户自建服务，部署在本机（http://127.0.0.1:<端口>）是合法用法，
+// 因此默认放行回环地址（allowLoopback: true）；其余私网段（10/8、172.16/12、
+// 192.168/16、169.254/16、100.64/10、0/8、fc00::/7、fe80::/10 等）默认仍拒绝，
+// 仅允许通过环境变量 YUNMOMO_SMS_ALLOW_PRIVATE=1 显式放行（用户自建内网网关场景）。
+// 特别地，未显式放行时云元数据地址 169.254.169.254 一律拒绝。
+function smsGuardOptions() {
+  return {
+    allowLoopback: true,
+    allowPrivate: String(process.env.YUNMOMO_SMS_ALLOW_PRIVATE || '').trim() === '1'
+  };
+}
 
 class XuanwuError extends Error {
   constructor(message, code = 'ERROR') {
@@ -42,6 +56,14 @@ class XuanwuClient {
     } else {
       this.baseUrl = `https://${raw.replace(/\/+$/, '')}`;
     }
+
+    // 同步结构校验：非法 scheme / userinfo / 私网 IP 字面量一律拒绝（不落入 baseUrl）。
+    // DNS 指向私网的域名由 _request 发请求前的异步完整校验兜底。
+    try {
+      assertSafeOutboundUrlSync(this.baseUrl, smsGuardOptions());
+    } catch (err) {
+      throw new XuanwuError(err.message, 'UNSAFE_HOST');
+    }
   }
 
   setApiKey(apiKey) {
@@ -51,6 +73,13 @@ class XuanwuClient {
   async _request(route, query = {}) {
     if (!this.apiKey) {
       throw new XuanwuError('未配置玄武 API 密钥 (API Key)', 'NO_API_KEY');
+    }
+
+    // 发请求前做完整 SSRF 校验（含 DNS 解析），确保不会把 X-API-Key 带向私网/元数据地址。
+    try {
+      await assertSafeOutboundUrl(this.baseUrl, smsGuardOptions());
+    } catch (err) {
+      throw new XuanwuError(err.message, 'UNSAFE_HOST');
     }
 
     const searchParams = new URLSearchParams();
