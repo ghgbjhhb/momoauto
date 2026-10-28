@@ -973,7 +973,7 @@
 
               <div style="display: flex; align-items: center; gap: 8px;">
                 <label for="cardBatchTag" style="font-size: 13px; color: #595959;">批次备注：</label>
-                <input id="cardBatchTag" class="form-input" type="text" placeholder="选填，如首批代理" style="width: 220px; height: 32px; font-size: 13px;">
+                <input id="cardBatchTag" name="card_batch_tag_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="选填，如首批代理" style="width: 220px; height: 32px; font-size: 13px;">
               </div>
 
               <button class="run-button" style="height: 32px; margin: 0; background: #1677ff; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 500; cursor: pointer; padding: 0 18px;" type="submit">立即生成</button>
@@ -1092,7 +1092,24 @@
             </div>
           </div>
           <div style="padding: 16px 20px;">
-            <!-- 文件列表 (支持直接拖拽文件到此处上传) -->
+            <!-- 用户头像操作栏 (选中图片时显示) -->
+            <div class="avatar-operation-bar" id="avatarOperationBar" style="display:none; justify-content:space-between; align-items:center; padding:10px 16px; background:#f0f7ff; border:1px solid #bae0ff; border-radius:6px; margin-bottom:14px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:13px; color:#595959;">已选中：</span>
+                <span id="avatarSelectedName" style="font-size:13px; font-weight:600; color:#1677ff;"></span>
+                <span id="avatarSelectedSize" style="font-size:12px; color:#8c8c8c;"></span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button type="button" class="btn-action-sm" id="btnPushSelectedAvatar" style="background:#1677ff; color:#fff; border-color:#1677ff; font-weight:600; padding:4px 14px;">
+                  🚀 推送到相册
+                </button>
+                <button type="button" class="btn-action-sm danger" id="btnDeleteSelectedAvatar" style="padding:4px 12px;">
+                  🗑️ 删除
+                </button>
+              </div>
+            </div>
+
+            <!-- 文件列表 / 网格 (支持直接拖拽文件到此处上传) -->
             <div class="disk-file-list" id="adminDiskFileList" style="min-height: 200px;">
               <div class="disk-empty-state">
                 <p>正在读取云盘文件…</p>
@@ -1117,7 +1134,10 @@
                 <button type="button" class="log-level-btn" data-level="ERROR">ERROR</button>
                 <button type="button" class="log-level-btn" data-level="HTTP">HTTP</button>
               </div>
-              <input type="text" id="adminLogSearch" class="form-input" placeholder="过滤关键字..." style="width: 170px; height: 30px; font-size: 12px;">
+              <div style="position: relative; display: inline-flex; align-items: center;">
+                <input type="search" id="adminLogSearch" name="admin_log_search_filter_no_autofill" class="form-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly','readonly');" placeholder="过滤关键字..." style="width: 175px; height: 30px; font-size: 12px; padding-right: 22px;">
+                <button type="button" id="clearAdminLogSearchBtn" title="清空搜索" style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; color: #8c8c8c; font-size: 13px; display: none; line-height: 1; padding: 2px;">✕</button>
+              </div>
               <label style="font-size: 12.5px; display:flex; align-items:center; gap:4px; cursor:pointer; color:#595959; user-select:none;">
                 <input type="checkbox" id="adminLogAutoScroll" checked> 自动滚屏
               </label>
@@ -1251,12 +1271,12 @@
         <div class="admin-modal-title" id="aiProviderModalTitle">新增 AI 供应商</div>
         <button class="btn-action-sm" id="closeAiProviderModalBtn" type="button" style="border:none; font-size:16px;">✕</button>
       </div>
-      <form id="aiProviderForm" style="display:flex; flex-direction:column; gap:14px;">
+      <form id="aiProviderForm" autocomplete="off" style="display:flex; flex-direction:column; gap:14px;">
         <input type="hidden" id="editProviderId">
 
         <div>
           <label for="editProviderName" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">供应商名称</label>
-          <input id="editProviderName" class="form-input" type="text" placeholder="例如：DeepSeek 官方、硅基流动" style="width:100%; height:34px;" required>
+          <input id="editProviderName" name="edit_provider_name_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="例如：DeepSeek 官方、硅基流动" style="width:100%; height:34px;" required>
         </div>
 
         <div>
@@ -1270,20 +1290,20 @@
 
         <div>
           <label for="editProviderEndpoint" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">接口链接</label>
-          <input id="editProviderEndpoint" class="form-input" type="text" placeholder="https://api.deepseek.com" style="width:100%; height:34px;" required>
+          <input id="editProviderEndpoint" name="edit_provider_endpoint_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="https://api.deepseek.com" style="width:100%; height:34px;" required>
         </div>
 
         <div>
           <label for="editProviderApiKey" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">API Key</label>
           <div style="display:flex; gap:8px;">
-            <input id="editProviderApiKey" class="form-input masked-secret" type="text" placeholder="输入 API Key" style="flex:1; height:34px;" autocomplete="off" data-lpignore="true">
+            <input id="editProviderApiKey" name="edit_provider_api_key_no_autofill" class="form-input masked-secret" type="text" placeholder="输入 API Key" style="flex:1; height:34px;" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
             <button type="button" class="btn-action-sm" id="editProviderClearKeyBtn" style="color:#ff4d4f;">清空</button>
           </div>
         </div>
 
         <div>
           <label for="editProviderModel" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">模型名称</label>
-          <input id="editProviderModel" class="form-input" type="text" placeholder="deepseek-chat" style="width:100%; height:34px;" required>
+          <input id="editProviderModel" name="edit_provider_model_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="deepseek-chat" style="width:100%; height:34px;" required>
         </div>
 
         <details style="border:1px solid #f0f0f0; border-radius:6px; padding:10px 14px; background:#fafafa;">
@@ -1365,27 +1385,31 @@
   <!-- 修改登录密码 -->
   <div class="admin-modal" id="adminPasswordModal" style="display: none;">
     <div class="admin-modal-card" style="max-width: 420px; padding: 22px;">
-      <h3 style="font-size: 16px; font-weight: 700; color: #1f1f1f; margin: 0 0 6px 0;">修改登录密码</h3>
-      <p style="font-size: 12.5px; color: #8c8c8c; margin: 0 0 16px 0; line-height: 1.5;">新密码至少 8 位。保存后所有设备上的旧登录状态立即失效，需用新密码重新登录。</p>
-      <div style="display: flex; flex-direction: column; gap: 12px;">
-        <div class="form-field">
-          <label for="pwdCurrentInput">当前密码</label>
-          <input class="form-input" type="password" id="pwdCurrentInput" autocomplete="current-password" placeholder="请输入当前登录密码">
+      <form id="adminPasswordForm" autocomplete="off" onsubmit="return false;">
+        <!-- 显式内部账号槽位：将密码修改框的账号范围彻底封闭在表单内部，杜绝浏览器向全局搜索框倒灌账号 -->
+        <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
+        <h3 style="font-size: 16px; font-weight: 700; color: #1f1f1f; margin: 0 0 6px 0;">修改登录密码</h3>
+        <p style="font-size: 12.5px; color: #8c8c8c; margin: 0 0 16px 0; line-height: 1.5;">新密码至少 8 位。保存后所有设备上的旧登录状态立即失效，需用新密码重新登录。</p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="form-field">
+            <label for="pwdCurrentInput">当前密码</label>
+            <input class="form-input" type="password" id="pwdCurrentInput" autocomplete="current-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="请输入当前登录密码">
+          </div>
+          <div class="form-field">
+            <label for="pwdNewInput">新密码</label>
+            <input class="form-input" type="password" id="pwdNewInput" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="至少 8 位">
+          </div>
+          <div class="form-field">
+            <label for="pwdConfirmInput">确认新密码</label>
+            <input class="form-input" type="password" id="pwdConfirmInput" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="再次输入新密码">
+          </div>
+          <div id="pwdModalError" style="font-size: 12.5px; color: #ff4d4f; min-height: 16px;"></div>
         </div>
-        <div class="form-field">
-          <label for="pwdNewInput">新密码</label>
-          <input class="form-input" type="password" id="pwdNewInput" autocomplete="new-password" placeholder="至少 8 位">
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
+          <button class="btn-action-sm" id="pwdModalCancelBtn" type="button" style="padding: 6px 16px; height: 32px; font-size: 13px;">取消</button>
+          <button class="btn-action-sm" id="pwdModalOkBtn" type="button" style="padding: 6px 18px; height: 32px; font-size: 13px; background: #1677ff; color: #fff; border: 1px solid #1677ff; font-weight: 600;">保存新密码</button>
         </div>
-        <div class="form-field">
-          <label for="pwdConfirmInput">确认新密码</label>
-          <input class="form-input" type="password" id="pwdConfirmInput" autocomplete="new-password" placeholder="再次输入新密码">
-        </div>
-        <div id="pwdModalError" style="font-size: 12.5px; color: #ff4d4f; min-height: 16px;"></div>
-      </div>
-      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
-        <button class="btn-action-sm" id="pwdModalCancelBtn" type="button" style="padding: 6px 16px; height: 32px; font-size: 13px;">取消</button>
-        <button class="btn-action-sm" id="pwdModalOkBtn" type="button" style="padding: 6px 18px; height: 32px; font-size: 13px; background: #1677ff; color: #fff; border: 1px solid #1677ff; font-weight: 600;">保存新密码</button>
-      </div>
+      </form>
     </div>
   </div>
 
