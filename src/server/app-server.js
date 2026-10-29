@@ -245,7 +245,10 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     id: 'flow-16', order: 16, title: '陌陌一键上号',
     file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
-    version: 'v2'
+    version: 'v2',
+    parameters: [
+      { name: 'targetTime', label: '丫丫复扫订单时间', defaultValue: '16:05', placeholder: '如 16:05，匹配历史订单' }
+    ]
   },
   {
     id: 'flow-all', title: '执行全流程 (V3)', file: 'flows/v3/执行全部.js', args: ['--execute'],
@@ -929,6 +932,9 @@ function configureScript(script, body, env) {
     if (!['execute', 'draft'].includes(mode) || !options.contactName?.trim()) throw invalidOptions('执行 AI 回复前必须指定联系人，运行模式只能是 draft 或 execute');
     env.YUNMOMO_MOMO_AI_MODE = mode;
     if (options.contactName?.trim()) env.YUNMOMO_MOMO_CONTACT_NAME = options.contactName.trim();
+  }
+  if (script.id === 'flow-16') {
+    if (options.targetTime?.trim()) env.YAYA_TARGET_TIME = options.targetTime.trim();
   }
   if (script.id === 'flow-15') {
     if (options.mode?.trim()) env.YUNMOMO_MOMO_WATCH_MODE = options.mode.trim();
