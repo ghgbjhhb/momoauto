@@ -328,10 +328,11 @@ async function swipeHomePage(control, direction) {
   const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.46)));
   const fromX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.82) : Math.round(width * 0.18)));
   const toX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.18) : Math.round(width * 0.82)));
+  // 使用更干脆的滑动手势 (250ms, 12步)，确保触发 Launcher 翻页惯性，避免慢拖拽导致回弹
   await control.swipe(
     { x: fromX, y },
     { x: toX, y },
-    { durationMs: 400, steps: 15 },
+    { durationMs: 250, steps: 12 },
   );
   await control.flush();
 }
@@ -343,6 +344,13 @@ async function findApp(phone, control, worker, directory, state, home, options,
   const visited = new Set();
 
   for (const direction of directions) {
+    // 切换搜索方向前，若不是初始主屏，先发 HOME 键重置回桌面基准页，确保从主屏开始向该方向翻页
+    if (direction !== directions[0]) {
+      await sendHome(control);
+      await sleep(600);
+      current = await confirmHome(phone, control, worker, directory, state, { ...options, homeTimeoutMs: 6000 }).catch(() => current);
+    }
+
     for (let page = 0; page <= options.maxPagesPerDirection; page += 1) {
       const box = targetBoxFinder(current.items);
       if (box && !clipboardToastVisible(current.items)) {
@@ -350,37 +358,47 @@ async function findApp(phone, control, worker, directory, state, home, options,
       }
 
       const signature = pageSignature(current.items);
-      if (signature) visited.add(signature);
       if (page === options.maxPagesPerDirection) break;
 
-      await swipeHomePage(control, direction);
-      // A frame during the launcher animation has moving labels/hitboxes.
-      // Wait for the gesture and page animation before locating the next icon.
-      await sleep(800);
-      let previousFrame = '';
-      current = await observeUntil(
-        phone,
-        worker,
-        directory,
-        state,
-        observation => {
-          // Only the initial HOME needs the system-app anchors. Later pages
-          // may contain only downloaded apps; require two stationary frames.
-          const frame = observation.items
-            .filter(item => item.centerY > observation.height * 0.06 && item.centerY < observation.height * 0.9)
-            .map(item => `${normalizeText(item.text)}:${Math.round(item.centerX / 8)}:${Math.round(item.centerY / 8)}`)
-            .join('|');
-          const stable = frame.length > 0 && frame === previousFrame && !clipboardToastVisible(observation.items);
-          previousFrame = frame;
-          return stable;
-        },
-        options.homeTimeoutMs,
-        options.pollMs,
-        `home-page-${direction}-${page + 1}`,
-      );
-      if (!current) continue;
-      const nextSignature = pageSignature(current.items);
-      if (nextSignature && visited.has(nextSignature)) break;
+      // 翻页操作（最多支持 2 次手势尝试，防止偶发手势丢失或阻尼回弹被误判为“已触底”）
+      let nextObservation = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await swipeHomePage(control, direction);
+        await sleep(700);
+        let previousFrame = '';
+        nextObservation = await observeUntil(
+          phone,
+          worker,
+          directory,
+          state,
+          observation => {
+            const frame = observation.items
+              .filter(item => item.centerY > observation.height * 0.06 && item.centerY < observation.height * 0.9)
+              .map(item => `${normalizeText(item.text)}:${Math.round(item.centerX / 8)}:${Math.round(item.centerY / 8)}`)
+              .join('|');
+            const stable = frame.length > 0 && frame === previousFrame && !clipboardToastVisible(observation.items);
+            previousFrame = frame;
+            return stable;
+          },
+          options.homeTimeoutMs,
+          options.pollMs,
+          `home-page-${direction}-${page + 1}-att${attempt + 1}`,
+        );
+        if (!nextObservation) continue;
+        const nextSig = pageSignature(nextObservation.items);
+        if (nextSig && nextSig !== signature) break;
+        await sleep(300);
+      }
+
+      if (!nextObservation) continue;
+      const nextSignature = pageSignature(nextObservation.items);
+      // 若连续尝试后页面依然完全未变化，确认到达该方向尽头（触底）
+      if (nextSignature === signature) break;
+      // 若出现环路循环页面，停止继续翻页
+      if (visited.has(nextSignature)) break;
+
+      if (signature) visited.add(signature);
+      current = nextObservation;
     }
   }
   throw new Error(`已确认在桌面，但在左右翻页范围内未识别到“${targetName}”应用`);
