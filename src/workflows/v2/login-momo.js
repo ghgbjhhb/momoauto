@@ -46,8 +46,8 @@ const {
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
 const DEFAULT_TARGET_TIME = '16:05';
-// TODO: 当前默认使用【历史复扫模式 (relogin)】，方便下次随时修改切换为【直接一键授权模式 (direct)】
-const DEFAULT_YAYA_MODE = 'relogin';
+// 默认使用【直接一键授权模式 (direct)】；若遇到超时(>8分钟)或服务端提示“请重新授权”，脚本会自动触发【历史复扫模式 (relogin)】自愈
+const DEFAULT_YAYA_MODE = 'direct';
 // TODO: 当前默认女网名“菲菲菲”，方便后续随时接入外部词库动态生成网名
 const DEFAULT_NICKNAME = '菲菲菲';
 
