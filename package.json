@@ -80,7 +80,9 @@
     "flow:15": "node flows/momo/15-momo监听中枢.js",
     "flow:16": "node flows/momo/16-momo一键上号.js",
     "momo:ai-reply": "node src/workflows/momo-ai-reply.js",
-    "momo:brain": "node scripts/momo-brain.js"
+    "momo:brain": "node scripts/momo-brain.js",
+    "ui:lint": "node scripts/ui-lint.js",
+    "ui:shot": "node scripts/ui-shot.js"
   },
   "engines": {
     "node": ">=18"

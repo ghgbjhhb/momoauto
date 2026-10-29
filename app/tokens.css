@@ -1,0 +1,176 @@
+/* ==========================================================================
+   tokens.css —— 唯一真源
+   规则：
+   1. 本文件是唯一允许出现字面量颜色 / 数值的文件，其余 CSS 只能消费 var()。
+   2. 角色层（--bg / --text / --border / --accent）与值层（具体 hex）分离；
+      换主题只替换值层，组件层不动。
+   3. 令牌名自带数值（--sp-16 = 16px），便于人读，也便于 ui-lint 反推白名单。
+   4. 全部令牌挂在 :root[data-ui="v2"] 下，与旧样式表隔离：
+      旧表在 :root 定义过 --bg-page / --border / --danger 等 7 个同名变量，
+      若两套同时加载且同为 :root，后加载者会静默覆盖前者的值。
+      带属性选择器后，只有显式声明 data-ui="v2" 的页面才吃到本文件。
+   ========================================================================== */
+
+:root[data-ui="v2"] {
+  /* ---------- 字体 ---------- */
+  /* 说明：不引入 Geist。CSP 为 font-src 'self' data:，仓库内无 woff2，
+     外部 CDN 字体一律被拦；中文渲染也需要系统 CJK 字体参与。详见 UI-SPEC 偏离项。 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---------- 字号（11px 仅限拉丁字母与数字，中文最小 12px） ---------- */
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+
+  /* ---------- 字重（只有两档，深色底上 600+ 会光学加粗） ---------- */
+  --fw-400: 400;
+  --fw-500: 500;
+
+  /* ---------- 行高 ---------- */
+  --lh-none: 1;
+  --lh-tight: 1.3;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+
+  /* ---------- 间距（2 的倍数栅格，控制台需要 2/6 这类小值） ---------- */
+  --sp-2: 2px;
+  --sp-4: 4px;
+  --sp-6: 6px;
+  --sp-8: 8px;
+  --sp-12: 12px;
+  --sp-16: 16px;
+  --sp-20: 20px;
+  --sp-24: 24px;
+  --sp-32: 32px;
+  --sp-40: 40px;
+  --sp-48: 48px;
+
+  /* ---------- 圆角（999 仅限圆形元素：徽章、圆点、旋转环） ---------- */
+  --r-4: 4px;
+  --r-6: 6px;
+  --r-8: 8px;
+  --r-pill: 999px;
+
+  /* ---------- 控件与行高（锁死高度，避免同类元素高低不一） ---------- */
+  --h-control-sm: 24px;
+  --h-control: 28px;
+  --h-control-lg: 32px;
+  --h-row-compact: 28px;
+  --h-row: 32px;
+  --h-row-comfortable: 36px;
+  --h-header: 44px;
+  --h-toolbar: 40px;
+  --h-badge: 20px;
+  --h-device-row: 52px;
+  --h-modal-head: 44px;
+  --h-textarea: 72px;
+
+  /* ---------- 图标 ---------- */
+  --icon-16: 16px;
+  --icon-20: 20px;
+
+  /* ---------- 动效（只允许 opacity / transform / 颜色类） ---------- */
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---------- 层级 ---------- */
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-modal: 1000;
+  --z-toast: 2000;
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   浅色（默认）—— 控制台主场景
+   页面底压到 #eef0f4，让白色表面靠明度差浮起来，而不是靠投影。
+   ========================================================================== */
+
+:root[data-ui="v2"] {
+  --bg-page: #eef0f4;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f2f4f7;
+  --bg-raised: #ffffff;
+  --bg-hover: #f5f7fa;
+  --bg-selected: #e9f0fe;
+  --bg-selected-hover: #dfe9fd;
+  --bg-overlay: rgba(16, 24, 40, 0.4);
+
+  --text-1: #171a20;
+  --text-2: #5b6472;
+  --text-3: #6b7484;
+  --text-on-accent: #ffffff;
+
+  --border: #e2e5ea;
+  --border-strong: #c9cfd9;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #e9f0fe;
+
+  --ok: #15803d;
+  --ok-soft: #ecfdf3;
+  --warn: #b45309;
+  --warn-soft: #fffbeb;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --info: #0369a1;
+  --info-soft: #eff8ff;
+
+  --focus-ring: 0 0 0 2px rgba(37, 99, 235, 0.28);
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 4px 16px rgba(16, 24, 40, 0.1);
+  --shadow-3: 0 8px 32px rgba(16, 24, 40, 0.16);
+}
+
+/* ==========================================================================
+   深色 —— 只替换值层，组件层零改动
+   accent 用真蓝而不是薰衣草紫；info 用青色，和 accent 明确区分。
+   ========================================================================== */
+
+:root[data-ui="v2"][data-theme="dark"] {
+  --bg-page: #0b0b0d;
+  --bg-surface: #17171a;
+  --bg-subtle: #212126;
+  --bg-raised: #232328;
+  --bg-hover: #1e1e22;
+  --bg-selected: rgba(77, 141, 255, 0.12);
+  --bg-selected-hover: rgba(77, 141, 255, 0.18);
+  --bg-overlay: rgba(0, 0, 0, 0.62);
+
+  --text-1: #ededef;
+  --text-2: #a6a6ae;
+  --text-3: #8b8b94;
+  --text-on-accent: #0b0b0d;
+
+  --border: #2e2e34;
+  --border-strong: #414148;
+
+  --accent: #4d8dff;
+  --accent-hover: #6ba0ff;
+  --accent-soft: rgba(77, 141, 255, 0.14);
+
+  --ok: #4ade80;
+  --ok-soft: rgba(74, 222, 128, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --info: #67c9f5;
+  --info-soft: rgba(103, 201, 245, 0.12);
+
+  --focus-ring: 0 0 0 2px rgba(77, 141, 255, 0.4);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 8px 32px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
