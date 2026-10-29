@@ -4,21 +4,20 @@
  * MOMO 一键上号工作流 (第一阶段 + 第二阶段丫丫复扫授权)
  *
  * 业务流程规范（严格参照 momo-contact-sync 与 momo-ai-reply 工业级标准）：
- * 1. 设备与控制通道就绪，记录起始现场截图；
+ * 1. 桌面搜寻与启动：通过 findApp 在桌面左右多页搜寻「MOMO陌陌」并点击唤起；
  * 2. 状态机识别与执行：
- *    - 若在桌面：定位「MOMO陌陌」图标并点击唤起应用；
  *    - 若出现首次启动隐私弹窗「欢迎使用MOMO陌陌APP」：定位并点击「同意」；
  *    - 若处于登录主界面：精准定位绿色「微信登录」按钮并点击；
  *    - 若弹出「用户使用协议」提示框：定位并点击蓝底「同意」按钮；
  * 3. 动作发出后上一轮观察证据立即强制失效，杜绝 TOCTOU 时差误判；
  * 4. 调用丫丫登录工作流（复扫模式 relogin），依据传入的订单时间（如 16:05）在历史订单中精准检索并点击“复扫”；
- * 5. 高频监听授权 Toast 与跳转确认，记录最终状态截图，留痕归档。
+ * 5. 精简控制台输出，去除截图和轮询杂音，保留干净干脆的业务执行日志。
  */
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
-const { PROJECT_ROOT, redact } = require('../../automation/runtime');
+const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
 
@@ -31,14 +30,14 @@ const {
   normalizeText,
   RapidOcrWorker,
   screenshotAndOcr,
-  confirmHome,
+  findApp,
+  sendHome,
   tapBox,
   homeAnchorMatches,
 } = shared;
 
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
-const DEFAULT_TIMEOUT_MS = 60000;
 const DEFAULT_TARGET_TIME = '16:05';
 // TODO: 当前默认使用【历史复扫模式 (relogin)】，方便下次随时修改切换为【直接一键授权模式 (direct)】
 const DEFAULT_YAYA_MODE = 'relogin';
@@ -63,12 +62,16 @@ function createLogger(logFilePath) {
         await fs.mkdir(path.dirname(logFilePath), { recursive: true });
         await fs.appendFile(logFilePath, line, 'utf8');
       } catch {}
+    },
+    async init() {},
+    get relativeLogPath() {
+      return logFilePath ? path.relative(PROJECT_ROOT, logFilePath).replace(/\\/g, '/') : '';
     }
   };
 }
 
 /**
- * 采集关键里程碑截图并存盘
+ * 采集关键里程碑截图并存盘（静默写入文件与日志，不刷屏终端）
  */
 async function captureMilestoneScreenshot(phone, dir, filename, desc, log = null) {
   if (!phone || typeof phone.screenshot !== 'function' || !dir) return null;
@@ -79,7 +82,7 @@ async function captureMilestoneScreenshot(phone, dir, filename, desc, log = null
     const filePath = path.join(dir, `${filename}.png`);
     await fs.writeFile(filePath, res.data);
     const rel = path.relative(PROJECT_ROOT, filePath);
-    if (log) log.console(`【截图记录】：${desc} -> ${rel}`);
+    if (log?.file) await log.file(`Screenshot saved: ${desc}`, { file: rel });
     return filePath;
   } catch {
     return null;
@@ -94,12 +97,21 @@ function matchesDevice(record, targetId) {
   return !sdk || sdk === 'v2';
 }
 
-// 桌面图标标签查找：仅匹配单行短标签，排除“欢迎使用MOMO陌陌APP”等长标题
-function findMomoLauncherIcon(items) {
-  return items.find(it => {
-    const norm = normalizeText(it.text);
-    return (norm === 'MOMO陌陌' || norm === '陌陌' || norm === 'MOMO') && it.text.length <= 6;
-  }) || null;
+// 桌面图标标签查找：仅匹配短标签，排除“欢迎使用MOMO陌陌APP”等长标题
+function momoTargetBox(items) {
+  for (const item of items) {
+    const norm = normalizeText(item.text);
+    if ((norm === 'MOMO陌陌' || norm === '陌陌' || norm === 'MOMO') && item.text.length <= 6) {
+      return item;
+    }
+  }
+  for (const item of items) {
+    const norm = normalizeText(item.text);
+    if (norm.includes('陌陌') && !norm.includes('欢迎') && !norm.includes('协议') && !norm.includes('政策') && item.text.length <= 8) {
+      return item;
+    }
+  }
+  return null;
 }
 
 // 系统桌面判定：必须具备系统桌面特征，且严禁把带有弹窗或登录特征的页面误判为桌面
@@ -111,8 +123,7 @@ function isLauncherScreen(items) {
   if (hasDialogOrLogin) return false;
   return homeAnchorMatches(items).length >= 2 || (
     Boolean(findStrictPhrase(items, '微信')) &&
-    Boolean(findStrictPhrase(items, '设置')) &&
-    Boolean(findMomoLauncherIcon(items))
+    Boolean(findStrictPhrase(items, '设置'))
   );
 }
 
@@ -194,11 +205,12 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   const resolvedDeviceId = deviceIdOf(target);
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
+  const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
+  const modeLabel = yayaMode === 'relogin' ? '历史复扫' : '直接授权';
 
-  await log.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, targetTime });
+  await log.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, targetTime, yayaMode });
 
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  log.console(`[执行操作] 陌陌一键上号 (流程: 打开陌陌 -> 微信登录 -> 同意协议 -> 丫丫复扫[时间:${targetTime}])`);
 
   const phone = client.device(resolvedDeviceId);
   const control = await phone.openControl({ udid: target.udid });
@@ -215,130 +227,152 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     await log.file('Control connected successfully', { screen: `${control.screenWidth}x${control.screenHeight}` });
 
     // 1. 观察当前屏幕
-    log.console('[1/5] 正在分析当前屏幕状态...');
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-inspect', '初始分析画面', log);
 
     // 检查是否已经处于授权后页面
     if (isStepFinishedState(obs.items)) {
-      log.console('[1/5] 检测到当前已处于资料完善阶段（如性别选择界面），上号流程已就绪。');
+      log.console('[1/4] 当前已处于微信登录后阶段（资料设置界面），流程已就绪');
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-final-state', '已处于目标完成页', log);
       return { ok: true, state: 'already_completed', targetTime, screenshotsDir, lastScreenshotPath };
     }
 
-    // 若不在陌陌任何界面，则回桌面打开应用
+    // 若不在陌陌任何界面，则在桌面搜寻并打开应用
     const inMomoFlow = isPrivacyDialog(obs.items) || isLoginPage(obs.items) || isUserAgreementDialog(obs.items);
     if (!inMomoFlow) {
-      log.console('[1/5] 当前未处于陌陌界面，正在回到桌面...');
+      log.console('[1/4] 打开陌陌应用...');
       if (!isLauncherScreen(obs.items)) {
-        await control.home();
-        await control.flush();
-        await sleep(1000);
+        await sendHome(control);
+        await sleep(800);
         obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-home-${state.counter++}`);
       }
       await captureMilestoneScreenshot(phone, screenshotsDir, '02-launcher-screen', '桌面基准页', log);
 
-      log.console('[1/5] 正在桌面定位应用“MOMO陌陌”...');
-      const iconItem = findMomoLauncherIcon(obs.items);
-      if (!iconItem) {
-        throw new Error('桌面未找到“MOMO陌陌”应用图标标签');
+      const navOptions = {
+        maxPagesPerDirection: 5,
+        pollMs: DEFAULT_POLL_MS,
+      };
+
+      const found = await findApp(
+        phone,
+        control,
+        worker,
+        ocrDir,
+        state,
+        obs,
+        navOptions,
+        momoTargetBox,
+        'MOMO陌陌'
+      );
+
+      if (!found?.box) {
+        throw new Error('桌面翻页未找到“MOMO陌陌”应用图标标签');
       }
 
       // 图标在文字上方 55px（在 360x640 下约 -55）
-      const clickPoint = tapBox(control, iconItem, obs, -55);
-      log.console(`[2/5] 点击应用图标启动陌陌 (坐标: x=${clickPoint.x}, y=${clickPoint.y})...`);
+      const clickPoint = tapBox(control, found.box, found.observation, -55);
       await control.tap(clickPoint.x, clickPoint.y);
       await control.flush();
 
-      // 动作后旧证据立即作废，等待应用启动渲染
+      // 等待应用启动渲染
       await sleep(2500);
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-open-${state.counter++}`);
-      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-app-opened', '应用打开响应画面', log);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-after-open-${state.counter++}`);
+      await captureMilestoneScreenshot(phone, screenshotsDir, '03-app-opened', '应用打开响应画面', log);
+
+      // 若点击后仍在桌面，尝试点击文字框中心一次
+      if (isLauncherScreen(obs.items)) {
+        const retryPoint = tapBox(control, found.box, found.observation, 0);
+        await control.tap(retryPoint.x, retryPoint.y);
+        await control.flush();
+        await sleep(2500);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-after-open-retry-${state.counter++}`);
+      }
     } else {
-      log.console('[1/5] 当前已处于陌陌界面，直接推进流程。');
+      log.console('[1/4] 当前已处于陌陌界面');
     }
 
     // 2. 处理可能出现的首次启动隐私政策弹窗「欢迎使用MOMO陌陌APP」
     if (isPrivacyDialog(obs.items)) {
-      log.console('[2/5] 检测到首次启动隐私政策弹窗「欢迎使用MOMO陌陌APP」，准备点击「同意」...');
+      log.console('[2/4] 检测到首次启动隐私政策弹窗，确认同意...');
       const agreeBox = findPrivacyAgreeBox(obs.items);
       if (!agreeBox) throw new Error('检测到隐私政策弹窗，但未找到「同意」按钮');
 
       const point = tapBox(control, agreeBox, obs);
-      log.console(`[2/5] 点击隐私弹窗「同意」按钮 (坐标: x=${point.x}, y=${point.y})`);
       await control.tap(point.x, point.y);
       await control.flush();
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-privacy-agreed', '已点击隐私政策同意', log);
 
-      // 动作后旧证据作废，等待开屏过渡并进入登录页
       await sleep(2500);
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-privacy-${state.counter++}`);
     }
 
-    // 3. 等待并确认登录主界面
+    // 3. 等待并确认登录主界面（静默轮询，不刷屏日志）
     const loginDeadline = Date.now() + 15000;
     while (!isLoginPage(obs.items) && !isUserAgreementDialog(obs.items) && !isStepFinishedState(obs.items) && Date.now() < loginDeadline) {
-      log.console('[3/5] 正在等待陌陌登录页面渲染...');
       await sleep(DEFAULT_POLL_MS);
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wait-login-${state.counter++}`);
     }
 
     if (isStepFinishedState(obs.items)) {
-      log.console('[3/5] 检测到已跳过二次确认直接进入后续阶段。');
+      log.console('[3/4] 检测到已跳过二次确认直接进入后续阶段');
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-final-state', '已处于目标完成页', log);
       return { ok: true, state: 'completed', targetTime, screenshotsDir, lastScreenshotPath };
     }
 
-    // 4. 在登录主界面点击绿色「微信登录」按钮
+    // 登录主界面点击绿色「微信登录」按钮
     if (isLoginPage(obs.items)) {
-      log.console('[3/5] 已确认处于陌陌登录界面，正在定位微信登录图标...');
+      log.console('[3/4] 点击微信登录...');
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-login-page', '登录主界面就绪', log);
 
-      // 微信登录图标物理坐标精准计算：居于右侧（宽度比 0.585），底部靠下（高度比 0.887）
       const wechatX = Math.round(control.screenWidth * 0.585);
       const wechatY = Math.round(control.screenHeight * 0.887);
 
-      log.console(`[3/5] 正在点击微信登录图标 (物理坐标: x=${wechatX}, y=${wechatY})...`);
       await control.tap(wechatX, wechatY);
       await control.flush();
 
-      // 动作后旧证据作废，等待弹出使用协议
       await sleep(1800);
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-wechat-${state.counter++}`);
     }
 
-    // 5. 处理「用户使用协议」提示框
+    // 处理「用户使用协议」提示框（静默等待弹出）
     const agreementDeadline = Date.now() + 15000;
     while (!isUserAgreementDialog(obs.items) && !isStepFinishedState(obs.items) && Date.now() < agreementDeadline) {
-      log.console('[4/5] 正在等待「用户使用协议」提示框弹出...');
       await sleep(DEFAULT_POLL_MS);
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-wait-agreement-${state.counter++}`);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wait-agreement-${state.counter++}`);
     }
 
     if (isUserAgreementDialog(obs.items)) {
-      log.console('[4/5] 检测到「用户使用协议」弹窗，正在定位蓝底「同意」按钮...');
+      log.console('[3/4] 同意登录协议...');
       const agreeBox = findUserAgreementAgreeBox(obs.items);
       if (!agreeBox) throw new Error('检测到用户使用协议弹窗，但未找到「同意」按钮');
 
       const point = tapBox(control, agreeBox, obs);
-      log.console(`[4/4] 点击协议弹窗「同意」按钮 (坐标: x=${point.x}, y=${point.y})`);
       await control.tap(point.x, point.y);
       await control.flush();
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-agreement-agreed', '已点击使用协议同意', log);
 
-      // 动作后旧证据作废，等待界面响应授权跳转
       await sleep(2500);
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-agree-${state.counter++}`);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-agree-${state.counter++}`);
     }
 
-    // 6. 第二阶段：调用丫丫登录（默认复扫模式 relogin，传入目标订单时间 targetTime）
+    // 4. 第二阶段：调用丫丫登录（默认复扫模式 relogin，传入目标订单时间 targetTime）
     // TODO: 当前调用丫丫时默认使用【历史复扫模式 (relogin)】进行测试。
     // 若下次需要切换为【直接一键授权模式 (direct)】，直接修改默认值或传入 options.yayaMode = 'direct'
-    const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
-    const modeLabel = yayaMode === 'relogin' ? '历史复扫' : '直接授权';
-
-    log.console(`[5/5] 第一阶段协议确认完成，正在启动丫丫登录授权 (模式: ${modeLabel}, 目标时间: "${targetTime}")...`);
+    log.console(`[4/4] 丫丫${modeLabel}授权 (时间: ${targetTime})...`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-before-yaya-auth', '启动丫丫复扫前画面', log);
+
+    // 专用于丫丫调用的简洁 logger，过滤冗余头部，让输出保持层次一致
+    const yayaLogger = {
+      logPath: log.logPath,
+      console(msg) {
+        if (msg.includes('[目标设备]') || msg.includes('[运行模式]') || msg.includes('初始化：按 Home 键')) return;
+        const simplified = msg.replace(/^\[\d\/\d\]\s*/, '');
+        log.console(`[4/4] [丫丫] ${simplified}`);
+      },
+      file: (msg, extra) => log.file(msg, extra),
+      init: () => {},
+      get relativeLogPath() { return log.relativeLogPath || ''; }
+    };
 
     const { runYayaWorkflow } = require('./login-yaya');
     yayaResult = await runYayaWorkflow({
@@ -348,14 +382,14 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       targetTime,
       control,
       worker,
-    }, log);
+      logger: yayaLogger,
+    });
 
-    log.console(`[5/5] 丫丫${modeLabel}流程执行完成: ${yayaResult?.summary || yayaResult?.message || '成功'}`);
+    log.console(`[4/4] 丫丫授权完成`);
     await sleep(2500);
 
-    // 7. 终态现场截图与归档
-    log.console('[5/5] 正在截取最终授权完成画面...');
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-final-${state.counter++}`);
+    // 终态现场截图与归档
+    obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-final-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-final-state', '复扫授权后最终完成画面', log);
 
     return {
@@ -408,32 +442,21 @@ function printSummary(result, duration, error = null) {
   console.log('\n' + '='.repeat(60));
   if (result?.ok) {
     console.log('【执行结果】：成功');
-    console.log('【任务名称】：陌陌一键上号 (含丫丫复扫授权)');
+    console.log('【任务名称】：陌陌一键上号');
     console.log('【退出状态码】：0');
-    console.log(`【完成步骤】：打开陌陌 -> 微信登录 -> 同意协议 -> 丫丫复扫[时间:${result.targetTime}]`);
+    console.log(`【完成步骤】：打开陌陌 -> 微信登录 -> 同意协议 -> 丫丫复扫 [时间: ${result.targetTime}]`);
     if (result.yayaResult?.summary) {
       console.log(`【复扫结果】：${result.yayaResult.summary}`);
-    }
-    console.log('【当前状态】：授权跳转完成，已就绪');
-    if (result.lastScreenshotPath) {
-      console.log(`【现场截图】：${path.relative(PROJECT_ROOT, result.lastScreenshotPath)}`);
-    }
-    if (result.screenshotsDir) {
-      console.log(`【截图归档】：${path.relative(PROJECT_ROOT, result.screenshotsDir)}`);
     }
     console.log(`【执行耗时】：${duration} 秒`);
   } else {
     console.log('【执行结果】：失败');
-    console.log('【任务名称】：陌陌一键上号 (含丫丫复扫授权)');
+    console.log('【任务名称】：陌陌一键上号');
     console.log('【退出状态码】：1');
     console.log(`【失败原因】：${error?.message || '未知错误'}`);
     const shotPath = error?.lastScreenshotPath || result?.lastScreenshotPath;
     if (shotPath) {
       console.log(`【现场截图】：${path.relative(PROJECT_ROOT, shotPath)}`);
-    }
-    const dir = error?.screenshotsDir || result?.screenshotsDir;
-    if (dir) {
-      console.log(`【截图归档】：${path.relative(PROJECT_ROOT, dir)}`);
     }
     console.log(`【执行耗时】：${duration} 秒`);
   }
@@ -475,3 +498,10 @@ module.exports = {
   isLoginPage,
   isUserAgreementDialog,
 };
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error(err.message);
+    process.exit(1);
+  });
+}

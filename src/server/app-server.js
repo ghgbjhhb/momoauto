@@ -936,6 +936,7 @@ function configureScript(script, body, env) {
     if (options.contactName?.trim()) env.YUNMOMO_MOMO_CONTACT_NAME = options.contactName.trim();
   }
   if (script.id === 'flow-16') {
+    if (options.yayaMode?.trim()) env.YAYA_MODE = options.yayaMode.trim();
     if (options.targetTime?.trim()) env.YAYA_TARGET_TIME = options.targetTime.trim();
   }
   if (script.id === 'flow-15') {
