@@ -192,6 +192,30 @@ function detectPlatformError(items) {
   return null;
 }
 
+function parseProxyAddress(rawAddr) {
+  if (!rawAddr || typeof rawAddr !== 'string') return null;
+  try {
+    const parsed = new URL(rawAddr.startsWith('socks5://') ? rawAddr : `socks5://${rawAddr}`);
+    return {
+      s5ip: parsed.hostname,
+      s5port: Number(parsed.port),
+      s5user: parsed.username ? decodeURIComponent(parsed.username) : undefined,
+      s5pwd: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+    };
+  } catch {
+    const match = rawAddr.match(/^(?:socks5:\/\/)?(?:([^:]+):([^@]+)@)?([^:]+):(\d+)$/i);
+    if (match) {
+      return {
+        s5ip: match[3],
+        s5port: Number(match[4]),
+        s5user: match[1],
+        s5pwd: match[2],
+      };
+    }
+  }
+  return null;
+}
+
 function parseDownloadSpeed(items) {
   for (const item of items) {
     const text = String(item.text || '').replace(/\s+/g, '');
@@ -246,6 +270,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
   const state = { counter: 0 };
   let lastScreenshotPath = null;
   let proxyRecorded = null;
+  let savedProxyConfig = null;
 
   try {
     await control.connect();
@@ -464,9 +489,35 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
                 phone.getProxy('legacy').catch(() => null),
                 phone.getProxy('v1').catch(() => null)
               ]);
-              proxyRecorded = legacy?.addr || v1?.address || '未配置代理或已停止';
+              const rawLegacy = legacy?.addr || legacy?.address;
+              const rawV1 = v1?.address || v1?.addr;
+              if (rawLegacy) {
+                const parsed = parseProxyAddress(rawLegacy);
+                if (parsed) {
+                  savedProxyConfig = {
+                    version: 'legacy',
+                    ...parsed,
+                    domainMode: '2',
+                    proxyMode: '1',
+                    raw: rawLegacy,
+                  };
+                }
+              } else if (rawV1) {
+                const parsed = parseProxyAddress(rawV1);
+                if (parsed) {
+                  savedProxyConfig = {
+                    version: 'v1',
+                    ...parsed,
+                    domainMode: '0',
+                    proxyMode: '2',
+                    raw: rawV1,
+                  };
+                }
+              }
+
+              proxyRecorded = savedProxyConfig?.raw || rawLegacy || rawV1 || '未配置代理或已停止';
               log.console(`[代理记录] 当前生效代理: ${proxyRecorded}`);
-              await log.file('Recorded proxy before stop due to low speed', { speed, proxyRecorded, legacy, v1 });
+              await log.file('Recorded proxy before stop due to low speed', { speed, proxyRecorded, savedProxyConfig, legacy, v1 });
 
               log.console('[优化网速] 正在主动关闭当前代理以恢复满速直连...');
               await Promise.allSettled([
@@ -619,9 +670,56 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step7-after-crop-${state.counter++}`);
     }
 
-    // 7.3 如果处于滤镜/美化编辑页面，点击右下角“完成”
+    // 7.3 如果处于滤镜/美化编辑页面，右下角出现“完成”时先将原代理加回，再点击“完成”
     if (isPhotoEditScreen(obs.items)) {
-      log.console('[7/7] 检测到照片美化编辑页面，点击右下角“完成”...');
+      log.console('[7/7] 检测到照片美化编辑页面，右下角出现“完成”！');
+
+      // 若之前因下载素材包加速而关掉了代理，在此处必须将原有代理加回去
+      let proxyToRestore = savedProxyConfig;
+      if (!proxyToRestore) {
+        // 尝试从最新本地 VPC 记录获取保底
+        try {
+          const vpcFile = path.join(PROJECT_ROOT, '.local-output', 'VPC网络', 'latest.json');
+          const content = await fs.readFile(vpcFile, 'utf8').catch(() => null);
+          if (content) {
+            const parsedVpc = JSON.parse(content);
+            const net = parsedVpc.networks?.[0];
+            if (net?.ip && net?.port) {
+              proxyToRestore = {
+                version: 'legacy',
+                s5ip: net.ip,
+                s5port: Number(net.port),
+                domainMode: '2',
+                proxyMode: '1',
+              };
+            }
+          }
+        } catch {}
+      }
+
+      if (proxyToRestore) {
+        log.console(`[代理恢复] 正在重新加回之前关闭的代理 (${proxyToRestore.s5ip}:${proxyToRestore.s5port})...`);
+        try {
+          await phone.setProxy({
+            s5ip: proxyToRestore.s5ip,
+            s5port: proxyToRestore.s5port,
+            s5user: proxyToRestore.s5user,
+            s5pwd: proxyToRestore.s5pwd,
+            domainMode: proxyToRestore.domainMode || '2',
+            proxyMode: proxyToRestore.proxyMode || '1',
+          }, proxyToRestore.version || 'legacy');
+
+          // 校验读回生效
+          const checkProxy = await phone.getProxy(proxyToRestore.version || 'legacy').catch(() => null);
+          const isRestored = Boolean(checkProxy?.addr || checkProxy?.address || Number(checkProxy?.status) === 1);
+          log.console(`[代理恢复] 代理恢复结果: ${isRestored ? '成功恢复生效' : '指令已下发'}`);
+          await log.file('Proxy restored on photo edit screen', { proxyToRestore, checkProxy });
+        } catch (proxyErr) {
+          log.console(`[代理恢复] 恢复代理提示 (不阻断主流程): ${proxyErr.message}`);
+        }
+      }
+
+      log.console('[7/7] 点击右下角“完成”保存头像...');
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '11-edit-screen', '照片美化编辑界面', log);
       const doneItem = obs.items.find(i => i.text.trim() === '完成');
       if (doneItem) {
