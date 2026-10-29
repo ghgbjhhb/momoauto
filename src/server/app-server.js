@@ -259,7 +259,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     category: 'momo',
     version: 'v2',
     parameters: [
-      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '', placeholder: '输入待绑定的 11 位手机号（留空待接码）' }
+      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' }
     ]
   },
   {

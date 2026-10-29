@@ -37,6 +37,8 @@ const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
 // 默认接码项目编码：陌陌换绑3
 const DEFAULT_PROJECT_CODE = '369990';
+// 默认固定手机号
+const DEFAULT_FIXED_PHONE = '17306728814';
 
 function formatLogTime() {
   const d = new Date();
@@ -123,6 +125,16 @@ function findVerifyCodeInputBox(items) {
   return null;
 }
 
+function findGetCodeBtn(items) {
+  for (const it of items) {
+    const t = normalizeText(it.text);
+    if ((t.includes('获取验证码') || t.includes('获取') || t.includes('重新获取')) && it.top >= 240 && it.bottom <= 315) {
+      return it;
+    }
+  }
+  return null;
+}
+
 function findSubmitBtn(items) {
   return items.find(it => normalizeText(it.text) === '提交');
 }
@@ -146,13 +158,13 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
   const resolvedDeviceId = deviceIdOf(target);
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const projectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE).trim();
-  let phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || '').trim();
+  let phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || DEFAULT_FIXED_PHONE).trim();
   let sessionId = null;
 
   await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, projectCode, phoneNumber });
 
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  log.console(`[执行操作] 陌陌手机号绑定 (接码项目: 陌陌换绑3 [${projectCode}] -> 模拟打字输入)`);
+  log.console(`[执行操作] 陌陌手机号绑定 (手机号: ${phoneNumber} -> 模拟打字输入 -> 点击获取验证码)`);
 
   const phone = options.phone || client.device(resolvedDeviceId);
   const ownControl = !options.control;
@@ -284,13 +296,47 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     log.console(`[2/3] 【后验确认】手机号 ${phoneNumber} 已准确键入手机号栏，验证码栏清爽！`);
 
-    // 4. 终态现场确认
-    log.console('[3/3] 手机号输入就绪，现场已保留等待下一步！');
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-ready-state', '手机号输入完成现场', log);
+    // 5. 点击「获取验证码」按钮
+    log.console('[3/3] 正在定位并点击「获取验证码」按钮...');
+    const getCodeBtn = findGetCodeBtn(obs.items);
+    let codePt;
+    if (getCodeBtn) {
+      codePt = tapBox(control, getCodeBtn, obs);
+      log.console(`[3/3] 点击获取验证码热区 (${codePt.x}, ${codePt.y}) [${getCodeBtn.text}]...`);
+    } else {
+      codePt = { x: Math.round(265 * scaleX), y: Math.round(267 * scaleY) };
+      log.console(`[3/3] 未明确识别到获取按钮文字，使用标准热区 (${codePt.x}, ${codePt.y}) 点击获取验证码...`);
+    }
+
+    await control.tap(codePt.x, codePt.y);
+    await control.flush();
+    await sleep(2000);
+
+    // 6. 后验分析点击获取验证码后的界面状态
+    obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-get-code-${state.counter++}`);
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-after-get-code', '点击获取验证码后现场', log);
+
+    const hasCountdown = obs.items.some(it => {
+      const t = normalizeText(it.text);
+      return t.includes('重新获取') || /\d+s/i.test(t) || /\d+秒/.test(t) || (it.top >= 240 && it.bottom <= 315 && /\d{1,2}/.test(t));
+    });
+
+    const hasSecurity = obs.items.some(it => {
+      const t = normalizeText(it.text);
+      return t.includes('验证码校验') || t.includes('点击按钮开始验证') || t.includes('安全验证') || t.includes('拖动') || t.includes('滑块') || t.includes('按住滑块');
+    });
+
+    if (hasSecurity) {
+      log.console('[3/3] 【安全核验】成功识别进入「验证码校验」人机安全验证页（点击按钮开始验证），现场截图已保存！');
+    } else if (hasCountdown) {
+      log.console('[3/3] 【验证码已发送】按钮已进入倒计时状态！');
+    } else {
+      log.console('[3/3] 【执行完毕】已完成获取验证码点击，现场已拍照记录！');
+    }
 
     return {
       ok: true,
-      state: 'phone_typed',
+      state: hasCountdown ? 'code_sent' : (hasSecurity ? 'security_challenge' : 'clicked_get_code'),
       runId,
       projectCode,
       phoneNumber,
@@ -316,7 +362,7 @@ function parseCliArgs(argv) {
   const opts = {
     execute: argv.includes('--execute'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
-    phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '',
+    phoneNumber: process.env.YUNMOMO_MOMO_PHONE || DEFAULT_FIXED_PHONE,
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE,
   };
   for (let i = 0; i < argv.length; i++) {
