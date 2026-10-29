@@ -254,12 +254,12 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
-    id: 'flow-17', order: 17, title: '陌陌资料完善 (性别/昵称/生日)',
-    file: 'flows/momo/17-momo资料完善.js', args: ['--execute'], requiresDevice: true,
+    id: 'flow-17', order: 17, title: '陌陌手机绑定',
+    file: 'flows/momo/17-momo绑定手机.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
     version: 'v2',
     parameters: [
-      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' }
+      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '', placeholder: '输入待绑定的 11 位手机号（留空待接码）' }
     ]
   },
   {
@@ -951,7 +951,7 @@ function configureScript(script, body, env) {
     if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
   }
   if (script.id === 'flow-17') {
-    if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
+    if (options.phoneNumber?.trim()) env.YUNMOMO_MOMO_PHONE = options.phoneNumber.trim();
   }
   if (script.id === 'flow-15') {
     if (options.mode?.trim()) env.YUNMOMO_MOMO_WATCH_MODE = options.mode.trim();
