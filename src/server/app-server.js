@@ -256,16 +256,6 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
-    id: 'flow-17', order: 17, title: '陌陌手机绑定 (已合并至流程16)',
-    file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
-    category: 'momo',
-    version: 'v2',
-    parameters: [
-      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' },
-      { name: 'verifyCode', label: '短信验证码', defaultValue: '', placeholder: '输入 6 位验证码（模拟打字输入）' }
-    ]
-  },
-  {
     id: 'flow-all', title: '执行全流程 (V3)', file: 'flows/v3/执行全部.js', args: ['--execute'],
     requiresDevice: true, requiresCertificate: true, batch: true, category: 'all', version: 'v3'
   }
@@ -952,8 +942,6 @@ function configureScript(script, body, env) {
     if (options.yayaMode?.trim()) env.YAYA_MODE = options.yayaMode.trim();
     if (options.targetTime?.trim()) env.YAYA_TARGET_TIME = options.targetTime.trim();
     if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
-  }
-  if (script.id === 'flow-17') {
     if (options.phoneNumber?.trim()) env.YUNMOMO_MOMO_PHONE = options.phoneNumber.trim();
     if (options.verifyCode?.trim()) env.YUNMOMO_MOMO_VERIFY_CODE = options.verifyCode.trim();
   }

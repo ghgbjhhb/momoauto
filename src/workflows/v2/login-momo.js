@@ -491,7 +491,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     const alreadyAuthed = isProfileSetupStage(obs.items);
     if (!alreadyAuthed) {
       // 若不在陌陌任何界面，则在桌面搜寻并打开应用
-      const inMomoFlow = isPrivacyDialog(obs.items) || isLoginPage(obs.items) || isUserAgreementDialog(obs.items);
+      const inMomoFlow = isPrivacyDialog(obs.items) || isMomoFeedScreen(obs.items) || isLoginPage(obs.items) || isUserAgreementDialog(obs.items);
       if (!inMomoFlow) {
         log.console('[1/5] 打开陌陌应用...');
         if (!isLauncherScreen(obs.items)) {
@@ -572,9 +572,35 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
         obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-privacy-${state.counter++}`);
       }
 
+      // 处理可能处于的陌陌动态信息流页（点击浮动的「注册/登录」胶囊按钮）
+      if (isMomoFeedScreen(obs.items)) {
+        log.console('[2/5] 检测到陌陌动态信息流页，点击浮动「注册/登录」按钮...');
+        const feedBtn = findFeedLoginButton(obs.items);
+        if (feedBtn) {
+          const pt = tapBox(control, feedBtn, obs);
+          await control.tap(pt.x, pt.y);
+        } else {
+          await control.tap(Math.round(control.screenWidth * 0.5), Math.round(control.screenHeight * 0.84));
+        }
+        await control.flush();
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-feed-login-clicked', '已点击动态页注册登录', log);
+        await sleep(2500);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-feed-${state.counter++}`);
+      }
+
       // 等待并确认登录主界面
       const loginDeadline = Date.now() + 15000;
       while (!isLoginPage(obs.items) && !isUserAgreementDialog(obs.items) && !isProfileSetupStage(obs.items) && !isFinalPhoneBindScreen(obs.items) && Date.now() < loginDeadline) {
+        if (isMomoFeedScreen(obs.items)) {
+          log.console('[2/5] 动态页尚未进入登录页，补击「注册/登录」...');
+          const feedBtn = findFeedLoginButton(obs.items);
+          if (feedBtn) {
+            const pt = tapBox(control, feedBtn, obs);
+            await control.tap(pt.x, pt.y);
+            await control.flush();
+            await sleep(2000);
+          }
+        }
         await sleep(DEFAULT_POLL_MS);
         obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wait-login-${state.counter++}`);
       }
