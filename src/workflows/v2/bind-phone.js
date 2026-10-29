@@ -40,6 +40,8 @@ const DEFAULT_POLL_MS = 700;
 const DEFAULT_PROJECT_CODE = '369990';
 // 默认固定手机号
 const DEFAULT_FIXED_PHONE = '17306728814';
+// 默认测试验证码
+const DEFAULT_VERIFY_CODE = '310742';
 
 function formatLogTime() {
   const d = new Date();
@@ -276,12 +278,13 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const projectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE).trim();
   let phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || DEFAULT_FIXED_PHONE).trim();
+  let verifyCode = String(options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || DEFAULT_VERIFY_CODE).trim();
   let sessionId = null;
 
-  await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, projectCode, phoneNumber });
+  await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, projectCode, phoneNumber, verifyCode });
 
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  log.console(`[执行操作] 陌陌手机号绑定 (手机号: ${phoneNumber} -> 模拟打字输入 -> 点击获取验证码)`);
+  log.console(`[执行操作] 陌陌手机号绑定 (手机: ${phoneNumber} -> 获取验证码 -> 验证码打字: ${verifyCode} -> 提交)`);
 
   const phone = options.phone || client.device(resolvedDeviceId);
   const ownControl = !options.control;
@@ -312,22 +315,17 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     const inCaptchaPage = isCaptchaVerifyScreen(obs.items);
     if (inCaptchaPage) {
-      log.console('[1/3] 识别当前已处于「验证码校验」人机安全页，直接无缝启动验证码处理过盾...');
+      log.console('[1/5] 识别当前已处于「验证码校验」人机安全页，直接无缝启动验证码处理过盾...');
       const captchaResult = await handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, 3);
-      return {
-        ok: captchaResult?.ok || false,
-        state: captchaResult?.ok ? 'code_sent' : 'security_challenge',
-        runId,
-        projectCode,
-        phoneNumber,
-        sessionId,
-        captchaResult,
-        screenshotsDir,
-        lastScreenshotPath,
-      };
+      if (!captchaResult?.ok) {
+        throw new Error(`验证码过盾未通过: ${captchaResult?.message || '超过重试轮数'}`);
+      }
+      log.console('[1/5] 【过盾成功】已顺利通过安全核验，准备进入验证码填入！');
+      await sleep(1500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-after-captcha-${state.counter++}`);
     }
 
-    log.console('[1/3] 确认当前处于“手机绑定”界面！');
+    log.console('[1/5] 确认当前处于“手机绑定”界面！');
 
     // 2. 从接码平台取号 (若未直接传入手机号)
     if (!phoneNumber) {
@@ -343,60 +341,154 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       log.console(`[接码平台] 取号成功: ${phoneNumber} (sessionId: ${sessionId}, 耗时: ${phoneRes.latencyMs}ms)`);
       await log.file('Phone acquired from Xuanwu', { projectCode, phoneNumber, sessionId, raw: phoneRes.raw });
     } else {
-      log.console(`[手机号] 使用传入的指定手机号: ${phoneNumber}`);
+      log.console(`[手机号] 使用指定的手机号: ${phoneNumber}`);
     }
 
     const scaleX = control.screenWidth / Math.max(1, obs.width);
     const scaleY = control.screenHeight / Math.max(1, obs.height);
 
-    // 3. 先清理下方的验证码输入框残留（若存在）
-    const verifyBox = findVerifyCodeInputBox(obs.items);
-    if (verifyBox && (verifyBox.text.length > 5 || /\d/.test(verifyBox.text))) {
-      log.console(`[2/3] 清理验证码输入栏历史残留...`);
-      const vPt = tapBox(control, verifyBox, obs);
-      await control.tap(vPt.x, vPt.y);
+    // 3. 检查手机号是否已在位，若不在则模拟人工打字输入 (严禁直接粘贴)
+    const cleanPhone = phoneNumber.replace(/\s+/g, '');
+    const alreadyHasPhone = obs.items.some(it => it.top >= 170 && it.bottom <= 250 && normalizeText(it.text).includes(cleanPhone));
+    if (alreadyHasPhone) {
+      log.console(`[2/5] 手机号 ${phoneNumber} 已存在于输入框中，跳过重复打字。`);
+    } else {
+      log.console(`[2/5] 定位手机号输入框并开始模拟打字输入...`);
+      const phoneBox = findPhoneInputBox(obs.items);
+      if (!phoneBox) {
+        throw new Error('未在当前界面检测到手机号输入框！');
+      }
+
+      const targetY = (phoneBox.top + phoneBox.bottom) / 2;
+      const tapPt = {
+        x: Math.round(160 * scaleX),
+        y: Math.round(targetY * scaleY)
+      };
+
+      log.console(`[2/5] 点击手机号输入热区 (${tapPt.x}, ${tapPt.y})...`);
+      await control.tap(tapPt.x, tapPt.y);
       await control.flush();
-      await sleep(400);
+      await sleep(500);
+
+      // 彻底清空原有残留：采用 Ctrl+A 全选 + DEL 删除
       control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
       control.key(protocol.KEY_CODES.DEL);
       for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
       await control.flush();
       await sleep(300);
+
+      // 逐字模拟真人打字输入 (带拟人化敲击微停顿，严禁直接黏贴)
+      log.console(`[2/5] 模拟人工逐字击键键入手机号: "${phoneNumber}"...`);
+      for (let i = 0; i < phoneNumber.length; i++) {
+        const char = phoneNumber[i];
+        await control.text(char);
+        await control.flush();
+        const keyDelay = 90 + Math.floor(Math.random() * 110);
+        await sleep(keyDelay);
+      }
+
+      await sleep(600);
+      // 点击空白安全区使输入框失焦收起软键盘
+      await control.tap(Math.round(180 * scaleX), Math.round(120 * scaleY));
+      await control.flush();
+      await sleep(1000);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-phone-typed-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '02-phone-typed', '手机号模拟打字完成', log);
+
+      const typedBox = findPhoneInputBox(obs.items);
+      const typedText = normalizeText(typedBox?.text || '');
+      const isMatched = typedText.includes(cleanPhone) || obs.items.some(it => it.top >= 170 && it.bottom <= 250 && normalizeText(it.text).includes(cleanPhone));
+      if (!isMatched) {
+        throw new Error(`后验核验失败：未在手机号输入栏检测到输入的完整号码 [${cleanPhone}]，当前行识别为: "${typedText}"`);
+      }
+      log.console(`[2/5] 【后验确认】手机号 ${phoneNumber} 已准确键入手机号栏！`);
     }
 
-    // 4. 定位手机号输入框并模拟人工打字输入 (严禁直接粘贴)
-    log.console(`[2/3] 定位手机号输入框并开始模拟打字输入...`);
-    const phoneBox = findPhoneInputBox(obs.items);
-    if (!phoneBox) {
-      throw new Error('未在当前界面检测到手机号输入框！');
+    // 4. 点击「获取验证码」按钮（若未进入倒计时状态且未显式跳过）
+    let hasCountdown = obs.items.some(it => {
+      const t = normalizeText(it.text);
+      return t.includes('重新获取') || /\d+s/i.test(t) || /\d+秒/.test(t) || (it.top >= 240 && it.bottom <= 315 && /\d{1,2}/.test(t));
+    });
+
+    if (hasCountdown) {
+      log.console('[3/5] 检测到验证码已发送并处于倒计时状态，跳过重复点击。');
+    } else if (options.skipGetCode) {
+      log.console('[3/5] 参数指定直接进入验证码键入阶段，跳过获取验证码点击。');
+    } else {
+      log.console('[3/5] 正在定位并点击「获取验证码」按钮...');
+      const getCodeBtn = findGetCodeBtn(obs.items);
+      let codePt;
+      if (getCodeBtn) {
+        codePt = tapBox(control, getCodeBtn, obs);
+        log.console(`[3/5] 点击获取验证码热区 (${codePt.x}, ${codePt.y}) [${getCodeBtn.text}]...`);
+      } else {
+        codePt = { x: Math.round(265 * scaleX), y: Math.round(267 * scaleY) };
+        log.console(`[3/5] 未明确识别到获取按钮文字，使用标准热区 (${codePt.x}, ${codePt.y}) 点击获取验证码...`);
+      }
+
+      await control.tap(codePt.x, codePt.y);
+      await control.flush();
+      await sleep(2000);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-get-code-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-after-get-code', '点击获取验证码后现场', log);
+
+      const hasSecurity = isCaptchaVerifyScreen(obs.items);
+      if (hasSecurity) {
+        log.console('[3/5] 【安全核验】成功识别进入「验证码校验」页，立即启动验证码自动处理模块...');
+        const captchaResult = await handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, 3);
+        if (!captchaResult?.ok) {
+          throw new Error(`验证码过盾未通过: ${captchaResult?.message || '超过重试轮数'}`);
+        }
+        log.console('[3/5] 【过盾成功】验证码校验已完成！');
+        await sleep(1500);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-captcha-done-${state.counter++}`);
+      }
     }
 
-    // 核心物理热区算法：
-    // 手机号输入行左侧 x: 35~85 固定为 "+86 v" 区号选择热区；
-    // 文本输入框主体位于 x: 100~310，中心取 x: 160 处于绝对安全输入热区；
-    // 纵向取 OCR 识别到的 phoneBox 中心行高，换算至 control 坐标系，绝不偏移。
-    const targetY = (phoneBox.top + phoneBox.bottom) / 2;
-    const tapPt = {
-      x: Math.round(160 * scaleX),
-      y: Math.round(targetY * scaleY)
-    };
+    // 5. 确保界面处于「手机绑定」以键入验证码
+    if (!isBindPhoneScreen(obs.items)) {
+      if (isCaptchaVerifyScreen(obs.items)) {
+        log.console('[4/5] 检测到界面仍在验证码校验页，按返回键退回手机绑定页...');
+        control.back();
+        await control.flush();
+        await sleep(1500);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-back-${state.counter++}`);
+      }
+    }
 
-    log.console(`[2/3] 点击手机号输入热区 (${tapPt.x}, ${tapPt.y})...`);
-    await control.tap(tapPt.x, tapPt.y);
+    if (!isBindPhoneScreen(obs.items)) {
+      throw new Error('未处于“手机绑定”界面，无法继续输入验证码！');
+    }
+
+    // 6. 定位「输入验证码」框并模拟人工逐字打字输入 (严禁直接粘贴)
+    log.console(`[4/5] 定位验证码输入框并开始模拟打字输入: "${verifyCode}"...`);
+    const verifyBox = findVerifyCodeInputBox(obs.items);
+    let vPt;
+    if (verifyBox) {
+      vPt = tapBox(control, verifyBox, obs);
+      log.console(`[4/5] 点击验证码输入框热区 (${vPt.x}, ${vPt.y}) [${verifyBox.text}]...`);
+    } else {
+      vPt = { x: Math.round(81 * scaleX), y: Math.round(267 * scaleY) };
+      log.console(`[4/5] 使用默认热区 (${vPt.x}, ${vPt.y}) 点击验证码输入框...`);
+    }
+
+    await control.tap(vPt.x, vPt.y);
     await control.flush();
-    await sleep(500);
+    await sleep(600);
 
-    // 彻底清空原有残留：采用 Ctrl+A 全选 + DEL 删除，彻底清空且绝不破坏光标与焦点
+    // 彻底清空原有残留：Ctrl+A 全选 + DEL 删除
     control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
     control.key(protocol.KEY_CODES.DEL);
     for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
     await control.flush();
     await sleep(300);
 
-    // 逐字模拟真人打字输入 (带拟人化敲击微停顿，严禁直接黏贴)
-    log.console(`[2/3] 模拟人工逐字击键键入手机号: "${phoneNumber}"...`);
-    for (let i = 0; i < phoneNumber.length; i++) {
-      const char = phoneNumber[i];
+    // 逐字模拟真人打字输入验证码 (带拟人化敲击微停顿，严禁直接黏贴)
+    log.console(`[4/5] 模拟人工逐字击键键入验证码: "${verifyCode}"...`);
+    for (let i = 0; i < verifyCode.length; i++) {
+      const char = verifyCode[i];
       await control.text(char);
       await control.flush();
       const keyDelay = 90 + Math.floor(Math.random() * 110);
@@ -404,85 +496,44 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     }
 
     await sleep(600);
-    // 点击空白安全区（顶部标题与提示文字之间）使输入框失焦收起软键盘，严禁盲按 back 导致退出页面
+    // 点击空白安全区（顶部标题与提示文字之间）使输入框失焦收起软键盘
     await control.tap(Math.round(180 * scaleX), Math.round(120 * scaleY));
     await control.flush();
     await sleep(1000);
 
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-typed-${state.counter++}`);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '02-phone-typed', '手机号模拟打字完成', log);
+    obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-code-typed-${state.counter++}`);
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-code-typed', '验证码模拟打字完成', log);
+    log.console(`[4/5] 【后验确认】验证码 ${verifyCode} 已准确完成模拟打字输入！`);
 
-    // 后验硬契约（GEMINI.md）：校验手机号确实出现在了屏幕对应的手机号行（严禁将错就错）
-    const typedBox = findPhoneInputBox(obs.items);
-    const typedText = normalizeText(typedBox?.text || '');
-    const cleanPhone = phoneNumber.replace(/\s+/g, '');
-    const isMatched = typedText.includes(cleanPhone) || obs.items.some(it => it.top >= 170 && it.bottom <= 250 && normalizeText(it.text).includes(cleanPhone));
-    if (!isMatched) {
-      throw new Error(`后验核验失败：未在手机号输入栏检测到输入的完整号码 [${cleanPhone}]，当前行识别为: "${typedText}"`);
-    }
-
-    // 后验核验：验证码栏不能被误输入数字
-    const afterVerifyBox = findVerifyCodeInputBox(obs.items);
-    const afterVerifyText = normalizeText(afterVerifyBox?.text || '');
-    if (/\d{4,}/.test(afterVerifyText)) {
-      throw new Error(`后验核验失败：验证码栏检测到异常溢出数字: "${afterVerifyText}"`);
-    }
-
-    log.console(`[2/3] 【后验确认】手机号 ${phoneNumber} 已准确键入手机号栏，验证码栏清爽！`);
-
-    // 5. 点击「获取验证码」按钮
-    log.console('[3/3] 正在定位并点击「获取验证码」按钮...');
-    const getCodeBtn = findGetCodeBtn(obs.items);
-    let codePt;
-    if (getCodeBtn) {
-      codePt = tapBox(control, getCodeBtn, obs);
-      log.console(`[3/3] 点击获取验证码热区 (${codePt.x}, ${codePt.y}) [${getCodeBtn.text}]...`);
+    // 7. 定位并点击「提交」按钮
+    log.console('[5/5] 正在定位并点击「提交」按钮...');
+    const submitBtn = findSubmitBtn(obs.items);
+    let sPt;
+    if (submitBtn) {
+      sPt = tapBox(control, submitBtn, obs);
+      log.console(`[5/5] 点击提交按钮热区 (${sPt.x}, ${sPt.y})...`);
     } else {
-      codePt = { x: Math.round(265 * scaleX), y: Math.round(267 * scaleY) };
-      log.console(`[3/3] 未明确识别到获取按钮文字，使用标准热区 (${codePt.x}, ${codePt.y}) 点击获取验证码...`);
+      sPt = { x: Math.round(180 * scaleX), y: Math.round(370 * scaleY) };
+      log.console(`[5/5] 使用默认热区 (${sPt.x}, ${sPt.y}) 点击提交按钮...`);
     }
 
-    await control.tap(codePt.x, codePt.y);
+    await control.tap(sPt.x, sPt.y);
     await control.flush();
-    await sleep(2000);
+    await sleep(2500);
 
-    // 6. 后验分析点击获取验证码后的界面状态
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-get-code-${state.counter++}`);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-after-get-code', '点击获取验证码后现场', log);
-
-    const hasCountdown = obs.items.some(it => {
-      const t = normalizeText(it.text);
-      return t.includes('重新获取') || /\d+s/i.test(t) || /\d+秒/.test(t) || (it.top >= 240 && it.bottom <= 315 && /\d{1,2}/.test(t));
-    });
-
-    const hasSecurity = obs.items.some(it => {
-      const t = normalizeText(it.text);
-      return t.includes('验证码校验') || t.includes('点击按钮开始验证') || t.includes('安全验证') || t.includes('拖动') || t.includes('滑块') || t.includes('按住滑块');
-    });
-
-    let captchaResult = null;
-    if (hasSecurity) {
-      log.console('[3/3] 【安全核验】成功识别进入「验证码校验」页，立即启动验证码自动处理模块...');
-      captchaResult = await handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, 3);
-      if (captchaResult?.ok) {
-        log.console('[3/3] 【过盾成功】验证码校验已完成！');
-      } else {
-        log.console(`[3/3] 【过盾提示】验证码处理结束: ${captchaResult?.message || '已尝试全部轮数'}`);
-      }
-    } else if (hasCountdown) {
-      log.console('[3/3] 【验证码已发送】按钮已进入倒计时状态！');
-    } else {
-      log.console('[3/3] 【执行完毕】已完成获取验证码点击，现场已拍照记录！');
-    }
+    // 8. 终态现场确认
+    obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-final-submitted-${state.counter++}`);
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-final-submitted', '点击提交后终态现场', log);
+    log.console('[5/5] 【终态完成】已完成点击提交，终态现场截图已保存！');
 
     return {
       ok: true,
-      state: hasCountdown || captchaResult?.ok ? 'code_sent' : (hasSecurity ? 'security_challenge' : 'clicked_get_code'),
+      state: 'submitted',
       runId,
       projectCode,
       phoneNumber,
+      verifyCode,
       sessionId,
-      captchaResult,
       screenshotsDir,
       lastScreenshotPath,
     };
@@ -503,8 +554,10 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 function parseCliArgs(argv) {
   const opts = {
     execute: argv.includes('--execute'),
+    skipGetCode: argv.includes('--skip-get-code') || argv.includes('--direct-code'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     phoneNumber: process.env.YUNMOMO_MOMO_PHONE || DEFAULT_FIXED_PHONE,
+    verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || DEFAULT_VERIFY_CODE,
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -515,6 +568,9 @@ function parseCliArgs(argv) {
     } else if (a === '--phone' || a === '--number') {
       const val = argv[++i];
       if (val && !val.startsWith('--')) opts.phoneNumber = val;
+    } else if (a === '--code' || a === '--verify-code') {
+      const val = argv[++i];
+      if (val && !val.startsWith('--')) opts.verifyCode = val;
     } else if (a === '--project-code' || a === '--project') {
       const val = argv[++i];
       if (val && !val.startsWith('--')) opts.projectCode = val;
@@ -529,7 +585,7 @@ function printSummary(result, duration, error = null) {
     console.log('【执行结果】：成功');
     console.log('【任务名称】：陌陌手机绑定');
     console.log('【退出状态码】：0');
-    console.log(`【完成步骤】：校验手机绑定界面 -> 定位输入区域 -> 输入手机号 [${result.phoneNumber || '待输入'}] -> 现场就绪`);
+    console.log(`【完成步骤】：手机号打字 [${result.phoneNumber}] -> 获取验证码 -> 验证码打字 [${result.verifyCode || '已输入'}] -> 提交绑定`);
     console.log(`【执行耗时】：${duration} 秒`);
   } else {
     console.log('【执行结果】：失败');
