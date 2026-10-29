@@ -381,28 +381,65 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-wheel-opened', '生日滚轮弹窗已就绪', log);
 
-      // 三列仿真滑动
-      log.console('[3/7] 执行生日三列仿真滑动 (年/月/日)...');
-      const columns = [
-        { label: '年份', x: Math.round(96 * scaleX) },
+      // 三列拟人化动态仿真滑动 (年份向上2-4随机距离，月/日随机上下/随机次数/随机长度)
+      log.console('[3/7] 执行生日三列仿真滑动 (年份向上滑2-4随机距离，月日随机上下/次数/长度)...');
+
+      // 1. 年份列：方向固定向上，随机滑动 1~2 次，距离为 2~4 格随机长度
+      const yearX = Math.round(96 * scaleX);
+      const yearRounds = Math.floor(Math.random() * 2) + 1;
+      for (let r = 0; r < yearRounds; r++) {
+        const gridUnits = 2 + Math.random() * 2; // 2.0 ~ 4.0 个单位格距
+        const distance = Math.round(gridUnits * 36 * scaleY);
+        const centerY = Math.round(335 * scaleY);
+        const startY = Math.min(Math.round(425 * scaleY), centerY + Math.round(distance / 2) + Math.floor(Math.random() * 10 - 5));
+        const endY = Math.max(Math.round(235 * scaleY), startY - distance);
+        const fromX = yearX + Math.floor(Math.random() * 6 - 3);
+        const toX = yearX + Math.floor(Math.random() * 6 - 3);
+        const durationMs = 280 + Math.floor(Math.random() * 140);
+
+        await control.swipe(
+          { x: fromX, y: startY },
+          { x: toX, y: endY },
+          { durationMs, steps: 16 }
+        );
+        await control.flush();
+        await sleep(350 + Math.floor(Math.random() * 200));
+      }
+
+      // 2. 月份与日期列：随机上下方向、随机次数 (1~3次)、随机滑动长度 (45~150px)
+      const monthAndDayColumns = [
         { label: '月份', x: Math.round(180 * scaleX) },
         { label: '日期', x: Math.round(260 * scaleX) },
       ];
 
-      for (const col of columns) {
-        const jitterFromX = col.x + Math.floor(Math.random() * 5 - 2);
-        const jitterToX = col.x + Math.floor(Math.random() * 5 - 2);
-        const startY = Math.round(395 * scaleY) + Math.floor(Math.random() * 6 - 3);
-        const endY = Math.round(280 * scaleY) + Math.floor(Math.random() * 6 - 3);
-        const durationMs = 380 + Math.floor(Math.random() * 80);
+      for (const col of monthAndDayColumns) {
+        const swipeCount = Math.floor(Math.random() * 3) + 1; // 随机 1 ~ 3 次
+        for (let i = 0; i < swipeCount; i++) {
+          const isUp = Math.random() > 0.5; // 随机向上或向下
+          const distance = Math.round((45 + Math.random() * 105) * scaleY); // 随机长度 45 ~ 150px
+          const centerY = Math.round(335 * scaleY);
 
-        await control.swipe(
-          { x: jitterFromX, y: startY },
-          { x: jitterToX, y: endY },
-          { durationMs, steps: 18 }
-        );
-        await control.flush();
-        await sleep(500);
+          let startY, endY;
+          if (isUp) {
+            startY = Math.min(Math.round(425 * scaleY), centerY + Math.round(distance / 2) + Math.floor(Math.random() * 8 - 4));
+            endY = Math.max(Math.round(235 * scaleY), startY - distance);
+          } else {
+            startY = Math.max(Math.round(245 * scaleY), centerY - Math.round(distance / 2) + Math.floor(Math.random() * 8 - 4));
+            endY = Math.min(Math.round(425 * scaleY), startY + distance);
+          }
+
+          const fromX = col.x + Math.floor(Math.random() * 8 - 4);
+          const toX = col.x + Math.floor(Math.random() * 8 - 4);
+          const durationMs = 260 + Math.floor(Math.random() * 160);
+
+          await control.swipe(
+            { x: fromX, y: startY },
+            { x: toX, y: endY },
+            { durationMs, steps: 16 }
+          );
+          await control.flush();
+          await sleep(300 + Math.floor(Math.random() * 200));
+        }
       }
 
       await sleep(600);
