@@ -104,6 +104,87 @@ async function getLatestAuthTargetTime(deviceId) {
   }
 }
 
+/**
+ * 解析并提取丫丫订单卡片时间信息
+ * 支持 "10-25 19:16"、"19:16"、"到期:10-25 19:16"、"到期: 16:05" 等
+ */
+function parseYayaOrderTime(rawText) {
+  if (!rawText || typeof rawText !== 'string') return null;
+  const clean = rawText.replace(/[：]/g, ':').trim();
+
+  // 1. 匹配 MM-DD HH:mm (例如 "10-25 19:16")
+  const fullMatch = clean.match(/(?:到期[:：]?)?\s*(\d{1,2})[-/](\d{1,2})\s+(\d{1,2})[:：](\d{2})/);
+  if (fullMatch) {
+    const month = parseInt(fullMatch[1], 10);
+    const day = parseInt(fullMatch[2], 10);
+    const hours = parseInt(fullMatch[3], 10);
+    const minutes = parseInt(fullMatch[4], 10);
+    const totalMinutes = (month * 31 + day) * 1440 + hours * 60 + minutes;
+    const timeHm = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    const dateMd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return {
+      full: `${dateMd} ${timeHm}`,
+      dateStr: dateMd,
+      timeStr: timeHm,
+      month,
+      day,
+      hours,
+      minutes,
+      totalMinutes,
+      hasDate: true,
+    };
+  }
+
+  // 2. 匹配仅 HH:mm (例如 "16:05" 或 "到期:16:05")
+  const hmMatch = clean.match(/(?:到期[:：]?)?\s*(\d{1,2})[:：](\d{2})/);
+  if (hmMatch) {
+    const hours = parseInt(hmMatch[1], 10);
+    const minutes = parseInt(hmMatch[2], 10);
+    const totalMinutes = hours * 60 + minutes;
+    const timeHm = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    return {
+      full: timeHm,
+      dateStr: null,
+      timeStr: timeHm,
+      month: 0,
+      day: 0,
+      hours,
+      minutes,
+      totalMinutes,
+      hasDate: false,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 从页面 OCR 项中提取所有订单时间条目，并按屏幕 y 坐标升序排序 (从顶到底，对应时间降序：新 -> 旧)
+ */
+function extractScreenOrderTimes(items, screenHeight = 640) {
+  const list = [];
+  for (const item of items) {
+    // 排除顶部状态栏与底部导航栏区域
+    if (item.top < 75 || item.top > screenHeight * 0.85) continue;
+
+    const parsed = parseYayaOrderTime(item.text);
+    if (parsed) {
+      // 确认是卡片订单时间特征（包含“到期”、“订单号”或具有明确完整日期）
+      const isCardRelated = parsed.hasDate || item.text.includes('到期') || item.text.includes('订单');
+      if (isCardRelated) {
+        list.push({
+          parsed,
+          item,
+          top: item.top,
+        });
+      }
+    }
+  }
+  // 按垂直坐标升序排序（自上而下，对应时间降序）
+  list.sort((a, b) => a.top - b.top);
+  return list;
+}
+
 function matchesDevice(record, targetId) {
   if (!record) return false;
   const id = deviceIdOf(record);
@@ -594,21 +675,87 @@ async function executeReloginMode(phone, control, worker, directory, state, init
   if (!targetTime) targetTime = '16:05';
   logger?.console(`[历史检索] 正在检索目标订单，目标时间特征: "${targetTime}"...`);
 
-  // 3. 在列表中滚动查找包含目标时间特征的卡片
+  // 3. 在列表中滚动查找包含目标时间特征的卡片（带时间降序智能识别与早停机制）
   let targetTimeItem = null;
   let orderNumber = null;
   const maxSwipes = options.maxHistorySwipes || 10;
+  const parsedTarget = parseYayaOrderTime(targetTime);
+  let previousScreenDigest = '';
 
   for (let swipeCount = 0; swipeCount < maxSwipes; swipeCount++) {
-    // 检查当前画面中是否有匹配目标时间的文字项
-    targetTimeItem = observation.items.find(i => {
-      const t = normalizeText(i.text);
-      return t.includes(normalizeText(targetTime));
-    });
+    // 提取当前屏幕上所有已识别的订单卡片时间
+    const screenOrderTimes = extractScreenOrderTimes(observation.items, observation.height);
+    const screenDigest = screenOrderTimes.map(t => t.parsed.full).join('|');
+
+    // 打印当前屏幕的时间序诊断日志
+    if (screenOrderTimes.length > 0) {
+      const topOrder = screenOrderTimes[0];
+      const bottomOrder = screenOrderTimes[screenOrderTimes.length - 1];
+      logger?.console(`[时间序识别] 当前第 ${swipeCount + 1} 屏识别到 ${screenOrderTimes.length} 笔订单时间: [${topOrder.parsed.full} (顶) -> ${bottomOrder.parsed.full} (底)] | 检索目标: "${targetTime}"`);
+    } else {
+      logger?.console(`[时间序识别] 当前第 ${swipeCount + 1} 屏未提取到卡片时间戳，进行整屏文本匹配 | 检索目标: "${targetTime}"`);
+    }
+
+    // 检查当前画面中是否有匹配目标时间的卡片
+    // 1) 优先从提取出的时间项中匹配
+    for (const entry of screenOrderTimes) {
+      if (
+        (parsedTarget && entry.parsed.timeStr === parsedTarget.timeStr) ||
+        entry.parsed.full.includes(targetTime) ||
+        normalizeText(entry.item.text).includes(normalizeText(targetTime))
+      ) {
+        targetTimeItem = entry.item;
+        break;
+      }
+    }
+
+    // 2) 兜底在全局 items 中模糊匹配 targetTime
+    if (!targetTimeItem) {
+      targetTimeItem = observation.items.find(i => {
+        if (i.top < 75 || i.top > observation.height * 0.85) return false;
+        const t = normalizeText(i.text);
+        return t.includes(normalizeText(targetTime));
+      });
+    }
 
     if (targetTimeItem) {
-      logger?.console(`[定位成功] 在当前页面第 ${swipeCount + 1} 屏精确找到目标时间条目: "${targetTimeItem.text}" (y=${targetTimeItem.top})`);
+      logger?.console(`[定位成功] 在当前页面第 ${swipeCount + 1} 屏精确找到目标时间条目: "${targetTimeItem.text}" (y=${Math.round(targetTimeItem.top)})`);
       break;
+    }
+
+    // 智能早停 1：列表触底判定（连续两屏订单时间序列完全一致，没有更多数据）
+    if (screenOrderTimes.length > 0 && screenDigest === previousScreenDigest && swipeCount > 0) {
+      logger?.console(`[触底终止 🛑] 当前滑动后屏幕内容无变化，已触底且未找到目标时间 "${targetTime}" 的订单，提前终止查找！`);
+      throw new Error(`【触底智能终止】：丫丫历史列表已滑动到底部（无更多新订单），未找到时间为 "${targetTime}" 的有效订单！`);
+    }
+    previousScreenDigest = screenDigest;
+
+    // 智能早停 2：时间序单调性早停（不要硬找！列表严格降序，若最底订单已早于目标时间，则确认不存在）
+    if (screenOrderTimes.length > 0 && parsedTarget) {
+      const bottomOrder = screenOrderTimes[screenOrderTimes.length - 1];
+      let isPastTarget = false;
+
+      if (parsedTarget.hasDate && bottomOrder.parsed.hasDate) {
+        // 两者均含完整日期（例如 10-25 16:05 与 10-25 15:30）
+        if (bottomOrder.parsed.totalMinutes < parsedTarget.totalMinutes) {
+          isPastTarget = true;
+        }
+      } else if (!parsedTarget.hasDate) {
+        // 目标时间仅有时分（如 "16:05"），若同日或底部时分已明显更早
+        // 丫丫列表是按到期时间从新到旧排列（降序），首屏通常是最新订单
+        // 若当前屏最底部的时分已经早于目标时分（如已降至 15:40 < 16:05）
+        const targetMin = parsedTarget.hours * 60 + parsedTarget.minutes;
+        const bottomMin = bottomOrder.parsed.hours * 60 + bottomOrder.parsed.minutes;
+        if (bottomMin < targetMin) {
+          isPastTarget = true;
+        }
+      }
+
+      if (isPastTarget) {
+        logger?.console(`[智能终止 🛑] 当前屏底部订单时间已降至 "${bottomOrder.parsed.full}"，已早于目标时间 "${targetTime}"！`);
+        logger?.console(`[智能终止 🛑] 丫丫历史列表按时间降序排列，确认目标订单已越界不存在，终止无效硬找！`);
+        throw new Error(`【时间序智能终止】：丫丫历史列表按时间降序排列，当前已滑动至 ${bottomOrder.parsed.full}，已早于目标时间 "${targetTime}"，确认该订单不存在，提前终止查找！`);
+      }
     }
 
     // 向上滑动列表以滚动到下一屏

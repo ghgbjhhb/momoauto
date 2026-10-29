@@ -381,8 +381,38 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
         lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
       }
 
-      // 重新 OCR 获取当前界面的生日输入框
+      // 重新 OCR 获取当前界面的网名与生日输入框
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-inspect-bday-${state.counter++}`);
+
+      // 后验核验：若界面上仍有“写个好听的昵称”占位符且没有包含目标网名，执行二次聚焦与注入自愈
+      const hasNick = obs.items.some(i => normalizeText(i.text).includes(normalizeText(nickname)));
+      const hasPlaceholder = obs.items.some(i => normalizeText(i.text).includes('写个好听的昵称'));
+      if (!hasNick && hasPlaceholder) {
+        log.console(`[网名自愈] 观测到网名尚未生效（仍显示占位符），执行二次聚焦并重新注入: "${nickname}"...`);
+        const scaleY = control.screenHeight / Math.max(1, obs.height);
+        const retryNickPt = { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
+        await control.tap(retryNickPt.x, retryNickPt.y);
+        await control.flush();
+        await sleep(500);
+
+        control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+        control.key(protocol.KEY_CODES.DEL);
+        for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
+        await control.flush();
+        await sleep(200);
+
+        control.setClipboard(nickname);
+        await control.flush();
+        await sleep(300);
+        control.key(protocol.KEY_CODES.V, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+        await control.flush();
+        await sleep(600);
+
+        await control.tap(Math.round(control.screenWidth / 2), Math.round(100 * scaleY));
+        await control.flush();
+        await sleep(800);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-nick-retry-${state.counter++}`);
+      }
 
       // 防御自愈：若因任何手势或键盘事件误退回了性别选择页，自动重新选回女生
       if (isGenderScreen(obs.items)) {
