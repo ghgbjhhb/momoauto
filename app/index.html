@@ -1,11 +1,14 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui="v2">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>momo全托管</title>
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/ui.css">
   <link rel="stylesheet" href="/theme-b.css">
+  <link rel="stylesheet" href="/console.css">
 </head>
 <body>
   <div class="app-shell">
@@ -26,8 +29,8 @@
 
       <div class="topbar-tools">
         <span id="serviceState" hidden><span class="state-text"></span></span>
-        <span class="stat-item zhencan-quota-item" id="topbarZhencanQuota" style="display:none; font-size:12px; font-weight:600; background:#f6ffed; border:1px solid #b7eb8f; color:#237804; padding:3px 10px; border-radius:12px; margin-right:4px;">
-          🧬 真参配额: <strong id="topbarZhencanCount">0</strong> 套
+        <span class="stat-item zhencan-quota-item" id="topbarZhencanQuota" style="display:none;">
+          真参配额: <strong id="topbarZhencanCount">0</strong> 套
         </span>
         <div class="user-pill" id="userPill" style="display:none;">--</div>
         <button class="action-btn" id="openRedeemModalBtn" type="button">兑换卡密</button>
@@ -52,10 +55,10 @@
       <!-- 左区：真机大屏专区 -->
       <section class="preview-panel">
         <div class="panel-header">
-          <h2 id="previewTitle">📱 云手机操作大屏</h2>
+          <h2 id="previewTitle">云手机操作大屏</h2>
           <div class="preview-header-tools">
             <div class="preview-zoom-ctrl" title="拖动放大或缩小云机画面">
-              <span class="zoom-icon" aria-hidden="true">🔍</span>
+              
               <input id="previewSize" type="range" min="220" max="650" step="10" value="340" class="zoom-slider" aria-label="云机画面尺寸调节">
               <span id="previewSizeValue" class="zoom-value">340px</span>
             </div>
@@ -216,8 +219,8 @@
               </button>
             </div>
             <div class="terminal-actions">
-              <button class="danger-button" id="stopScriptBtn" type="button" style="display:none;">⏹ 停止脚本</button>
-              <button class="action-btn small" id="diagReportBtn" type="button" title="一键复制系统环境与错误诊断包" style="display:none;">📋 诊断报告</button>
+              <button class="danger-button" id="stopScriptBtn" type="button" style="display:none;">停止脚本</button>
+              <button class="action-btn small" id="diagReportBtn" type="button" title="一键复制系统环境与错误诊断包" style="display:none;">诊断报告</button>
               <button class="action-btn small" id="copyOutputBtn" type="button">复制日志</button>
               <button class="action-btn small" id="clearOutput" type="button">清空</button>
             </div>
@@ -240,7 +243,7 @@
       <div class="control-head-tools">
         <button class="action-btn small" id="toggleVisionBtn" type="button" title="切换 AI 视觉透视">视觉</button>
         <button class="action-btn small" id="copyControlIdBtn" type="button" title="复制虚拟机 ID">复制ID</button>
-        <button class="control-close-btn" id="closeControl" type="button" title="关闭窗口 (Esc)" aria-label="关闭窗口">✕</button>
+        <button class="control-close-btn" id="closeControl" type="button" title="关闭窗口 (Esc)" aria-label="关闭窗口">×</button>
       </div>
     </header>
 
@@ -271,7 +274,7 @@
   <dialog class="vpc-dialog" id="vpcDialog" aria-labelledby="vpcDialogTitle">
     <div class="vpc-dialog-header">
       <h3 class="vpc-dialog-title" id="vpcDialogTitle">配置 VPC 静态代理</h3>
-      <button class="action-btn small" id="closeVpcDialogBtn" type="button">✕</button>
+      <button class="action-btn small" id="closeVpcDialogBtn" type="button">×</button>
     </div>
     <div class="vpc-dialog-body">
       <p>请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
@@ -285,16 +288,16 @@
 
   <!-- 卡密兑换弹窗 -->
   <dialog class="redeem-dialog" id="redeemDialog">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <h3 style="margin:0; font-size:16px; color:#1f1f1f;">兑换卡密激活云机</h3>
-      <button class="action-btn small" id="closeRedeemModalBtn" type="button">✕</button>
+    <div class="dlg-head">
+      <h3 class="dlg-title">兑换卡密激活云机</h3>
+      <button class="action-btn small" id="closeRedeemModalBtn" type="button">×</button>
     </div>
-    <div style="margin-bottom:14px;">
-      <label for="redeemCardInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">卡密代码</label>
-      <input id="redeemCardInput" name="user_redeem_card_no_autofill" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="YM-XXXX-XXXX-XXXX-XXXX" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-family:monospace; font-size:13px; box-sizing:border-box;">
+    <div class="dlg-field">
+      <label for="redeemCardInput" class="dlg-label">卡密代码</label>
+      <input id="redeemCardInput" name="user_redeem_card_no_autofill" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="YM-XXXX-XXXX-XXXX-XXXX" class="dlg-input dlg-input--mono">
     </div>
-    <div id="redeemAlert" style="display:none; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px;"></div>
-    <div style="display:flex; justify-content:flex-end; gap:8px;">
+    <div id="redeemAlert" class="dlg-alert"></div>
+    <div class="dlg-actions">
       <button class="action-btn" id="cancelRedeemBtn" type="button">取消</button>
       <button class="run-button" id="submitRedeemBtn" type="button">立即兑换</button>
     </div>
@@ -303,26 +306,26 @@
   <!-- 修改登录密码弹窗 -->
   <dialog class="redeem-dialog" id="passwordDialog">
     <form id="userPasswordForm" autocomplete="off" onsubmit="return false;">
-      <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-        <h3 style="margin:0; font-size:16px; color:#1f1f1f;">修改登录密码</h3>
-        <button class="action-btn small" id="closePasswordModalBtn" type="button">✕</button>
+      <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" class="sr-only">
+      <div class="dlg-head">
+        <h3 class="dlg-title">修改登录密码</h3>
+        <button class="action-btn small" id="closePasswordModalBtn" type="button">×</button>
       </div>
-      <p style="margin:0 0 14px; font-size:12px; color:#8c8c8c; line-height:1.5;">保存后所有设备上的旧登录状态立即失效，需要用新密码重新登录。</p>
-      <div style="margin-bottom:12px;">
-        <label for="pwdCurrentInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">当前密码</label>
-        <input id="pwdCurrentInput" type="password" autocomplete="current-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="请输入当前登录密码" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-size:13px; box-sizing:border-box;">
+      <p class="dlg-note">保存后所有设备上的旧登录状态立即失效，需要用新密码重新登录。</p>
+      <div class="dlg-field">
+        <label for="pwdCurrentInput" class="dlg-label">当前密码</label>
+        <input id="pwdCurrentInput" type="password" autocomplete="current-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="请输入当前登录密码" class="dlg-input">
       </div>
-      <div style="margin-bottom:12px;">
-        <label for="pwdNewInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">新密码</label>
-        <input id="pwdNewInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="至少 8 位" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-size:13px; box-sizing:border-box;">
+      <div class="dlg-field">
+        <label for="pwdNewInput" class="dlg-label">新密码</label>
+        <input id="pwdNewInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="至少 8 位" class="dlg-input">
       </div>
-      <div style="margin-bottom:14px;">
-        <label for="pwdConfirmInput" style="display:block; font-size:12px; color:#595959; margin-bottom:6px;">确认新密码</label>
-        <input id="pwdConfirmInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="再次输入新密码" style="width:100%; height:32px; background:#ffffff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; color:#1f1f1f; font-size:13px; box-sizing:border-box;">
+      <div class="dlg-field">
+        <label for="pwdConfirmInput" class="dlg-label">确认新密码</label>
+        <input id="pwdConfirmInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="再次输入新密码" class="dlg-input">
       </div>
-      <div id="passwordAlert" style="display:none; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px;"></div>
-      <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <div id="passwordAlert" class="dlg-alert"></div>
+      <div class="dlg-actions">
         <button class="action-btn" id="cancelPasswordBtn" type="button">取消</button>
         <button class="run-button" id="submitPasswordBtn" type="submit">保存新密码</button>
       </div>
@@ -333,10 +336,10 @@
   <dialog class="confirm-dialog" id="userConfirmDialog" aria-labelledby="userConfirmTitle">
     <div class="confirm-dialog-header">
       <div class="confirm-dialog-title-row">
-        <div class="confirm-icon-badge" id="userConfirmIcon">⚠️</div>
+        <div class="confirm-icon-badge" id="userConfirmIcon">!</div>
         <h3 class="confirm-dialog-title" id="userConfirmTitle">确认操作</h3>
       </div>
-      <button class="action-btn small" id="userConfirmCloseBtn" type="button" title="关闭">✕</button>
+      <button class="action-btn small" id="userConfirmCloseBtn" type="button" title="关闭">×</button>
     </div>
     <div class="confirm-dialog-body" id="userConfirmDesc">
       确认继续此操作？
@@ -348,45 +351,45 @@
   </dialog>
 
   <!-- 自定义组合脚本模态框 -->
-  <dialog class="bundle-dialog" id="scriptBundleModal" style="border: 1px solid #d9d9d9; border-radius: 10px; padding: 20px 24px; max-width: 580px; width: 92%; box-shadow: 0 16px 48px rgba(0,0,0,0.18);">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-      <h3 id="bundleModalTitle" style="margin:0; font-size:16px; font-weight:700; color:#1f1f1f;">新建自定义脚本组合</h3>
-      <button class="action-btn small" id="closeBundleModalBtn" type="button" style="padding:2px 8px;">✕</button>
+  <dialog class="bundle-dialog" id="scriptBundleModal" >
+    <div class="dlg-head">
+      <h3 id="bundleModalTitle" class="dlg-title">新建自定义脚本组合</h3>
+      <button class="action-btn small" id="closeBundleModalBtn" type="button">×</button>
     </div>
     <form id="bundleForm" onsubmit="return false;">
       <input type="hidden" id="bundleEditId" value="">
-      <div style="margin-bottom:12px;">
-        <label for="bundleNameInput" style="display:block; font-size:13px; font-weight:600; color:#262626; margin-bottom:4px;">组合脚本名称 <span style="color:#ff4d4f;">*</span></label>
-        <input id="bundleNameInput" type="text" placeholder="如：一键初始化全套流程" required style="width:100%; height:34px; background:#fff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; font-size:13px; box-sizing:border-box;">
+      <div class="dlg-field">
+        <label for="bundleNameInput" class="dlg-label">组合脚本名称 <span class="req">*</span></label>
+        <input id="bundleNameInput" type="text" placeholder="如：一键初始化全套流程" required class="dlg-input">
       </div>
-      <div style="margin-bottom:14px;">
-        <label for="bundleDescInput" style="display:block; font-size:13px; font-weight:600; color:#262626; margin-bottom:4px;">备注（脚本功能说明）</label>
-        <input id="bundleDescInput" type="text" placeholder="如：按顺序自动执行环境重置、证书注入及抓包代理配置" style="width:100%; height:34px; background:#fff; border:1px solid #d9d9d9; border-radius:4px; padding:0 10px; font-size:13px; box-sizing:border-box;">
+      <div class="dlg-field">
+        <label for="bundleDescInput" class="dlg-label">备注（脚本功能说明）</label>
+        <input id="bundleDescInput" type="text" placeholder="如：按顺序自动执行环境重置、证书注入及抓包代理配置" class="dlg-input">
       </div>
-      <div style="margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+      <div class="dlg-field dlg-inline">
         <label class="switch-toggle" style="cursor:pointer;">
           <input type="checkbox" id="bundleEnabledInput" checked>
           <span class="switch-slider"></span>
-          <span class="switch-text" style="font-weight:600; color:#1f1f1f;">在用户侧显示</span>
+          <span class="switch-text">在用户侧显示</span>
         </label>
       </div>
-      <div style="margin-bottom:14px;">
-        <label style="display:block; font-size:13px; font-weight:600; color:#262626; margin-bottom:6px;">配置执行步骤（按顺序依次执行）</label>
+      <div class="dlg-field">
+        <label class="dlg-label">配置执行步骤（按顺序依次执行）</label>
         <!-- 已选步骤列表，支持上移、下移、删除 -->
-        <div id="bundleSelectedSteps" style="min-height:50px; max-height:160px; overflow-y:auto; border:1px dashed #d9d9d9; border-radius:6px; padding:8px; background:#fafafa; margin-bottom:10px;">
+        <div id="bundleSelectedSteps" class="dlg-steps">
           <!-- 动态填充 -->
         </div>
         <!-- 添加脚本步骤选择器 -->
-        <div style="display:flex; gap:8px;">
-          <select id="bundleAvailableScriptsSelect" style="flex:1; height:32px; border:1px solid #d9d9d9; border-radius:4px; padding:0 8px; font-size:12.5px; background:#fff;">
+        <div class="dlg-inline">
+          <select id="bundleAvailableScriptsSelect" class="dlg-select">
             <!-- 动态填充可选脚本 -->
           </select>
-          <button class="action-btn" id="addStepToBundleBtn" type="button" style="padding:4px 12px; font-size:12.5px;">+ 添加步骤</button>
+          <button class="action-btn" id="addStepToBundleBtn" type="button">+ 添加步骤</button>
         </div>
       </div>
-      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+      <div class="dlg-actions">
         <button class="action-btn" id="cancelBundleBtn" type="button">取消</button>
-        <button class="run-button" id="saveBundleBtn" type="button" style="padding:6px 20px;">保存组合</button>
+        <button class="run-button" id="saveBundleBtn" type="button">保存组合</button>
       </div>
     </form>
   </dialog>

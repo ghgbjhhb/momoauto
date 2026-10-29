@@ -1,0 +1,470 @@
+/* ==========================================================================
+   console.css —— 控制台接管层
+   作用：把 theme-b.css 里的旧类名与旧变量，映射到 tokens.css 的角色令牌。
+   原则：
+   1. 只改视觉（颜色/字号/圆角/阴影/高度），不改布局（flex/grid/定位）。
+   2. 不出现任何字面量颜色，全部消费令牌。
+   3. 随 markup 迁移逐步删除；新页面不应引用本文件。
+   ========================================================================== */
+
+:root[data-ui="v2"] {
+  /* theme-b 的变量名 → 新令牌。旧表在 :root 定义同名变量，
+     这里用属性选择器提高权重，保证接管生效。 */
+  --radius-sm: var(--r-6);
+  --radius-md: var(--r-8);
+  --radius-lg: var(--r-8);
+  --radius-xl: var(--r-8);
+
+  --bg-card: var(--bg-surface);
+  --border-subtle: var(--border);
+  --border-focus: var(--accent);
+
+  --text-title: var(--text-1);
+  --text-body: var(--text-1);
+  --text-muted: var(--text-2);
+  --text-dim: var(--text-3);
+
+  --primary: var(--accent);
+  --primary-hover: var(--accent-hover);
+  --primary-active: var(--accent-hover);
+  --primary-bg: var(--accent-soft);
+  --primary-border: var(--accent);
+
+  --success: var(--ok);
+  --success-hover: var(--ok);
+  --success-bg: var(--ok-soft);
+  --success-border: var(--border);
+
+  --danger-hover: var(--danger);
+  --danger-bg: var(--danger-soft);
+  --danger-border: var(--border-strong);
+
+  --warning: var(--warn);
+  --warning-bg: var(--warn-soft);
+  --warning-border: var(--border-strong);
+
+  --shadow-sm: none;
+  --shadow-card: none;
+  --shadow-modal: var(--shadow-3);
+
+  --font-base: var(--font-sans);
+  --ease-smooth: var(--ease);
+}
+
+/* ---------- 基础排版 ---------- */
+
+:root[data-ui="v2"] body {
+  font-size: var(--fs-13);
+  line-height: var(--lh-normal);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] ::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-pill);
+}
+
+:root[data-ui="v2"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
+
+/* ---------- 顶栏 ---------- */
+
+:root[data-ui="v2"] .topbar {
+  height: var(--h-header);
+  min-height: var(--h-header);
+  padding: 0 var(--sp-16);
+  gap: var(--sp-16);
+  box-shadow: none;
+}
+
+:root[data-ui="v2"] .brand-title {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-500);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] .stat-item {
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+
+:root[data-ui="v2"] .stat-item strong {
+  font-weight: var(--fw-500);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] .stat-sep {
+  color: var(--border-strong);
+}
+
+:root[data-ui="v2"] .user-pill {
+  font-size: var(--fs-12);
+  color: var(--text-2);
+  background: var(--bg-subtle);
+  border-radius: var(--r-pill);
+}
+
+/* ---------- 面板与卡片 ---------- */
+
+:root[data-ui="v2"] .preview-panel,
+:root[data-ui="v2"] .config-card,
+:root[data-ui="v2"] .script-hero-card,
+:root[data-ui="v2"] .pipeline-box,
+:root[data-ui="v2"] .terminal-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  box-shadow: none;
+}
+
+:root[data-ui="v2"] .panel-header {
+  height: var(--h-toolbar);
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-ui="v2"] .panel-header h2 {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-500);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] .pipeline-title,
+:root[data-ui="v2"] .card-header h3,
+:root[data-ui="v2"] .momo-title,
+:root[data-ui="v2"] .bundle-section-title {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-500);
+  color: var(--text-1);
+}
+
+/* ---------- 按钮 ---------- */
+
+:root[data-ui="v2"] .action-btn,
+:root[data-ui="v2"] .run-button,
+:root[data-ui="v2"] .danger-button,
+:root[data-ui="v2"] .reset-button {
+  height: var(--h-control);
+  padding: 0 var(--sp-12);
+  border-radius: var(--r-6);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-500);
+  transition: background-color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+:root[data-ui="v2"] .action-btn {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] .action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-3);
+}
+
+:root[data-ui="v2"] .run-button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+:root[data-ui="v2"] .run-button:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+:root[data-ui="v2"] .danger-button {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+  color: var(--danger);
+}
+
+:root[data-ui="v2"] .danger-button:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+:root[data-ui="v2"] .action-btn.small,
+:root[data-ui="v2"] .small {
+  height: var(--h-control-sm);
+  padding: 0 var(--sp-8);
+  font-size: var(--fs-12);
+}
+
+:root[data-ui="v2"] .action-btn:focus-visible,
+:root[data-ui="v2"] .run-button:focus-visible,
+:root[data-ui="v2"] .danger-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+:root[data-ui="v2"] .action-btn[disabled],
+:root[data-ui="v2"] .run-button[disabled],
+:root[data-ui="v2"] .danger-button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 表单 ---------- */
+
+:root[data-ui="v2"] .form-item label,
+:root[data-ui="v2"] .config-form label {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-500);
+  color: var(--text-2);
+}
+
+:root[data-ui="v2"] .form-item input,
+:root[data-ui="v2"] .form-item select,
+:root[data-ui="v2"] .form-item textarea,
+:root[data-ui="v2"] .config-form input,
+:root[data-ui="v2"] .config-form select,
+:root[data-ui="v2"] .config-form textarea {
+  height: var(--h-control);
+  padding: 0 var(--sp-8);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-6);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+}
+
+:root[data-ui="v2"] .form-item textarea,
+:root[data-ui="v2"] .config-form textarea {
+  height: auto;
+  min-height: var(--h-textarea);
+  padding: var(--sp-8);
+  line-height: var(--lh-relaxed);
+  resize: vertical;
+}
+
+:root[data-ui="v2"] .form-item input:focus,
+:root[data-ui="v2"] .form-item select:focus,
+:root[data-ui="v2"] .form-item textarea:focus,
+:root[data-ui="v2"] .config-form input:focus,
+:root[data-ui="v2"] .config-form select:focus,
+:root[data-ui="v2"] .config-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- 徽章与状态 ---------- */
+
+:root[data-ui="v2"] .badge,
+:root[data-ui="v2"] .device-status-pill,
+:root[data-ui="v2"] .device-version-tag,
+:root[data-ui="v2"] .device-ip-badge,
+:root[data-ui="v2"] .bundle-badge {
+  height: var(--h-badge);
+  padding: 0 var(--sp-6);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-500);
+  line-height: var(--lh-none);
+}
+
+/* ---------- 日志终端 ---------- */
+
+:root[data-ui="v2"] .terminal-box {
+  padding: var(--sp-12);
+  background: var(--bg-subtle);
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: var(--lh-relaxed);
+}
+
+:root[data-ui="v2"] .terminal-bar {
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-ui="v2"] .terminal-tab-btn {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-500);
+  color: var(--text-2);
+}
+
+:root[data-ui="v2"] .terminal-tab-btn.active {
+  color: var(--text-1);
+}
+
+/* ---------- 弹窗 ---------- */
+
+:root[data-ui="v2"] .vpc-dialog,
+:root[data-ui="v2"] .redeem-dialog,
+:root[data-ui="v2"] .confirm-dialog,
+:root[data-ui="v2"] .bundle-dialog {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-8);
+  box-shadow: var(--shadow-3);
+}
+
+:root[data-ui="v2"] .vpc-dialog-title,
+:root[data-ui="v2"] .confirm-dialog-title {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-500);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] .vpc-dialog-body p {
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+
+:root[data-ui="v2"] .vpc-textarea {
+  height: auto;
+  min-height: var(--h-textarea);
+  padding: var(--sp-8);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-6);
+  color: var(--text-1);
+  font-size: var(--fs-13);
+  line-height: var(--lh-relaxed);
+}
+
+/* ---------- 弹窗内的通用结构（替代内联样式） ---------- */
+
+:root[data-ui="v2"] .dlg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-16);
+}
+
+:root[data-ui="v2"] .dlg-title {
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-500);
+  color: var(--text-1);
+}
+
+:root[data-ui="v2"] .dlg-note {
+  margin: 0 0 var(--sp-16);
+  font-size: var(--fs-12);
+  color: var(--text-3);
+  line-height: var(--lh-relaxed);
+}
+
+:root[data-ui="v2"] .dlg-field {
+  margin-bottom: var(--sp-12);
+}
+
+:root[data-ui="v2"] .dlg-label {
+  display: block;
+  margin-bottom: var(--sp-6);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-500);
+  color: var(--text-2);
+}
+
+:root[data-ui="v2"] .dlg-label .req {
+  color: var(--danger);
+}
+
+:root[data-ui="v2"] .dlg-input {
+  width: 100%;
+  height: var(--h-control-lg);
+  padding: 0 var(--sp-8);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-6);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+}
+
+:root[data-ui="v2"] .dlg-input--mono {
+  font-family: var(--font-mono);
+}
+
+:root[data-ui="v2"] .dlg-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+:root[data-ui="v2"] .dlg-alert {
+  display: none;
+  margin-bottom: var(--sp-16);
+  padding: var(--sp-8) var(--sp-12);
+  border-radius: var(--r-6);
+  font-size: var(--fs-12);
+  line-height: var(--lh-normal);
+}
+
+:root[data-ui="v2"] .dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-8);
+}
+
+:root[data-ui="v2"] .dlg-steps {
+  min-height: var(--sp-48);
+  max-height: 160px;
+  overflow-y: auto;
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-8);
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-6);
+}
+
+:root[data-ui="v2"] .dlg-inline {
+  display: flex;
+  gap: var(--sp-8);
+}
+
+:root[data-ui="v2"] .dlg-select {
+  flex: 1;
+  height: var(--h-control-lg);
+  padding: 0 var(--sp-8);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-6);
+  color: var(--text-1);
+  font-size: var(--fs-13);
+}
+
+/* 顶栏真参配额：状态徽章，不是装饰色块 */
+:root[data-ui="v2"] .zhencan-quota-item {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-500);
+  background: var(--ok-soft);
+  border: 1px solid var(--border);
+  color: var(--ok);
+  padding: 0 var(--sp-8);
+  border-radius: var(--r-pill);
+  line-height: var(--lh-none);
+}
+
+/* 仅供屏幕阅读器 / 防自动填充的隐藏元素 */
+:root[data-ui="v2"] .sr-only {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 组合脚本弹窗原先依赖内联样式，迁移后在此补齐结构 */
+:root[data-ui="v2"] .bundle-dialog {
+  width: 92%;
+  max-width: 580px;
+  padding: var(--sp-20) var(--sp-24);
+}
+
+/* 遮罩统一走令牌，去掉玻璃拟态 */
+:root[data-ui="v2"] .vpc-dialog::backdrop,
+:root[data-ui="v2"] .redeem-dialog::backdrop,
+:root[data-ui="v2"] .confirm-dialog::backdrop,
+:root[data-ui="v2"] .bundle-dialog::backdrop {
+  background: var(--bg-overlay);
+  backdrop-filter: none;
+}

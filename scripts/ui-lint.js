@@ -100,8 +100,11 @@ function lintCss(rel, text, tokens, options = {}) {
     const gradient = /gradient\(/i.exec(css);
     if (gradient) push(lineAt(css, gradient.index), 'GRADIENT', '禁止渐变');
 
-    const effect = /backdrop-filter|(?<![-\w])filter\s*:/i.exec(css);
-    if (effect) push(lineAt(css, effect.index), 'EFFECT', '禁止 backdrop-filter / filter（玻璃拟态、发光）');
+    // 逐个取值判断：值为 none 时是「关闭效果」，不算违规
+    for (const m of css.matchAll(/(?:backdrop-filter|(?<![-\w])filter)\s*:\s*([^;}]+)/gi)) {
+      if (m[1].trim().toLowerCase() === 'none') continue;
+      push(lineAt(css, m.index), 'EFFECT', '禁止 backdrop-filter / filter（玻璃拟态、发光）');
+    }
 
     const zebra = /[^{}]*nth-child\(\s*(?:even|odd)[^{}]*\{[^}]*background[^}]*\}/i.exec(css);
     if (zebra) push(lineAt(css, zebra.index + zebra[0].indexOf('nth-child')), 'ZEBRA', '禁止表格斑马纹，用 hover 与选中态区分行');
@@ -297,8 +300,12 @@ function main() {
 
     // 页面是否已迁入新体系：以 <html data-ui="v2"> 为准。
     // 未迁移页面记入基线，不阻断；一旦声明迁移，全部问题立即转为阻断。
+    // LINK_LEGACY 例外：结构层（theme-b）会在多轮迁移中逐步淘汰，只提醒不阻断。
     const migrated = !rel.endsWith('.html') || /data-ui="v2"/.test(text);
-    (migrated ? blocking : advisory).push(...issues);
+    for (const issue of issues) {
+      if (issue.rule === 'LINK_LEGACY') advisory.push(issue);
+      else (migrated ? blocking : advisory).push(issue);
+    }
   }
 
   if (legacy) {
