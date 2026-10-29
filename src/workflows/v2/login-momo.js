@@ -38,6 +38,7 @@ const {
   screenshotAndOcr,
   findApp,
   sendHome,
+  clearAllRecentTasks,
   tapBox,
   homeAnchorMatches,
 } = shared;
@@ -150,14 +151,42 @@ function findPrivacyAgreeBox(items) {
   return agrees[0] || null;
 }
 
+// 陌陌动态信息流浏览页（冷启动时若未登录可能出现带“注册/登录”浮动按钮的动态页）
+function isMomoFeedScreen(items) {
+  if (isLauncherScreen(items)) return false;
+  const hasFeedContent = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('发动态') || t.includes('动态') || t.includes('开云体育') || t.includes('打招呼');
+  });
+  const hasFeedLogin = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('注册/登录') || t.includes('注册登录');
+  });
+  return hasFeedContent && hasFeedLogin;
+}
+
+function findFeedLoginButton(items) {
+  return items.find(it => {
+    const t = normalizeText(it.text);
+    return t.includes('注册/登录') || t.includes('注册登录');
+  }) || null;
+}
+
 // 陌陌登录主页面
 function isLoginPage(items) {
   if (isLauncherScreen(items)) return false;
   return items.some(it => {
     const t = normalizeText(it.text);
-    return t.includes('想认识的新朋友') || t.includes('输入手机号码') || t.includes('获取验证码') || t.includes('插入手机号码');
+    return t.includes('想认识的新朋友') ||
+      t.includes('想认识的那个人') ||
+      t.includes('输入手机号码') ||
+      t.includes('箍入手机号码') ||
+      t.includes('编入手机号码') ||
+      t.includes('获取验证码') ||
+      t.includes('插入手机号码');
   });
 }
+
 
 // 用户使用协议弹窗
 function isUserAgreementDialog(items) {
@@ -213,6 +242,101 @@ function isFinalPhoneBindScreen(items) {
   });
 }
 
+
+/**
+ * 陌陌自愈复扫闭环：当遇到“请重新授权”时，自动清后台 -> 重新打开陌陌 -> 动态页点登录 -> 微信登录 -> 丫丫复扫 -> 重置计时器
+ */
+async function recoverViaRescan(client, resolvedDeviceId, options, ctx) {
+  const { phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode } = ctx;
+  log.console('[自愈恢复 1/4] 清除后台并返回桌面...');
+  await clearAllRecentTasks(phone, control, worker, ocrDir, state, log);
+  await sleep(1000);
+
+  // 桌面打开陌陌
+  log.console('[自愈恢复 2/4] 从桌面重新打开陌陌应用...');
+  let obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-home-' + (state.counter++));
+  const found = await findApp(
+    phone, control, worker, ocrDir, state, obs,
+    { maxPagesPerDirection: 5, pollMs: DEFAULT_POLL_MS },
+    momoTargetBox,
+    'MOMO陌陌'
+  );
+  if (!found?.box) throw new Error('桌面翻页未找到“MOMO陌陌”图标');
+  const clickPoint = tapBox(control, found.box, found.observation, -55);
+  await control.tap(clickPoint.x, clickPoint.y);
+  await control.flush();
+  await sleep(3000);
+
+  obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-after-open-' + (state.counter++));
+
+  // 如果进入动态信息流页，点击浮动注册/登录
+  if (isMomoFeedScreen(obs.items)) {
+    log.console('[自愈恢复 2/4] 点击动态页浮动「注册/登录」按钮...');
+    const feedBtn = findFeedLoginButton(obs.items);
+    if (feedBtn) {
+      const pt = tapBox(control, feedBtn, obs);
+      await control.tap(pt.x, pt.y);
+    } else {
+      await control.tap(Math.round(control.screenWidth * 0.5), Math.round(control.screenHeight * 0.84));
+    }
+    await control.flush();
+    await sleep(2500);
+    obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-after-feed-' + (state.counter++));
+  }
+
+  // 等待并点击绿色微信登录
+  const wechatX = Math.round(control.screenWidth * 0.585);
+  const wechatY = Math.round(control.screenHeight * 0.887);
+  log.console('[自愈恢复 3/4] 点击微信登录...');
+  await control.tap(wechatX, wechatY);
+  await control.flush();
+  await sleep(1800);
+  obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-after-wechat-' + (state.counter++));
+
+  // 处理使用协议弹窗
+  if (isUserAgreementDialog(obs.items)) {
+    log.console('[自愈恢复 3/4] 同意用户使用协议...');
+    const agreeBox = findUserAgreementAgreeBox(obs.items);
+    if (agreeBox) {
+      const pt = tapBox(control, agreeBox, obs);
+      await control.tap(pt.x, pt.y);
+      await control.flush();
+      await sleep(2500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-after-agree-' + (state.counter++));
+    }
+  }
+
+  // 唤起丫丫执行复扫
+  log.console('[自愈恢复 4/4] 唤起丫丫执行历史订单复扫 (匹配: ' + targetTime + ')...');
+  const { runYayaWorkflow } = require('./login-yaya');
+  await runYayaWorkflow({
+    client,
+    deviceId: resolvedDeviceId,
+    mode: 'relogin',
+    targetTime,
+    control,
+    worker,
+    logger: log,
+  });
+
+  log.console('[自愈恢复 4/4] 【复扫完成】已重新获取微信授权，8分钟生命周期已重置！');
+  await sleep(2500);
+
+  // 观察是否进入资料设置
+  obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-final-' + (state.counter++));
+  if (isProfileSetupStage(obs.items)) {
+    log.console('[自愈恢复] 识别当前处于资料完善页，继续推进资料设置...');
+    const { runSetupProfile } = require('./setup-profile');
+    await runSetupProfile(client, resolvedDeviceId, {
+      ...options,
+      nickname: options.nickname || DEFAULT_NICKNAME,
+      phone,
+      control,
+      worker,
+    }, log);
+  }
+}
+
 async function runMomoLogin(client, targetDeviceId, options = {}, logger = console) {
   const log = typeof logger?.console === 'function' ? logger : {
     console: console.log,
@@ -261,11 +385,46 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-inspect', '初始分析画面', log);
 
-    // 检查是否已经处于手机绑定终态
+    // 检查是否已经处于手机绑定界面
     if (isFinalPhoneBindScreen(obs.items)) {
-      log.console('[1/5] 当前已处于手机绑定界面或陌陌首页，一键上号已达成，直接安全停靠！');
-      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '09-final-phone-bind', '到达手机绑定终态', log);
-      return { ok: true, state: 'already_completed', targetTime, nickname, screenshotsDir, lastScreenshotPath };
+      log.console('[1/5] 当前已处于手机绑定界面，直接推进手机号绑定阶段！');
+      const { runBindPhone } = require('./bind-phone');
+      let bindResult = await runBindPhone(client, resolvedDeviceId, {
+        ...options,
+        phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
+        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+        phone,
+        control,
+        worker,
+      }, log);
+
+      if (bindResult?.state === 'reauth_required') {
+        log.console('[1/5] ⚠️ 检测到服务端返回“请重新授权”，触发自动复扫自愈机制！');
+        await recoverViaRescan(client, resolvedDeviceId, options, {
+          phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode
+        });
+        log.console('[1/5] 复扫自愈完成，重新执行手机绑定提交...');
+        bindResult = await runBindPhone(client, resolvedDeviceId, {
+          ...options,
+          phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
+          verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+          phone,
+          control,
+          worker,
+        }, log);
+      }
+
+      lastScreenshotPath = bindResult?.lastScreenshotPath || lastScreenshotPath;
+      return {
+        ok: bindResult?.ok,
+        state: bindResult?.state || 'completed',
+        runId,
+        targetTime,
+        nickname,
+        bindResult,
+        screenshotsDir,
+        lastScreenshotPath,
+      };
     }
 
     // 检查是否已处于资料填写阶段（已完成微信登录授权）
@@ -446,19 +605,48 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       worker,
     }, profileLogger);
 
-    log.console('[5/5] 【一键上号全流程达成】已成功完成资料设置并进入手机绑定界面，安全停下！');
-    await logAuthBudget(log, resolvedDeviceId, '到达手机绑定停靠点');
-
+    log.console('[5/5] 资料完善完成，启动陌陌手机号绑定流程 (手机号打字/验证码过盾/打字提交)...');
     lastScreenshotPath = profileResult.lastScreenshotPath || lastScreenshotPath;
 
+    const { runBindPhone } = require('./bind-phone');
+    let bindResult = await runBindPhone(client, resolvedDeviceId, {
+      ...options,
+      phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
+      verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+      phone,
+      control,
+      worker,
+    }, log);
+
+    // 检查是否遭遇“请重新授权” (生命周期超期自愈)
+    if (bindResult?.state === 'reauth_required') {
+      log.console('[5/5] ⚠️ 检测到服务端返回“请重新授权”，触发自动复扫自愈机制！');
+      await recoverViaRescan(client, resolvedDeviceId, options, {
+        phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode
+      });
+      log.console('[5/5] 复扫自愈完成，重新执行手机绑定提交...');
+      bindResult = await runBindPhone(client, resolvedDeviceId, {
+        ...options,
+        phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
+        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+        phone,
+        control,
+        worker,
+      }, log);
+    }
+
+    lastScreenshotPath = bindResult?.lastScreenshotPath || lastScreenshotPath;
+    log.console('[5/5] 【一键上号全流程大圆满达成】账号资料完善与手机号绑定已全部完成！');
+
     return {
-      ok: true,
-      state: 'completed',
+      ok: bindResult?.ok,
+      state: bindResult?.state || 'completed',
       runId,
       targetTime,
       nickname,
       yayaResult,
       profileResult,
+      bindResult,
       screenshotsDir,
       lastScreenshotPath,
     };
@@ -483,6 +671,9 @@ function parseCliArgs(argv) {
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
     yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE,
     nickname: process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME,
+    phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '17306728814',
+    verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '310742',
+    projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990',
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -498,6 +689,15 @@ function parseCliArgs(argv) {
     } else if (a === '--nickname' || a === '--name') {
       const val = argv[++i];
       if (val && !val.startsWith('--')) opts.nickname = val;
+    } else if (a === '--phone' || a === '--number') {
+      const val = argv[++i];
+      if (val && !val.startsWith('--')) opts.phoneNumber = val;
+    } else if (a === '--code' || a === '--verify-code') {
+      const val = argv[++i];
+      if (val && !val.startsWith('--')) opts.verifyCode = val;
+    } else if (a === '--project-code' || a === '--project') {
+      const val = argv[++i];
+      if (val && !val.startsWith('--')) opts.projectCode = val;
     }
   }
   return opts;

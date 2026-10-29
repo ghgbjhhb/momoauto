@@ -337,42 +337,46 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       await control.flush();
       await sleep(600);
 
-      // 双向清空旧昵称
-      for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_RIGHT);
-      for (let i = 0; i < 50; i++) control.key(protocol.KEY_CODES.DEL);
-      for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_LEFT);
-      for (let i = 0; i < 30; i++) control.key(112); // KEYCODE_FORWARD_DEL
+      // 彻底清空旧昵称：Ctrl+A 全选 + DEL 删除
+      control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+      control.key(protocol.KEY_CODES.DEL);
+      for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
       await control.flush();
-      await sleep(400);
+      await sleep(300);
 
-      // 粘贴新昵称并收起键盘
-      await control.paste(nickname);
-      await control.flush();
-      await sleep(800);
+      // 逐字模拟真人输入新昵称并收起键盘
+      for (const char of nickname) {
+        await control.text(char);
+        await control.flush();
+        await sleep(100 + Math.floor(Math.random() * 80));
+      }
+      await sleep(600);
 
       control.back();
       await control.flush();
       await sleep(800);
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
 
-      // 唤起生日滚轮弹窗
-      log.console('[3/7] 唤起生日滚轮选择框...');
-      control.key(protocol.KEY_CODES.TAB);
+      // 重新 OCR 获取当前界面的生日输入框
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-inspect-bday-${state.counter++}`);
+      const bdayBox = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
+      let bdayPt;
+      if (bdayBox) {
+        bdayPt = tapBox(control, bdayBox, obs);
+        log.console(`[3/7] 点击生日栏 (${bdayPt.x}, ${bdayPt.y}) [${bdayBox.text}] 唤起生日滚轮选择框...`);
+      } else {
+        bdayPt = { x: Math.round(control.screenWidth / 2), y: Math.round(437 * scaleY) };
+        log.console(`[3/7] 使用默认热区 (${bdayPt.x}, ${bdayPt.y}) 唤起生日滚轮选择框...`);
+      }
+      await control.tap(bdayPt.x, bdayPt.y);
       await control.flush();
-      await sleep(300);
-      control.key(protocol.KEY_CODES.DPAD_CENTER);
-      await control.flush();
-      await sleep(1200);
+      await sleep(1500);
 
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-open-wheel-${state.counter++}`);
       if (!isBirthdayWheelDialog(obs.items)) {
-        const bdayItem = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
-        if (bdayItem) {
-          const bdayPt = tapBox(control, bdayItem, obs);
-          await control.tap(bdayPt.x, bdayPt.y);
-          await control.flush();
-          await sleep(1200);
-        }
+        await control.tap(bdayPt.x, bdayPt.y);
+        await control.flush();
+        await sleep(1500);
         obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-retry-wheel-${state.counter++}`);
       }
 
