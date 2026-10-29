@@ -407,41 +407,111 @@
     }
   }
 
-  async function viewFile(fileName, isImage, isText) {
+  let cloudDiskActiveObjectUrl = null;
+
+  function clearCloudDiskActivePreviewUrl() {
+    if (cloudDiskActiveObjectUrl) {
+      try { URL.revokeObjectURL(cloudDiskActiveObjectUrl); } catch {}
+      cloudDiskActiveObjectUrl = null;
+    }
+  }
+
+  function formatByteSize(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  async function viewFile(fileName, isImage, isText, targetDir) {
     const dialog = byId('diskPreviewDialog');
     const titleEl = byId('diskPreviewTitle');
     const bodyEl = byId('diskPreviewBody');
     if (!dialog || !titleEl || !bodyEl) return;
 
+    clearCloudDiskActivePreviewUrl();
+
+    const currentDir = targetDir || state.currentDir || '头像';
     titleEl.textContent = `文件预览: ${fileName}`;
-    bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#595959;">加载中…</div>';
+    bodyEl.innerHTML = `<div style="padding:48px 16px; text-align:center; color:#595959;">` +
+      `<div class="spinning" style="display:inline-block; font-size:28px; margin-bottom:12px;">🔄</div>` +
+      `<div style="font-size:14px; font-weight:500;">正在加载内容…</div>` +
+      `<div style="font-size:12px; color:#8c8c8c; margin-top:4px;">${escapeHtml(fileName)}</div>` +
+    `</div>`;
     dialog.showModal();
 
-    const fileUrl = `/api/cloud-disk/file?dir=${encodeURIComponent(state.currentDir)}&name=${encodeURIComponent(fileName)}`;
+    const token = localStorage.getItem('yunmomo.auth_token') || '';
+    const tokenQuery = token ? '&token=' + encodeURIComponent(token) : '';
+    const fileUrl = `/api/cloud-disk/file?dir=${encodeURIComponent(currentDir)}&name=${encodeURIComponent(fileName)}`;
+    const authHeaders = token ? { 'Authorization': 'Bearer ' + token } : {};
 
     if (isImage) {
-      bodyEl.innerHTML = `
-        <div style="text-align:center; padding:12px; max-height:70vh; overflow:auto;">
-          <img src="${fileUrl}" alt="${escapeHtml(fileName)}" style="max-width:100%; max-height:65vh; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1);" />
-        </div>
-      `;
+      try {
+        const res = await fetch(fileUrl, { headers: authHeaders });
+        if (!res.ok) {
+          let errMsg = 'HTTP ' + res.status;
+          try {
+            const errData = await res.json();
+            if (errData && errData.error) errMsg = errData.error;
+          } catch {}
+          bodyEl.innerHTML = `<div style="text-align:center; padding:40px 16px;">` +
+            `<div style="font-size:42px; margin-bottom:12px;">🖼️❌</div>` +
+            `<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">图片加载失败</div>` +
+            `<div style="font-size:13px; color:#8c8c8c; margin-bottom:20px; word-break:break-all;">${escapeHtml(errMsg)}</div>` +
+            `<button type="button" class="run-button" onclick="window.CloudDisk.viewFile('${escapeHtml(fileName)}', true, false, '${escapeHtml(currentDir)}')">🔄 重试加载</button>` +
+          `</div>`;
+          return;
+        }
+
+        const blob = await res.blob();
+        cloudDiskActiveObjectUrl = URL.createObjectURL(blob);
+
+        bodyEl.innerHTML = `<div style="text-align:center; padding:12px; max-height:72vh; overflow:auto; display:flex; flex-direction:column; align-items:center; justify-content:center;">` +
+          `<div style="max-width:100%; max-height:60vh; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:6px; background:#f5f5f5; border:1px solid #e8e8e8; box-shadow:0 4px 14px rgba(0,0,0,0.08);">` +
+            `<img src="${cloudDiskActiveObjectUrl}" alt="${escapeHtml(fileName)}" style="max-width:100%; max-height:60vh; object-fit:contain; display:block;" />` +
+          `</div>` +
+          `<div style="margin-top:14px; display:flex; align-items:center; justify-content:center; gap:16px; flex-wrap:wrap;">` +
+            `<span style="font-size:12.5px; color:#595959;">📦 大小: ${formatByteSize(blob.size)}</span>` +
+            `<span style="font-size:12.5px; color:#595959;">🏷️ 格式: ${escapeHtml((blob.type || 'image').toUpperCase())}</span>` +
+            `<a href="${cloudDiskActiveObjectUrl}" download="${escapeHtml(fileName)}" class="run-button" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; text-decoration:none; padding:4px 12px; border-radius:4px;">⬇️ 保存原图</a>` +
+          `</div>` +
+        `</div>`;
+      } catch (err) {
+        bodyEl.innerHTML = `<div style="text-align:center; padding:40px 16px;">` +
+          `<div style="font-size:42px; margin-bottom:12px;">⚠️</div>` +
+          `<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">网络异常，无法获取图片</div>` +
+          `<div style="font-size:13px; color:#8c8c8c; margin-bottom:20px;">${escapeHtml(err.message)}</div>` +
+          `<button type="button" class="run-button" onclick="window.CloudDisk.viewFile('${escapeHtml(fileName)}', true, false, '${escapeHtml(currentDir)}')">🔄 重试加载</button>` +
+        `</div>`;
+      }
     } else if (isText) {
       try {
-        const res = await fetch(fileUrl);
+        const res = await fetch(fileUrl, { headers: authHeaders });
+        if (!res.ok) {
+          let errMsg = 'HTTP ' + res.status;
+          try {
+            const errData = await res.json();
+            if (errData && errData.error) errMsg = errData.error;
+          } catch {}
+          bodyEl.innerHTML = `<div style="padding:24px; text-align:center; color:#cf1322;">读取文本失败: ${escapeHtml(errMsg)}</div>`;
+          return;
+        }
         const text = await res.text();
         bodyEl.innerHTML = `
-          <div style="max-height:65vh; overflow:auto; padding:12px; background:#f8fafc; border-radius:4px; border:1px solid #e2e8f0;">
-            <pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all;">${escapeHtml(text)}</pre>
+          <div style="max-height:65vh; overflow:auto; padding:14px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;">
+            <pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all; line-height:1.5;">${escapeHtml(text)}</pre>
           </div>
         `;
       } catch (err) {
-        bodyEl.innerHTML = `<div style="padding:16px; color:#ff4d4f;">加载文本失败: ${escapeHtml(err.message)}</div>`;
+        bodyEl.innerHTML = `<div style="padding:24px; text-align:center; color:#cf1322;">读取文本失败: ${escapeHtml(err.message)}</div>`;
       }
     } else {
       bodyEl.innerHTML = `
-        <div style="padding:24px; text-align:center;">
-          <p>该文件格式不支持直接网页文本预览。</p>
-          <a href="${fileUrl}&download=1" download="${escapeHtml(fileName)}" class="run-button" style="display:inline-block; text-decoration:none;">下载该文件</a>
+        <div style="padding:36px 16px; text-align:center;">
+          <div style="font-size:38px; margin-bottom:12px;">📄</div>
+          <p style="color:#595959; margin-bottom:16px; font-size:13.5px;">该文件格式不支持在线直接预览，请下载到本地查看</p>
+          <a href="${fileUrl}${tokenQuery}&download=1" download="${escapeHtml(fileName)}" class="run-button" style="display:inline-block; text-decoration:none; padding:6px 16px;">⬇️ 下载该文件</a>
         </div>
       `;
     }
@@ -506,7 +576,11 @@
     const closeDialogBtn = byId('closeDiskPreviewBtn');
     const previewDialog = byId('diskPreviewDialog');
     if (closeDialogBtn && previewDialog) {
-      closeDialogBtn.addEventListener('click', () => previewDialog.close());
+      closeDialogBtn.addEventListener('click', () => {
+        clearCloudDiskActivePreviewUrl();
+        previewDialog.close();
+      });
+      previewDialog.addEventListener('close', clearCloudDiskActivePreviewUrl);
     }
 
     // Listen for global device selection events from app.js

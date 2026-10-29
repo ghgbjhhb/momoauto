@@ -1195,13 +1195,16 @@ function renderAdminDiskFileList() {
       }
     };
 
+    const diskToken = localStorage.getItem('yunmomo.auth_token') || '';
+    const diskTokenQuery = diskToken ? '&token=' + encodeURIComponent(diskToken) : '';
+
     listEl.innerHTML = adminDiskFiles.map(file => {
       const isSelected = file.name === adminDiskSelectedFile;
-      const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(file.name);
+      const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(file.name) + diskTokenQuery;
       return '<div class="disk-grid-item ' + (isSelected ? 'selected' : '') + '" data-filename="' + escapeHtml(file.name) + '" onclick="selectAdminDiskFile(\'' + escapeHtml(file.name) + '\', event)" ondblclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();" title="单击选中，双击放大预览">' +
         '<div class="disk-grid-check">✓</div>' +
         '<div class="disk-grid-thumb">' +
-          '<img src="' + previewUrl + '" alt="' + escapeHtml(file.name) + '" loading="lazy" />' +
+          '<img src="' + previewUrl + '" alt="' + escapeHtml(file.name) + '" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML=\'<div style=\\\'font-size:26px; opacity:0.35; display:flex; align-items:center; justify-content:center; width:100%; height:100%;\\\'>🖼️</div>\';" />' +
           '<div class="disk-grid-overlay">' +
             '<button type="button" class="disk-grid-action-btn" title="查看原图" onclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();">' +
               '🔍' +
@@ -1280,36 +1283,108 @@ function renderAdminDiskFileList() {
   }).join('');
 }
 
-window.previewAdminDiskFile = async (fileName, isImage, isText) => {
+let adminDiskActiveObjectUrl = null;
+
+function clearAdminDiskActivePreviewUrl() {
+  if (adminDiskActiveObjectUrl) {
+    try { URL.revokeObjectURL(adminDiskActiveObjectUrl); } catch {}
+    adminDiskActiveObjectUrl = null;
+  }
+}
+
+function formatDiskFileSize(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
   const dialog = document.getElementById('adminDiskPreviewDialog');
   const titleEl = document.getElementById('adminDiskPreviewTitle');
   const bodyEl = document.getElementById('adminDiskPreviewBody');
   if (!dialog || !titleEl || !bodyEl) return;
 
+  clearAdminDiskActivePreviewUrl();
+
+  const currentDir = targetDir || adminDiskCurrentDir || '头像';
   titleEl.textContent = '文件预览: ' + fileName;
-  bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#595959;">加载中…</div>';
+  bodyEl.innerHTML = '<div style="padding:48px 16px; text-align:center; color:#595959;">' +
+    '<div class="spinning" style="display:inline-block; font-size:28px; margin-bottom:12px;">🔄</div>' +
+    '<div style="font-size:14px; font-weight:500;">正在加载内容…</div>' +
+    '<div style="font-size:12px; color:#8c8c8c; margin-top:4px;">' + escapeHtml(fileName) + '</div>' +
+  '</div>';
   dialog.showModal();
 
-  const fileUrl = '/api/cloud-disk/file?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(fileName);
+  const token = localStorage.getItem('yunmomo.auth_token') || '';
+  const tokenQuery = token ? '&token=' + encodeURIComponent(token) : '';
+  const fileUrl = '/api/cloud-disk/file?dir=' + encodeURIComponent(currentDir) + '&name=' + encodeURIComponent(fileName);
+  const authHeaders = token ? { 'Authorization': 'Bearer ' + token } : {};
 
   if (isImage) {
-    bodyEl.innerHTML = '<div style="text-align:center; padding:12px; max-height:70vh; overflow:auto;">' +
-      '<img src="' + fileUrl + '" alt="' + escapeHtml(fileName) + '" style="max-width:100%; max-height:65vh; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1);" />' +
-    '</div>';
-  } else if (isText) {
     try {
-      const res = await fetch(fileUrl);
-      const text = await res.text();
-      bodyEl.innerHTML = '<div style="max-height:65vh; overflow:auto; padding:12px; background:#f8fafc; border-radius:4px; border:1px solid #e2e8f0;">' +
-        '<pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all;">' + escapeHtml(text) + '</pre>' +
+      const res = await fetch(fileUrl, { headers: authHeaders });
+      if (!res.ok) {
+        let errMsg = 'HTTP ' + res.status;
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) errMsg = errData.error;
+        } catch {}
+        bodyEl.innerHTML = '<div style="text-align:center; padding:40px 16px;">' +
+          '<div style="font-size:42px; margin-bottom:12px;">🖼️❌</div>' +
+          '<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">图片加载失败</div>' +
+          '<div style="font-size:13px; color:#8c8c8c; margin-bottom:20px; word-break:break-all;">' + escapeHtml(errMsg) + '</div>' +
+          '<button type="button" class="btn-action-sm" onclick="previewAdminDiskFile(\'' + escapeHtml(fileName) + '\', true, false, \'' + escapeHtml(currentDir) + '\')">🔄 重试加载</button>' +
+        '</div>';
+        return;
+      }
+
+      const blob = await res.blob();
+      adminDiskActiveObjectUrl = URL.createObjectURL(blob);
+
+      bodyEl.innerHTML = '<div style="text-align:center; padding:12px; max-height:72vh; overflow:auto; display:flex; flex-direction:column; align-items:center; justify-content:center;">' +
+        '<div style="max-width:100%; max-height:60vh; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:6px; background:#f5f5f5; border:1px solid #e8e8e8; box-shadow:0 4px 14px rgba(0,0,0,0.08);">' +
+          '<img id="adminDiskActivePreviewImg" src="' + adminDiskActiveObjectUrl + '" alt="' + escapeHtml(fileName) + '" style="max-width:100%; max-height:60vh; object-fit:contain; display:block;" />' +
+        '</div>' +
+        '<div style="margin-top:14px; display:flex; align-items:center; justify-content:center; gap:16px; flex-wrap:wrap;">' +
+          '<span style="font-size:12.5px; color:#595959;">📦 大小: ' + formatDiskFileSize(blob.size) + '</span>' +
+          '<span style="font-size:12.5px; color:#595959;">🏷️ 格式: ' + escapeHtml((blob.type || 'image').toUpperCase()) + '</span>' +
+          '<a href="' + adminDiskActiveObjectUrl + '" download="' + escapeHtml(fileName) + '" class="btn-action-sm" style="display:inline-flex; align-items:center; gap:4px; font-size:12px; text-decoration:none; background:#1677ff; color:#fff; padding:4px 12px; border-radius:4px;">⬇️ 保存原图</a>' +
+        '</div>' +
       '</div>';
     } catch (err) {
-      bodyEl.innerHTML = '<div style="padding:20px; color:#cf1322;">读取文件内容失败: ' + escapeHtml(err.message) + '</div>';
+      bodyEl.innerHTML = '<div style="text-align:center; padding:40px 16px;">' +
+        '<div style="font-size:42px; margin-bottom:12px;">⚠️</div>' +
+        '<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">网络异常，无法获取图片</div>' +
+        '<div style="font-size:13px; color:#8c8c8c; margin-bottom:20px;">' + escapeHtml(err.message) + '</div>' +
+        '<button type="button" class="btn-action-sm" onclick="previewAdminDiskFile(\'' + escapeHtml(fileName) + '\', true, false, \'' + escapeHtml(currentDir) + '\')">🔄 重试加载</button>' +
+      '</div>';
+    }
+  } else if (isText) {
+    try {
+      const res = await fetch(fileUrl, { headers: authHeaders });
+      if (!res.ok) {
+        let errMsg = 'HTTP ' + res.status;
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) errMsg = errData.error;
+        } catch {}
+        bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#cf1322;">读取文件内容失败: ' + escapeHtml(errMsg) + '</div>';
+        return;
+      }
+      const text = await res.text();
+      bodyEl.innerHTML = '<div style="max-height:65vh; overflow:auto; padding:14px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;">' +
+        '<pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all; line-height:1.5;">' + escapeHtml(text) + '</pre>' +
+      '</div>';
+    } catch (err) {
+      bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#cf1322;">读取文件内容失败: ' + escapeHtml(err.message) + '</div>';
     }
   } else {
-    bodyEl.innerHTML = '<div style="padding:30px; text-align:center;">' +
-      '<p style="color:#595959; margin-bottom:14px;">此文件类型不支持在线预览，请下载查看</p>' +
-      '<a href="' + fileUrl + '" download class="btn-action-sm" style="display:inline-block; text-decoration:none;">下载文件</a>' +
+    bodyEl.innerHTML = '<div style="padding:36px 16px; text-align:center;">' +
+      '<div style="font-size:38px; margin-bottom:12px;">📄</div>' +
+      '<p style="color:#595959; margin-bottom:16px; font-size:13.5px;">此文件格式暂不支持在线直接预览，请下载到本地查看</p>' +
+      '<a href="' + fileUrl + tokenQuery + '&download=1" download="' + escapeHtml(fileName) + '" class="btn-action-sm" style="display:inline-block; text-decoration:none; background:#1677ff; color:#fff; padding:6px 16px;">⬇️ 下载该文件</a>' +
     '</div>';
   }
 };
@@ -1548,7 +1623,11 @@ function loadAdminDisk() {
     const closePreviewBtn = document.getElementById('closeAdminDiskPreviewBtn');
     const previewDialog = document.getElementById('adminDiskPreviewDialog');
     if (closePreviewBtn && previewDialog) {
-      closePreviewBtn.addEventListener('click', () => previewDialog.close());
+      closePreviewBtn.addEventListener('click', () => {
+        clearAdminDiskActivePreviewUrl();
+        previewDialog.close();
+      });
+      previewDialog.addEventListener('close', clearAdminDiskActivePreviewUrl);
     }
   }
 

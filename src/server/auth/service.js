@@ -7,8 +7,14 @@ function generateSalt() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-// WebSocket 握手带不了 Authorization 头，只有这几个升级端点允许用查询串传长期令牌。
-const WS_TOKEN_PATHS = ['/api/control', '/api/video'];
+// WebSocket 握手及静态媒体资源加载带不了自定义 Authorization 头，允许通过查询参数验证令牌。
+const QUERY_TOKEN_PATHS = [
+  '/api/control',
+  '/api/video',
+  '/api/cloud-disk/file',
+  '/api/cloud-disk/preview',
+  '/api/cloud-disk/download'
+];
 
 const SCRYPT_KEYLEN = 64;
 
@@ -221,7 +227,7 @@ class AuthService {
     if (!token) {
       try {
         const url = new URL(request.url, 'http://' + (request.headers.host || '127.0.0.1'));
-        if (WS_TOKEN_PATHS.some(prefix => url.pathname.startsWith(prefix))) {
+        if (QUERY_TOKEN_PATHS.some(prefix => url.pathname.startsWith(prefix))) {
           token = url.searchParams.get('token') || '';
         }
       } catch {}

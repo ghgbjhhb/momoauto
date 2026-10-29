@@ -259,7 +259,8 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     category: 'momo',
     version: 'v2',
     parameters: [
-      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' }
+      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' },
+      { name: 'verifyCode', label: '短信验证码', defaultValue: '310742', placeholder: '输入 6 位验证码（模拟打字输入）' }
     ]
   },
   {
@@ -952,6 +953,7 @@ function configureScript(script, body, env) {
   }
   if (script.id === 'flow-17') {
     if (options.phoneNumber?.trim()) env.YUNMOMO_MOMO_PHONE = options.phoneNumber.trim();
+    if (options.verifyCode?.trim()) env.YUNMOMO_MOMO_VERIFY_CODE = options.verifyCode.trim();
   }
   if (script.id === 'flow-15') {
     if (options.mode?.trim()) env.YUNMOMO_MOMO_WATCH_MODE = options.mode.trim();
@@ -1964,7 +1966,7 @@ async function handler(request, response) {
         return;
       }
       if (url.pathname === '/api/cloud-disk/files') {
-        if (!requireAdmin(response)) return;
+        if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
         const dir = safeCloudDiskDir(url.searchParams.get('dir'));
         const files = getCloudDiskFiles(dir);
         const counts = {
@@ -1975,7 +1977,7 @@ async function handler(request, response) {
         return;
       }
       if (url.pathname === '/api/cloud-disk/file' || url.pathname === '/api/cloud-disk/preview' || url.pathname === '/api/cloud-disk/download') {
-        if (!requireAdmin(response)) return;
+        if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return; }
         const dir = safeCloudDiskDir(url.searchParams.get('dir'));
         const rawName = url.searchParams.get('name') || '';
         const name = path.basename(rawName);
@@ -1983,9 +1985,38 @@ async function handler(request, response) {
           json(response, 400, { ok: false, error: '缺少文件名' });
           return;
         }
-        const filePath = path.join(CLOUD_DISK_ROOT, dir, name);
-        if (!fs.existsSync(filePath)) {
-          json(response, 404, { ok: false, error: '文件不存在' });
+        let filePath = path.join(CLOUD_DISK_ROOT, dir, name);
+        let exists = fs.existsSync(filePath);
+
+        // 若本地不存在且为头像图片，尝试从云机平台私有网盘回源拉取
+        if (!exists && dir === '头像') {
+          try {
+            const token = user.role === 'admin' ? runtimeToken : (process.env.YUNMOMO_TOKEN || runtimeToken);
+            if (token) {
+              const c = new YunmomoClient({ token, timeoutMs: 15000 });
+              const disk = c.cloudDisk();
+              const listRes = await disk.list({ name, size: 5 });
+              const match = (listRes.records || []).find(r => r.name === name);
+              if (match && match.url) {
+                const previewRes = await disk.resolveUrl(match);
+                const downloadUrl = previewRes?.data || previewRes;
+                if (typeof downloadUrl === 'string' && downloadUrl.startsWith('http')) {
+                  const remoteRes = await fetch(downloadUrl);
+                  if (remoteRes.ok) {
+                    const buf = Buffer.from(await remoteRes.arrayBuffer());
+                    fs.writeFileSync(filePath, buf);
+                    exists = true;
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[CloudDisk] 远端回源拉取失败 [${name}]: ${err.message}`);
+          }
+        }
+
+        if (!exists) {
+          json(response, 404, { ok: false, error: `文件 [${name}] 在云盘【${dir}】目录中不存在` });
           return;
         }
         const ext = path.extname(name).toLowerCase();
@@ -1996,6 +2027,7 @@ async function handler(request, response) {
           '.webp': 'image/webp',
           '.gif': 'image/gif',
           '.bmp': 'image/bmp',
+          '.svg': 'image/svg+xml',
           '.txt': 'text/plain; charset=utf-8',
           '.json': 'application/json; charset=utf-8'
         };
