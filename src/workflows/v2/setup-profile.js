@@ -337,39 +337,40 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
     // 分支 2：处于“你的昵称和生日是？”界面
     if (isNicknameAndBirthdayScreen(obs.items) || isBirthdayWheelDialog(obs.items)) {
-      if (!isBirthdayWheelDialog(obs.items)) {
-      log.console(`[3/7] 设置女生网名: "${nickname}"...`);
       const scaleX = control.screenWidth / Math.max(1, obs.width);
       const scaleY = control.screenHeight / Math.max(1, obs.height);
 
-      const subtitleItem = obs.items.find(i => i.text.includes('如何称呼') || i.text.includes('了解你'));
-      const nickPt = subtitleItem ? tapBox(control, subtitleItem, obs, 45) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
-      await control.tap(nickPt.x, nickPt.y);
-      await control.flush();
-      await sleep(600);
+      if (!isBirthdayWheelDialog(obs.items)) {
+        log.console(`[3/7] 设置女生网名: "${nickname}"...`);
 
-      // 彻底清空旧昵称：Ctrl+A 全选 + DEL 删除
-      control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
-      control.key(protocol.KEY_CODES.DEL);
-      for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
-      await control.flush();
-      await sleep(300);
-
-      // 逐字模拟真人输入新昵称并收起键盘
-      for (const char of nickname) {
-        await control.text(char);
+        const subtitleItem = obs.items.find(i => i.text.includes('如何称呼') || i.text.includes('了解你'));
+        const nickPt = subtitleItem ? tapBox(control, subtitleItem, obs, 45) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
+        await control.tap(nickPt.x, nickPt.y);
         await control.flush();
-        await sleep(100 + Math.floor(Math.random() * 80));
-      }
-      await sleep(600);
+        await sleep(600);
 
-      control.back();
-      await control.flush();
-      await sleep(800);
-      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
+        // 彻底清空旧昵称：Ctrl+A 全选 + DEL 删除
+        control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+        control.key(protocol.KEY_CODES.DEL);
+        for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
+        await control.flush();
+        await sleep(300);
+
+        // 逐字模拟真人输入新昵称并收起键盘
+        for (const char of nickname) {
+          await control.text(char);
+          await control.flush();
+          await sleep(100 + Math.floor(Math.random() * 80));
+        }
+        await sleep(600);
+
+        control.back();
+        await control.flush();
+        await sleep(800);
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
+      }
 
       // 重新 OCR 获取当前界面的生日输入框
-      }
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-inspect-bday-${state.counter++}`);
       const bdayBox = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
       let bdayPt;
