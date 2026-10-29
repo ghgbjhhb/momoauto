@@ -15,6 +15,7 @@ const STEPS = [
   { order: 5, name: '一键生成全部v2', entry: '05-一键生成全部.js', source: 'src/workflows/v2/generate-all.js', confirmation: 'YUNMOMO_CONFIRM_GENERATE_ALL', version: 'v2' },
   { order: 6, name: '定位到ip地v2', entry: '06-定位到ip地.js', source: 'src/workflows/v2/locate-ip.js', confirmation: 'YUNMOMO_CONFIRM_VIRTUAL_LOCATION', version: 'v2' },
   { order: 7, name: '高德初始化v2', entry: '07-高德初始化.js', source: 'src/workflows/v2/initialize-gaode.js', confirmation: 'YUNMOMO_CONFIRM_GAODE_INIT', version: 'v2' },
+  { order: 8, name: '丫丫登录v2', entry: '08-丫丫登录.js', source: 'src/workflows/v2/login-yaya.js', confirmation: 'YUNMOMO_CONFIRM_YAYA_LOGIN', version: 'v2' },
 ];
 
 function formatStepOrder(order) {

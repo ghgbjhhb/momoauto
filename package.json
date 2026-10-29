@@ -50,6 +50,7 @@
     "flow:v2:05": "node flows/v2/05-一键生成全部.js",
     "flow:v2:06": "node flows/v2/06-定位到ip地.js",
     "flow:v2:07": "node flows/v2/07-高德初始化.js",
+    "flow:v2:08": "node flows/v2/08-丫丫登录.js",
     "flow:v2:09": "node flows/v2/09-重置数据.js",
     "flow:v2:reset": "node flows/v2/09-重置数据.js",
     "flow:v3:all": "node flows/v3/执行全部.js",
