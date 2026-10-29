@@ -97,11 +97,14 @@ function lintCss(rel, text, tokens, options = {}) {
   const push = (line, rule, message) => issues.push({ rel, line: line + offset, rule, message });
 
   if (!isTokens) {
-    if (/gradient\(/i.test(css)) push(lineAt(css, css.search(/gradient\(/i)), 'GRADIENT', '禁止渐变');
-    if (/backdrop-filter|(?<![-\w])filter\s*:/i.test(css)) push(1, 'EFFECT', '禁止 backdrop-filter / filter（玻璃拟态、发光）');
+    const gradient = /gradient\(/i.exec(css);
+    if (gradient) push(lineAt(css, gradient.index), 'GRADIENT', '禁止渐变');
+
+    const effect = /backdrop-filter|(?<![-\w])filter\s*:/i.exec(css);
+    if (effect) push(lineAt(css, effect.index), 'EFFECT', '禁止 backdrop-filter / filter（玻璃拟态、发光）');
 
     const zebra = /[^{}]*nth-child\(\s*(?:even|odd)[^{}]*\{[^}]*background[^}]*\}/i.exec(css);
-    if (zebra) push(lineAt(css, zebra.index), 'ZEBRA', '禁止表格斑马纹，用 hover 与选中态区分行');
+    if (zebra) push(lineAt(css, zebra.index + zebra[0].indexOf('nth-child')), 'ZEBRA', '禁止表格斑马纹，用 hover 与选中态区分行');
 
     const bar = /border-(?:left|right)\s*:\s*([2-9]|\d{2,})px[^;}]*var\(--accent[^;}]*/i.exec(css);
     if (bar) push(lineAt(css, bar.index), 'ACCENT_BAR', '禁止 accent 侧边色条，用全边框或明度差');
