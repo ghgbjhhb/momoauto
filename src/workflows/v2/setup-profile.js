@@ -139,10 +139,20 @@ function isBirthdayWheelDialog(items) {
 }
 
 function isPermissionDialog(items) {
-  return items.some(it => {
+  const fullText = items.map(it => normalizeText(it.text)).join('');
+  const hasAllowBtn = items.some(it => {
     const t = normalizeText(it.text);
-    return (t.includes('允许') && t.includes('不允许')) || t.includes('访问您设备上的照片') || t.includes('存储权限');
+    return t === '允许' || t === '始终允许' || t === '仅在使用中允许';
   });
+  const hasPermissionKeywords = fullText.includes('照片') || fullText.includes('媒体') || fullText.includes('存储') || fullText.includes('访问您设备') || fullText.includes('权限');
+  return hasAllowBtn && (hasPermissionKeywords || fullText.includes('不允许') || fullText.includes('拒绝'));
+}
+
+function findPermissionAllowButton(items) {
+  return items.find(it => {
+    const t = normalizeText(it.text);
+    return t === '允许' || t === '始终允许' || t === '仅在使用中允许';
+  }) || null;
 }
 
 function isPhotoPickerScreen(items) {
@@ -326,7 +336,8 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     }
 
     // 分支 2：处于“你的昵称和生日是？”界面
-    if (isNicknameAndBirthdayScreen(obs.items)) {
+    if (isNicknameAndBirthdayScreen(obs.items) || isBirthdayWheelDialog(obs.items)) {
+      if (!isBirthdayWheelDialog(obs.items)) {
       log.console(`[3/7] 设置女生网名: "${nickname}"...`);
       const scaleX = control.screenWidth / Math.max(1, obs.width);
       const scaleY = control.screenHeight / Math.max(1, obs.height);
@@ -358,6 +369,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
 
       // 重新 OCR 获取当前界面的生日输入框
+      }
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-inspect-bday-${state.counter++}`);
       const bdayBox = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
       let bdayPt;
@@ -610,9 +622,9 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
         log.console(`[云盘传图] 传图提示 (不阻断主流程): ${err.message}`);
       }
 
-      // 处理系统权限弹窗（直接点击“允许”）
-      log.console('[5/7] 点击系统权限弹窗中的“允许”...');
-      const allowBtn = obs.items.find(i => i.text.trim() === '允许');
+      // 处理系统权限弹窗（若出现则点击“允许”/“仅在使用中允许”，若未出现则不阻塞）
+      log.console('[5/7] 检测到系统权限弹窗，点击允许授权...');
+      const allowBtn = findPermissionAllowButton(obs.items);
       if (allowBtn) {
         const allowPt = tapBox(control, allowBtn, obs);
         await control.tap(allowPt.x, allowPt.y);
@@ -808,6 +820,10 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     while (!isBindPhoneOrHomeScreen(obs.items) && Date.now() < finalDeadline) {
       await sleep(1000);
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step7-wait-final-${state.counter++}`);
+    }
+
+    if (!isBindPhoneOrHomeScreen(obs.items)) {
+      throw new Error('未能到达“手机绑定”或陌陌首页，当前界面状态不匹配！');
     }
 
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '13-final-phone-bind', '到达手机绑定终态', log);

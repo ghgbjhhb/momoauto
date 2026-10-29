@@ -214,6 +214,24 @@ function findUserAgreementAgreeBox(items) {
   return agrees[0];
 }
 
+// 系统权限弹窗判定与按钮定位（位置/存储/通知/设备权限，若出现自动点允许，若未出现秒过）
+function isSystemPermissionDialog(items) {
+  const fullText = items.map(it => normalizeText(it.text)).join('');
+  const hasAllowBtn = items.some(it => {
+    const t = normalizeText(it.text);
+    return t === '允许' || t === '始终允许' || t === '仅在使用中允许';
+  });
+  const hasPermissionKeywords = fullText.includes('照片') || fullText.includes('媒体') || fullText.includes('存储') || fullText.includes('访问您设备') || fullText.includes('权限') || fullText.includes('位置信息') || fullText.includes('通知');
+  return hasAllowBtn && (hasPermissionKeywords || fullText.includes('不允许') || fullText.includes('拒绝'));
+}
+
+function findSystemPermissionAllowButton(items) {
+  return items.find(it => {
+    const t = normalizeText(it.text);
+    return t === '允许' || t === '始终允许' || t === '仅在使用中允许';
+  }) || null;
+}
+
 // 资料填写阶段（已完成微信登录授权）
 function isProfileSetupStage(items) {
   if (isLauncherScreen(items)) return false;
@@ -268,6 +286,19 @@ async function recoverViaRescan(client, resolvedDeviceId, options, ctx) {
   await sleep(3000);
 
   obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-after-open-' + (state.counter++));
+
+  // 检查是否出现系统启动权限弹窗（若出现则自动点击允许，若未出现秒过无延迟）
+  if (isSystemPermissionDialog(obs.items)) {
+    log.console('[自愈恢复 2/4] 检测到系统启动权限弹窗，自动点击允许...');
+    const allowBtn = findSystemPermissionAllowButton(obs.items);
+    if (allowBtn) {
+      const pt = tapBox(control, allowBtn, obs);
+      await control.tap(pt.x, pt.y);
+      await control.flush();
+      await sleep(1500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, 'recover-after-perm-' + (state.counter++));
+    }
+  }
 
   // 如果进入动态信息流页，点击浮动注册/登录
   if (isMomoFeedScreen(obs.items)) {
@@ -479,6 +510,19 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
           await control.flush();
           await sleep(2500);
           obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-after-open-retry-${state.counter++}`);
+        }
+
+        // 检查可能出现的系统启动权限弹窗（若出现则自动点击允许，若未出现秒过无延迟）
+        if (isSystemPermissionDialog(obs.items)) {
+          log.console('[1/5] 检测到系统启动权限弹窗，自动点击允许...');
+          const allowBtn = findSystemPermissionAllowButton(obs.items);
+          if (allowBtn) {
+            const pt = tapBox(control, allowBtn, obs);
+            await control.tap(pt.x, pt.y);
+            await control.flush();
+            await sleep(1500);
+            obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-after-perm-${state.counter++}`);
+          }
         }
       } else {
         log.console('[1/5] 当前已处于陌陌界面');
