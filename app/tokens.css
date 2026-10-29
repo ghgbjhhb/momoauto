@@ -31,6 +31,7 @@
   /* ---------- 字重（只有两档，深色底上 600+ 会光学加粗） ---------- */
   --fw-400: 400;
   --fw-500: 500;
+  --fw-600: 600;
 
   /* ---------- 行高 ---------- */
   --lh-none: 1;
@@ -70,6 +71,7 @@
   --h-device-row: 52px;
   --h-modal-head: 44px;
   --h-textarea: 72px;
+  --h-loading: 96px;
 
   /* ---------- 图标 ---------- */
   --icon-16: 16px;
@@ -78,13 +80,14 @@
   /* ---------- 动效（只允许 opacity / transform / 颜色类） ---------- */
   --dur-1: 120ms;
   --dur-2: 180ms;
-  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease: var(--ease-2);
 
   /* ---------- 层级 ---------- */
   --z-sticky: 10;
   --z-dropdown: 100;
   --z-modal: 1000;
   --z-toast: 2000;
+  --device-width: 340px;
 
   color-scheme: light;
 }
@@ -95,7 +98,7 @@
    ========================================================================== */
 
 :root[data-ui="v2"] {
-  --bg-page: #eef0f4;
+  --bg-page: #e6eaef;
   --bg-surface: #ffffff;
   --bg-subtle: #f2f4f7;
   --bg-raised: #ffffff;
@@ -112,23 +115,23 @@
   --border: #e2e5ea;
   --border-strong: #c9cfd9;
 
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: #e9f0fe;
+  --accent: var(--blue-8);
+  --accent-hover: var(--blue-9);
+  --accent-soft: var(--blue-0);
 
-  --ok: #15803d;
-  --ok-soft: #ecfdf3;
-  --warn: #b45309;
-  --warn-soft: #fffbeb;
-  --danger: #b42318;
-  --danger-soft: #fef3f2;
-  --info: #0369a1;
-  --info-soft: #eff8ff;
+  --ok: var(--green-10);
+  --ok-soft: var(--green-0);
+  --warn: var(--yellow-11);
+  --warn-soft: var(--yellow-0);
+  --danger: var(--red-9);
+  --danger-soft: var(--red-0);
+  --info: var(--cyan-9);
+  --info-soft: var(--cyan-0);
 
-  --focus-ring: 0 0 0 2px rgba(37, 99, 235, 0.28);
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-2: 0 4px 16px rgba(16, 24, 40, 0.1);
-  --shadow-3: 0 8px 32px rgba(16, 24, 40, 0.16);
+  --focus-ring: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  --elev-1: var(--shadow-2);
+  --elev-2: var(--shadow-3);
+  --elev-3: var(--shadow-4);
 }
 
 /* ==========================================================================
@@ -154,8 +157,8 @@
   --border: #2e2e34;
   --border-strong: #414148;
 
-  --accent: #4d8dff;
-  --accent-hover: #6ba0ff;
+  --accent: var(--blue-4);
+  --accent-hover: var(--blue-3);
   --accent-soft: rgba(77, 141, 255, 0.14);
 
   --ok: #4ade80;
@@ -168,9 +171,9 @@
   --info-soft: rgba(103, 201, 245, 0.12);
 
   --focus-ring: 0 0 0 2px rgba(77, 141, 255, 0.4);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --shadow-3: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 8px 32px rgba(0, 0, 0, 0.55);
 
   color-scheme: dark;
 }

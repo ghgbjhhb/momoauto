@@ -90,5 +90,8 @@
   "dependencies": {
     "puppeteer-core": "^25.16.0",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "open-props": "1.7.23"
   }
 }

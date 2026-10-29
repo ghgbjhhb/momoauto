@@ -24,7 +24,11 @@ const LEGACY_FILES = new Set(['styles.css', 'theme-a.css', 'theme-b.css']);
 /* ---------- 令牌基线 ---------- */
 
 function readTokens(file) {
-  const css = stripComments(fs.readFileSync(file, 'utf8'));
+  const vendorDir = path.join(path.dirname(file), 'vendor');
+  const vendor = fs.existsSync(vendorDir)
+    ? fs.readdirSync(vendorDir).filter(f => f.endsWith('.css')).map(f => stripComments(fs.readFileSync(path.join(vendorDir, f), 'utf8'))).join('\n')
+    : '';
+  const css = stripComments(fs.readFileSync(file, 'utf8')) + vendor;
   const names = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
   const group = prefix => new Set([...names].filter(n => n.startsWith(prefix)));
   return {
@@ -93,6 +97,8 @@ function lintCss(rel, text, tokens, options = {}) {
   const issues = [];
   const isTokens = /tokens\.css$/.test(rel);
   const css = stripComments(text);
+  // 本文件内定义的自定义属性也算已定义（例如 console.css 自己的 --device-width）
+  const localVars = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
   const offset = options.lineOffset || 0;
   const push = (line, rule, message) => issues.push({ rel, line: line + offset, rule, message });
 
@@ -133,7 +139,9 @@ function lintCss(rel, text, tokens, options = {}) {
 
     // var() 必须真实存在
     for (const name of varsIn(value)) {
-      if (!tokens.names.has(name)) push(line, 'UNDEFINED_TOKEN', `var(${name}) 未在 tokens.css 中定义`);
+      if (!tokens.names.has(name) && !localVars.has(name)) {
+        push(line, 'UNDEFINED_TOKEN', `var(${name}) 未在 tokens.css 中定义`);
+      }
     }
 
     if (prop === 'font-size' && !/^var\(--fs-[\w-]+\)$/.test(value)) {
@@ -160,8 +168,8 @@ function lintCss(rel, text, tokens, options = {}) {
       }
     }
     if (prop === 'box-shadow' && !isTokens) {
-      const ok = value === 'none' || /^var\(--(shadow|focus-ring)/.test(value);
-      if (!ok) push(line, 'SHADOW', `阴影 ${value} 必须用 var(--shadow-1/2/3) 或 var(--focus-ring)`);
+      const ok = value === 'none' || /^var\(--(elev|focus-ring)/.test(value);
+      if (!ok) push(line, 'SHADOW', `阴影 ${value} 必须用 var(--elev-1/2/3) 或 var(--focus-ring)`);
     }
     if (prop === 'transition') {
       const props = value.split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
