@@ -1292,30 +1292,35 @@ function showInPageConfirm({ title, message, okText = '确定', cancelText = '�
     const descEl = document.getElementById('userConfirmDesc');
     const okBtn = document.getElementById('userConfirmOkBtn');
     const cancelBtn = document.getElementById('userConfirmCancelBtn');
+    const closeBtn = document.getElementById('userConfirmCloseBtn');
     const iconEl = document.getElementById('userConfirmIcon');
 
     if (titleEl) titleEl.textContent = title;
     if (descEl) descEl.innerHTML = message;
     if (okBtn) {
       okBtn.textContent = okText;
-      okBtn.style.background = isDanger ? '#ff4d4f' : '#1677ff';
-      okBtn.style.borderColor = isDanger ? '#ff4d4f' : '#1677ff';
-      okBtn.style.color = '#fff';
+      okBtn.className = isDanger ? 'danger-button' : 'run-button';
+      okBtn.style.background = '';
+      okBtn.style.borderColor = '';
+      okBtn.style.color = '';
     }
     if (cancelBtn) cancelBtn.textContent = cancelText;
     if (iconEl) {
       iconEl.textContent = icon;
-      iconEl.style.background = isDanger ? '#fff2f0' : '#e6f4ff';
-      iconEl.style.borderColor = isDanger ? '#ffccc7' : '#91caff';
-      iconEl.style.color = isDanger ? '#ff4d4f' : '#1677ff';
+      iconEl.classList.toggle('info', !isDanger);
     }
 
+    let settled = false;
     const cleanup = () => {
+      if (settled) return;
+      settled = true;
       try { dialog.close(); } catch {}
       okBtn?.removeEventListener('click', onOk);
       cancelBtn?.removeEventListener('click', onCancel);
+      closeBtn?.removeEventListener('click', onCancel);
       dialog.removeEventListener('keydown', onKeyDown);
       dialog.removeEventListener('cancel', onCancel);
+      dialog.removeEventListener('click', onBackdropClick);
     };
 
     const onOk = () => { cleanup(); resolve(true); };
@@ -1323,14 +1328,32 @@ function showInPageConfirm({ title, message, okText = '确定', cancelText = '�
     const onKeyDown = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); cleanup(); resolve(false); }
     };
+    const onBackdropClick = (e) => {
+      const rect = dialog.getBoundingClientRect();
+      const inDialog = (rect.top <= e.clientY && e.clientY <= rect.top + rect.height
+        && rect.left <= e.clientX && e.clientX <= rect.left + rect.width);
+      if (!inDialog) {
+        cleanup();
+        resolve(false);
+      }
+    };
 
     okBtn?.addEventListener('click', onOk);
     cancelBtn?.addEventListener('click', onCancel);
+    closeBtn?.addEventListener('click', onCancel);
     dialog.addEventListener('keydown', onKeyDown);
     dialog.addEventListener('cancel', onCancel, { once: true });
+    dialog.addEventListener('click', onBackdropClick);
 
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
+
+    // 高危破坏性操作默认将焦点落在“取消”按钮，防止误敲回车造成不可逆损失
+    if (isDanger) {
+      cancelBtn?.focus();
+    } else {
+      okBtn?.focus();
+    }
   });
 }
 
@@ -1934,11 +1957,29 @@ async function executeScript(script, button, card) {
   let resetConfirmed = false;
   if (script.destructive) {
     const isV2 = script.id === 'flow-09-v2';
+    const targetLabel = escapeHtml(deviceLabel(currentDevice()));
+    const message = isV2
+      ? `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“重置数据”？</div>
+         <div class="confirm-danger-card">
+           <div class="confirm-danger-card-icon">⚠️</div>
+           <div class="confirm-danger-card-body">
+             <div class="confirm-danger-card-title">警告：即将重置该设备，此操作不可恢复！</div>
+             <div class="confirm-danger-card-desc">清空该设备所有数据并恢复出厂设置。</div>
+           </div>
+         </div>`
+      : `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“改机重置”？</div>
+         <div class="confirm-sub-text" style="margin-bottom:8px;">机型范围：Android ${escapeHtml(options.androidVersion || '16')}；国家：${escapeHtml(options.countryCode || 'CN')}。</div>
+         <div class="confirm-danger-card">
+           <div class="confirm-danger-card-icon">⚠️</div>
+           <div class="confirm-danger-card-body">
+             <div class="confirm-danger-card-title">警告：此操作会清除该设备所有数据且不可撤销！</div>
+             <div class="confirm-danger-card-desc">重置后云机将自动重启并应用新机型参数。</div>
+           </div>
+         </div>`;
+
     resetConfirmed = await showInPageConfirm({
       title: isV2 ? '确认执行【重置数据】？' : '确认执行【改机重置】？',
-      message: isV2
-        ? `确认对 <strong>${escapeHtml(deviceLabel(currentDevice()))}</strong> 执行“重置数据”？<br><span style="color:#ff4d4f; font-weight:600;">警告：即将重置该设备，此操作不可恢复！</span><br>清空该设备所有数据并恢复出厂设置。`
-        : `确认对 <strong>${escapeHtml(deviceLabel(currentDevice()))}</strong> 执行“改机重置”？<br>机型范围：Android ${options.androidVersion || '16'}；国家：${options.countryCode || 'CN'}。<br><span style="color:#ff4d4f; font-weight:600;">警告：此操作会清除该设备所有数据且不可撤销。</span>`,
+      message,
       okText: isV2 ? '确认重置' : '确认改机重置',
       isDanger: true,
       icon: '⚠️'

@@ -271,8 +271,8 @@
       <button class="action-btn small" id="closeVpcDialogBtn" type="button">✕</button>
     </div>
     <div class="vpc-dialog-body">
-      <p style="margin:0 0 8px; font-size:12px; color:#595959;">请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
-      <textarea id="vpcRawInput" class="vpc-textarea" placeholder="在此粘贴代理信息…" rows="4"></textarea>
+      <p>请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
+      <textarea id="vpcRawInput" class="vpc-textarea" placeholder="在此粘贴代理信息…" rows="6"></textarea>
     </div>
     <div class="vpc-dialog-footer">
       <button class="action-btn" id="cancelVpcBtn" type="button">取消</button>
@@ -327,17 +327,20 @@
   </dialog>
 
   <!-- 原生风格通用模态确认弹窗 (告别丑陋的 window.confirm) -->
-  <dialog class="confirm-dialog" id="userConfirmDialog" style="border: 1px solid #e8e8e8; border-radius: 10px; padding: 22px; max-width: 440px; box-shadow: 0 16px 48px rgba(0,0,0,0.18);">
-    <div style="display:flex; gap:14px; align-items:flex-start; margin-bottom:18px;">
-      <div id="userConfirmIcon" style="width:38px; height:38px; border-radius:50%; background:#fff2f0; border:1px solid #ffccc7; color:#ff4d4f; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">⚠️</div>
-      <div style="flex:1;">
-        <h3 id="userConfirmTitle" style="font-size:16px; font-weight:700; color:#1f1f1f; margin:0 0 6px 0;">确认操作</h3>
-        <div id="userConfirmDesc" style="font-size:13px; color:#595959; margin:0; line-height:1.5;">确认继续此操作？</div>
+  <dialog class="confirm-dialog" id="userConfirmDialog" aria-labelledby="userConfirmTitle">
+    <div class="confirm-dialog-header">
+      <div class="confirm-dialog-title-row">
+        <div class="confirm-icon-badge" id="userConfirmIcon">⚠️</div>
+        <h3 class="confirm-dialog-title" id="userConfirmTitle">确认操作</h3>
       </div>
+      <button class="action-btn small" id="userConfirmCloseBtn" type="button" title="关闭">✕</button>
     </div>
-    <div style="display:flex; justify-content:flex-end; gap:10px;">
-      <button class="action-btn" id="userConfirmCancelBtn" type="button" style="padding:5px 14px; font-size:13px;">取消</button>
-      <button class="danger-button" id="userConfirmOkBtn" type="button" style="padding:5px 16px; font-size:13px; background:#ff4d4f; color:#fff; border:1px solid #ff4d4f; font-weight:600;">确定</button>
+    <div class="confirm-dialog-body" id="userConfirmDesc">
+      确认继续此操作？
+    </div>
+    <div class="confirm-dialog-footer">
+      <button class="action-btn" id="userConfirmCancelBtn" type="button">取消</button>
+      <button class="danger-button" id="userConfirmOkBtn" type="button">确定</button>
     </div>
   </dialog>
 
