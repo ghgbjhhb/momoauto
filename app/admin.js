@@ -1171,8 +1171,10 @@ function renderAdminDiskFileList() {
     if (adminDiskFiles.length === 0) {
       adminDiskSelectedFile = null;
       updateAvatarOperationBar();
-      listEl.innerHTML = '<div class="disk-empty-state" style="padding: 36px 20px; grid-column: 1 / -1; width:100%; text-align:center;">' +
-        '<p style="font-size:14px; color:#595959; margin:0;">暂无头像图片，点击右上角【上传文件】或直接将图片拖拽至此</p>' +
+      listEl.innerHTML = '<div class="disk-empty-state" style="padding: 48px 20px; grid-column: 1 / -1; width:100%; text-align:center;">' +
+        '<div class="disk-empty-icon">🖼️</div>' +
+        '<p style="font-size:14px; color:#595959; margin:0 0 6px;">暂无头像图片</p>' +
+        '<span style="font-size:12px; color:#8c8c8c;">点击右上角【上传文件】或直接将图片拖拽至此上传</span>' +
       '</div>';
       return;
     }
@@ -1196,10 +1198,15 @@ function renderAdminDiskFileList() {
     listEl.innerHTML = adminDiskFiles.map(file => {
       const isSelected = file.name === adminDiskSelectedFile;
       const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(file.name);
-      return '<div class="disk-grid-item ' + (isSelected ? 'selected' : '') + '" data-filename="' + escapeHtml(file.name) + '" onclick="selectAdminDiskFile(\'' + escapeHtml(file.name) + '\', event)" ondblclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();" title="双击放大预览，单击选中">' +
+      return '<div class="disk-grid-item ' + (isSelected ? 'selected' : '') + '" data-filename="' + escapeHtml(file.name) + '" onclick="selectAdminDiskFile(\'' + escapeHtml(file.name) + '\', event)" ondblclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();" title="单击选中，双击放大预览">' +
         '<div class="disk-grid-check">✓</div>' +
         '<div class="disk-grid-thumb">' +
           '<img src="' + previewUrl + '" alt="' + escapeHtml(file.name) + '" loading="lazy" />' +
+          '<div class="disk-grid-overlay">' +
+            '<button type="button" class="disk-grid-action-btn" title="查看原图" onclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();">' +
+              '🔍' +
+            '</button>' +
+          '</div>' +
         '</div>' +
         '<div class="disk-grid-info">' +
           '<div class="disk-grid-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</div>' +
