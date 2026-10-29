@@ -310,7 +310,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
   const ownWorker = !options.worker;
   const worker = options.worker || new RapidOcrWorker();
   const runId = randomUUID();
-  const screenshotsDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'bind-phone', runId);
+  const screenshotsDir = options.screenshotsDir || path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'bind-phone', runId);
   const ocrDir = await shared.createOcrDirectory('yunmomo-bind-phone-');
   const state = { counter: 0 };
   let lastScreenshotPath = null;

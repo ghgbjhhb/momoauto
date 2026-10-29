@@ -702,6 +702,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       phone,
       control,
       worker,
+      screenshotsDir,
     }, profileLogger);
 
     log.console('[5/5] 资料完善完成，启动陌陌手机号绑定流程 (手机号打字/验证码过盾/打字提交)...');
@@ -715,6 +716,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       phone,
       control,
       worker,
+      screenshotsDir,
     }, log);
 
     // 检查是否遭遇“请重新授权” (生命周期超期自愈)

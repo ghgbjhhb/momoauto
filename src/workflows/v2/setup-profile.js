@@ -278,7 +278,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
   const ownWorker = !options.worker;
   const worker = options.worker || new RapidOcrWorker();
   const runId = randomUUID();
-  const screenshotsDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'setup-profile', runId);
+  const screenshotsDir = options.screenshotsDir || path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'setup-profile', runId);
   const ocrDir = await shared.createOcrDirectory('yunmomo-setup-profile-');
   const state = { counter: 0 };
   let lastScreenshotPath = null;
@@ -356,7 +356,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
         await control.flush();
         await sleep(300);
 
-        // 逐字模拟真人输入新昵称并收起键盘
+        // 逐字模拟真人输入新昵称
         for (const char of nickname) {
           await control.text(char);
           await control.flush();
@@ -364,14 +364,30 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
         }
         await sleep(600);
 
-        control.back();
+        // 点击空白安全区（顶部标题与输入框之间）使输入框失焦收起软键盘（严禁使用 control.back()，避免误退回上一页性别选择！）
+        await control.tap(Math.round(control.screenWidth / 2), Math.round(180 * scaleY));
         await control.flush();
-        await sleep(800);
+        await sleep(600);
         lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
       }
 
       // 重新 OCR 获取当前界面的生日输入框
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-inspect-bday-${state.counter++}`);
+
+      // 防御自愈：若因任何手势或键盘事件误退回了性别选择页，自动重新选回女生
+      if (isGenderScreen(obs.items)) {
+        log.console('[自愈恢复] 观测到界面处于性别选择页，重新选择“女生”推进...');
+        const femaleItem = obs.items.find(i => i.text.trim() === '女生');
+        if (femaleItem) {
+          const pt = tapBox(control, femaleItem, obs);
+          await control.tap(pt.x, pt.y);
+        } else {
+          await control.tap(Math.round(263 * scaleX), Math.round(465 * scaleY));
+        }
+        await control.flush();
+        await sleep(1500);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-female-reclick-${state.counter++}`);
+      }
       const bdayBox = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
       let bdayPt;
       if (bdayBox) {
