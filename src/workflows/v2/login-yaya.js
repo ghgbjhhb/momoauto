@@ -160,27 +160,64 @@ function parseYayaOrderTime(rawText) {
 
 /**
  * 从页面 OCR 项中提取所有订单时间条目，并按屏幕 y 坐标升序排序 (从顶到底，对应时间降序：新 -> 旧)
+ * 智能支持：
+ * 1) 完整单条 "10-25 19:16" / "到期:10-25 19:16"
+ * 2) 跨行拼接：上一行包含 "到期:10-25"，下一行包含 "19:16"
+ * 3) 纯时间形式 "19:16" / "16:05"
  */
 function extractScreenOrderTimes(items, screenHeight = 640) {
   const list = [];
-  for (const item of items) {
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
     // 排除顶部状态栏与底部导航栏区域
-    if (item.top < 75 || item.top > screenHeight * 0.85) continue;
+    if (it.top < 75 || it.top > screenHeight * 0.85) continue;
 
-    const parsed = parseYayaOrderTime(item.text);
-    if (parsed) {
-      // 确认是卡片订单时间特征（包含“到期”、“订单号”或具有明确完整日期）
-      const isCardRelated = parsed.hasDate || item.text.includes('到期') || item.text.includes('订单');
-      if (isCardRelated) {
-        list.push({
-          parsed,
-          item,
-          top: item.top,
-        });
+    // 检查是否匹配时间 HH:mm
+    const hmMatch = it.text.match(/^(\d{1,2})[:：](\d{2})$/) || it.text.match(/(?:到期[:：]?)?\s*(\d{1,2})[:：](\d{2})/);
+    if (hmMatch) {
+      const hours = parseInt(hmMatch[1], 10);
+      const minutes = parseInt(hmMatch[2], 10);
+      const timeHm = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+
+      // 检查本条或前面紧邻条目是否有日期 MM-DD
+      let dateMd = null;
+      let month = 0, day = 0;
+      const dateMatchSelf = it.text.match(/(\d{1,2})[-/](\d{1,2})/);
+      if (dateMatchSelf) {
+        month = parseInt(dateMatchSelf[1], 10);
+        day = parseInt(dateMatchSelf[2], 10);
+        dateMd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      } else if (i > 0 && Math.abs(it.top - items[i - 1].top) < 70) {
+        const prev = items[i - 1];
+        const dateMatchPrev = prev.text.match(/(\d{1,2})[-/](\d{1,2})/);
+        if (dateMatchPrev) {
+          month = parseInt(dateMatchPrev[1], 10);
+          day = parseInt(dateMatchPrev[2], 10);
+          dateMd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
       }
+
+      const totalMinutes = (dateMd ? (month * 31 + day) * 1440 : 0) + hours * 60 + minutes;
+      const full = dateMd ? `${dateMd} ${timeHm}` : timeHm;
+
+      list.push({
+        parsed: {
+          full,
+          dateStr: dateMd,
+          timeStr: timeHm,
+          month,
+          day,
+          hours,
+          minutes,
+          totalMinutes,
+          hasDate: Boolean(dateMd),
+        },
+        item: it,
+        top: it.top,
+      });
     }
   }
-  // 按垂直坐标升序排序（自上而下，对应时间降序）
+  // 按垂直坐标升序排序（自上而下，对应时间降序：新 -> 旧）
   list.sort((a, b) => a.top - b.top);
   return list;
 }
