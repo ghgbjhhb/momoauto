@@ -45,8 +45,8 @@ const DEFAULT_POLL_MS = 700;
 const DEFAULT_PROJECT_CODE = '369990';
 // 默认固定手机号
 const DEFAULT_FIXED_PHONE = '17306728814';
-// 默认测试验证码
-const DEFAULT_VERIFY_CODE = '310742';
+// 默认测试验证码（默认置空，防止使用已失效的旧码；收到新码后由外部传入）
+const DEFAULT_VERIFY_CODE = '';
 
 function formatLogTime() {
   const d = new Date();
@@ -348,13 +348,10 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     log.console('[1/5] 确认当前处于“手机绑定”界面！');
 
-    // 检查界面上是否已有已填入的验证码
+    // 检查界面上是否已有已填入的验证码（仅作观测记录，严禁将失效旧码误作新码推进）
     const existingCodeOnScreen = getExistingVerifyCodeOnScreen(obs.items);
     if (existingCodeOnScreen) {
-      log.console(`[识别发现] 屏幕验证码输入栏已显示存在验证码: "${existingCodeOnScreen}"`);
-      if (!verifyCode) {
-        verifyCode = existingCodeOnScreen;
-      }
+      log.console(`[识别发现] 屏幕验证码输入栏当前显示: "${existingCodeOnScreen}" (若为失效旧码，后续将予以清空重写)`);
     }
 
     // 2. 从接码平台取号 (若未直接传入手机号)
@@ -444,7 +441,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       return t.includes('重新获取') || /\d+s/i.test(t) || /\d+秒/.test(t) || (it.top >= 240 && it.bottom <= 315 && /\d{1,2}/.test(t));
     });
 
-    const isCodeReady = Boolean(verifyCode) || Boolean(existingCodeOnScreen);
+    const isCodeReady = Boolean(verifyCode);
     const phoneBindState = await getPhoneBindState(resolvedDeviceId, phoneNumber);
     const hasRequestedBefore = Boolean(phoneBindState?.hasRequestedCode && phoneBindState?.isRecentRequest);
 
@@ -453,7 +450,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     } else if (options.skipGetCode) {
       log.console('[3/5] 参数指定直接进入验证码键入阶段，跳过获取验证码点击。');
     } else if (isCodeReady) {
-      log.console(`[3/5] 【防重复规则】当前验证码已在位/已就绪 [${verifyCode || existingCodeOnScreen}]（按钮虽在60秒后恢复，但严禁重复获取），直接跳过获取步骤！`);
+      log.console(`[3/5] 【防重复规则】当前验证码已由外部显式提供 [${verifyCode}]，直接跳过获取步骤！`);
     } else if (hasRequestedBefore) {
       log.console(`[3/5] 【防重复规则】会话记录显示近期已向手机号 ${phoneNumber} 请求过验证码（已耗时: ${phoneBindState.elapsedFormatted}，严禁重复获取），跳过获取按钮！`);
     } else {
@@ -521,7 +518,20 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       log.console(`[4/5] 【后验确认】验证码输入框中已准确存在目标验证码 "${cleanTargetCode}"，跳过重复打字！`);
     } else {
       if (!cleanTargetCode) {
-        throw new Error('未提供或未获取到有效的验证码，无法继续输入！');
+        const authSession = await logAuthBudget(log, resolvedDeviceId, '已触发获取验证码，等待提供');
+        log.console(`[等待验证码 📱] 新验证码已成功触发下发至手机 ${phoneNumber}！`);
+        if (authSession) {
+          log.console(`[微信授权计时 ⏱️] 8分钟授权生命周期当前剩余可用: ${authSession.remainingFormatted}。`);
+        }
+        log.console('[流程暂停] 验证码已空出，请将收到的最新 6 位短信验证码提供给脚本后继续提交！');
+        return {
+          ok: true,
+          state: 'waiting_verify_code',
+          phoneNumber,
+          sessionId,
+          authSession,
+          lastScreenshotPath,
+        };
       }
       log.console(`[4/5] 定位验证码输入框并开始模拟打字输入: "${cleanTargetCode}"...`);
       const verifyBox = findVerifyCodeInputBox(obs.items);
@@ -683,6 +693,16 @@ function printSummary(result, duration, error = null) {
     if (shotPath) {
       console.log(`【现场截图】：${path.relative(PROJECT_ROOT, shotPath)}`);
     }
+    console.log(`【执行耗时】：${duration} 秒`);
+  } else if (result?.state === 'waiting_verify_code') {
+    console.log('【执行结果】：等待输入验证码 (新码已触发下发)');
+    console.log('【任务名称】：陌陌手机绑定');
+    console.log('【退出状态码】：0');
+    console.log(`【已完成】：手机号 [${result.phoneNumber}] 打字完成 -> 点击获取验证码 -> 验证码过盾成功 -> 验证码已发送至手机！`);
+    if (result.authSession) {
+      console.log(`【微信授权倒计时】：8分钟时限剩余可用 ${result.authSession.remainingFormatted}`);
+    }
+    console.log('【下一步】：请将收到的 6 位短信验证码提供给脚本继续提交。');
     console.log(`【执行耗时】：${duration} 秒`);
   } else if (result?.ok) {
     console.log('【执行结果】：成功');

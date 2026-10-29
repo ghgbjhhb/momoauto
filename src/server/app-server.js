@@ -242,7 +242,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
-    id: 'flow-16', order: 16, title: '陌陌一键上号 (登录授权/资料完善/头像上传)',
+    id: 'flow-16', order: 16, title: '陌陌一键上号全流程 (授权/资料完善/手机绑定)',
     file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
     version: 'v2',
@@ -250,17 +250,19 @@ const SCRIPT_DEFINITIONS = Object.freeze([
       // TODO: 当前默认使用复扫模式 (relogin)，方便下次随时切换为直接一键授权 (direct)
       { name: 'yayaMode', label: '丫丫授权模式', choices: ['relogin', 'direct'], defaultValue: 'relogin' },
       { name: 'targetTime', label: '丫丫复扫订单时间', defaultValue: '16:05', placeholder: '如 16:05，匹配历史订单' },
-      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' }
+      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' },
+      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' },
+      { name: 'verifyCode', label: '短信验证码', defaultValue: '', placeholder: '留空表示自动获取并等待输入；输入 6 位验证码直接提交' }
     ]
   },
   {
-    id: 'flow-17', order: 17, title: '陌陌手机绑定',
-    file: 'flows/momo/17-momo绑定手机.js', args: ['--execute'], requiresDevice: true,
+    id: 'flow-17', order: 17, title: '陌陌手机绑定 (已合并至流程16)',
+    file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
     version: 'v2',
     parameters: [
       { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' },
-      { name: 'verifyCode', label: '短信验证码', defaultValue: '310742', placeholder: '输入 6 位验证码（模拟打字输入）' }
+      { name: 'verifyCode', label: '短信验证码', defaultValue: '', placeholder: '输入 6 位验证码（模拟打字输入）' }
     ]
   },
   {

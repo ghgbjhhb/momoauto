@@ -416,14 +416,27 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-inspect', '初始分析画面', log);
 
-    // 检查是否已经处于手机绑定界面
-    if (isFinalPhoneBindScreen(obs.items)) {
+    // 0. 检查是否需要清理后台重开（如参数要求 clean/restart，或既有微信授权已超期）
+    const { getAuthSession } = require('../../automation/auth-session');
+    const existingSession = await getAuthSession(resolvedDeviceId);
+    const sessionExpired = existingSession && existingSession.isExpired;
+    const shouldClean = Boolean(options.clean || sessionExpired);
+
+    if (shouldClean) {
+      log.console(`[初始化] ${sessionExpired ? '微信授权会话已超期 (>8分钟)' : '参数指定全新运行'}，执行多任务清后台与桌面复位...`);
+      await clearAllRecentTasks(phone, control, worker, ocrDir, state, log);
+      await sleep(1000);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-clean-${state.counter++}`);
+    }
+
+    // 检查是否已经处于手机绑定界面 (且未触发强制清后台)
+    if (!shouldClean && isFinalPhoneBindScreen(obs.items)) {
       log.console('[1/5] 当前已处于手机绑定界面，直接推进手机号绑定阶段！');
       const { runBindPhone } = require('./bind-phone');
       let bindResult = await runBindPhone(client, resolvedDeviceId, {
         ...options,
         phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
         phone,
         control,
         worker,
@@ -438,11 +451,27 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
         bindResult = await runBindPhone(client, resolvedDeviceId, {
           ...options,
           phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-          verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+          verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
           phone,
           control,
           worker,
         }, log);
+      }
+
+      if (bindResult?.state === 'waiting_verify_code') {
+        log.console('[1/5] 验证码已触发发送，8分钟授权计时正在进行中！等待用户提供最新验证码...');
+        return {
+          ok: true,
+          state: 'waiting_verify_code',
+          runId,
+          targetTime,
+          nickname,
+          phoneNumber: bindResult.phoneNumber,
+          authSession: bindResult.authSession,
+          bindResult,
+          screenshotsDir,
+          lastScreenshotPath: bindResult.lastScreenshotPath || lastScreenshotPath,
+        };
       }
 
       lastScreenshotPath = bindResult?.lastScreenshotPath || lastScreenshotPath;
@@ -656,7 +685,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     let bindResult = await runBindPhone(client, resolvedDeviceId, {
       ...options,
       phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-      verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+      verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
       phone,
       control,
       worker,
@@ -672,11 +701,28 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       bindResult = await runBindPhone(client, resolvedDeviceId, {
         ...options,
         phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE,
+        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
         phone,
         control,
         worker,
       }, log);
+    }
+
+    if (bindResult?.state === 'waiting_verify_code') {
+      log.console('[5/5] 验证码已成功触发发送，8分钟微信授权生命周期正在计时！等待用户提供最新验证码...');
+      return {
+        ok: true,
+        state: 'waiting_verify_code',
+        runId,
+        targetTime,
+        nickname,
+        phoneNumber: bindResult.phoneNumber,
+        authSession: bindResult.authSession,
+        profileResult,
+        bindResult,
+        screenshotsDir,
+        lastScreenshotPath: bindResult.lastScreenshotPath || lastScreenshotPath,
+      };
     }
 
     lastScreenshotPath = bindResult?.lastScreenshotPath || lastScreenshotPath;
@@ -711,12 +757,13 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
 function parseCliArgs(argv) {
   const opts = {
     execute: argv.includes('--execute'),
+    clean: argv.includes('--clean') || argv.includes('--restart'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
     yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE,
     nickname: process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME,
     phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '17306728814',
-    verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '310742',
+    verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990',
   };
   for (let i = 0; i < argv.length; i++) {
@@ -742,6 +789,8 @@ function parseCliArgs(argv) {
     } else if (a === '--project-code' || a === '--project') {
       const val = argv[++i];
       if (val && !val.startsWith('--')) opts.projectCode = val;
+    } else if (a === '--clean' || a === '--restart') {
+      opts.clean = true;
     }
   }
   return opts;
@@ -749,11 +798,21 @@ function parseCliArgs(argv) {
 
 function printSummary(result, duration, error = null) {
   console.log('\n' + '='.repeat(60));
-  if (result?.ok) {
-    console.log('【执行结果】：成功');
-    console.log('【任务名称】：陌陌一键上号 (登录授权/资料完善/头像上传/手机绑定停靠)');
+  if (result?.state === 'waiting_verify_code') {
+    console.log('【执行结果】：等待输入验证码 (新码已触发下发)');
+    console.log('【任务名称】：陌陌一键上号全流程 (授权/资料完善/手机绑定)');
     console.log('【退出状态码】：0');
-    console.log(`【完成步骤】：打开陌陌 -> 微信登录 -> 丫丫授权 -> 资料完善(女生/网名/生日) -> 头像配置(网速监控/云盘传图/裁切美化/加回代理) -> 手机绑定停下`);
+    console.log(`【已完成阶段】：打开陌陌 -> 微信登录 -> 丫丫授权 -> 资料完善(女生/网名/生日) -> 头像上传 -> 手机号键入 [${result.phoneNumber}] -> 验证码过盾成功已触发下发！`);
+    if (result.authSession) {
+      console.log(`【微信授权生命周期倒计时】：8分钟时限剩余可用 ${result.authSession.remainingFormatted}`);
+    }
+    console.log('【下一步行动】：请在对话中发送您收到的 6 位短信验证码，收到后脚本将直接推进打字提交！');
+    console.log(`【执行耗时】：${duration} 秒`);
+  } else if (result?.ok) {
+    console.log('【执行结果】：成功');
+    console.log('【任务名称】：陌陌一键上号全流程 (登录授权/资料完善/头像上传/手机绑定提交)');
+    console.log('【退出状态码】：0');
+    console.log(`【完成步骤】：打开陌陌 -> 微信登录 -> 丫丫授权 -> 资料完善(女生/网名/生日) -> 头像配置(网速监控/云盘传图/裁切美化/加回代理) -> 手机绑定提交完成！`);
     if (result.targetTime) {
       console.log(`【复扫订单】：${result.targetTime}`);
     }
