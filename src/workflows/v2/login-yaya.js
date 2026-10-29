@@ -200,6 +200,15 @@ function extractScreenOrderTimes(items, screenHeight = 640) {
       const totalMinutes = (dateMd ? (month * 31 + day) * 1440 : 0) + hours * 60 + minutes;
       const full = dateMd ? `${dateMd} ${timeHm}` : timeHm;
 
+      // 检查该卡片上下文是否有“有效”或“已过期”标签
+      const nearbyItems = items.filter(other => Math.abs(other.top - it.top) < 70);
+      let status = 'unknown';
+      if (nearbyItems.some(o => o.text.includes('有效'))) {
+        status = 'valid';
+      } else if (nearbyItems.some(o => o.text.includes('过期'))) {
+        status = 'expired';
+      }
+
       list.push({
         parsed: {
           full,
@@ -212,6 +221,7 @@ function extractScreenOrderTimes(items, screenHeight = 640) {
           totalMinutes,
           hasDate: Boolean(dateMd),
         },
+        status,
         item: it,
         top: it.top,
       });
@@ -220,6 +230,21 @@ function extractScreenOrderTimes(items, screenHeight = 640) {
   // 按垂直坐标升序排序（自上而下，对应时间降序：新 -> 旧）
   list.sort((a, b) => a.top - b.top);
   return list;
+}
+
+/**
+ * 检查当前历史列表是否已经处于最顶部 (顶部搜索框完全露出且位于高位)
+ */
+function isHistoryListAtTop(items) {
+  const searchBox = items.find(it => it.text.includes('搜项目') || it.text.includes('订单') || it.text.includes('搜项目、订单'));
+  if (searchBox && searchBox.top < 160) {
+    return true;
+  }
+  const countBox = items.find(it => it.text.includes('已加载') && it.text.includes('共'));
+  if (countBox && countBox.top < 100) {
+    return true;
+  }
+  return false;
 }
 
 function matchesDevice(record, targetId) {
@@ -712,75 +737,84 @@ async function executeReloginMode(phone, control, worker, directory, state, init
   if (!targetTime) targetTime = '16:05';
   logger?.console(`[历史检索] 正在检索目标订单，目标时间特征: "${targetTime}"...`);
 
-  // 3. 在列表中滚动查找包含目标时间特征的卡片（带时间降序智能识别与早停机制）
+  // 3. 在列表中滚动查找包含目标时间特征的卡片
+  // 业务规则（用户硬性守则）：
+  // 1) 历史列表按到期时间降序（从新到旧）排列；
+  // 2) 优先匹配状态为“有效”的目标卡片；
+  // 3) 若发现当前视口时间已过（早于目标时间），自动切换方向【往回找】（向下拉动屏幕）；
+  // 4) 若往回滑到列表最顶部仍未找到，判定为【订单失败/没有这个订单】，明确报错并提示联系管理员！
   let targetTimeItem = null;
   let orderNumber = null;
-  const maxSwipes = options.maxHistorySwipes || 10;
+  const maxSwipes = options.maxHistorySwipes || 15;
   const parsedTarget = parseYayaOrderTime(targetTime);
+  let searchDirection = 'down'; // 'down': 向下翻找更早订单; 'up': 发现时间过了往回找
   let previousScreenDigest = '';
+  let upSwipeCount = 0;
 
   for (let swipeCount = 0; swipeCount < maxSwipes; swipeCount++) {
     // 提取当前屏幕上所有已识别的订单卡片时间
     const screenOrderTimes = extractScreenOrderTimes(observation.items, observation.height);
-    const screenDigest = screenOrderTimes.map(t => t.parsed.full).join('|');
+    const screenDigest = screenOrderTimes.map(t => `${t.parsed.full}(${t.status})`).join('|');
 
     // 打印当前屏幕的时间序诊断日志
     if (screenOrderTimes.length > 0) {
       const topOrder = screenOrderTimes[0];
       const bottomOrder = screenOrderTimes[screenOrderTimes.length - 1];
-      logger?.console(`[时间序识别] 当前第 ${swipeCount + 1} 屏识别到 ${screenOrderTimes.length} 笔订单时间: [${topOrder.parsed.full} (顶) -> ${bottomOrder.parsed.full} (底)] | 检索目标: "${targetTime}"`);
+      logger?.console(`[时间序识别] 当前第 ${swipeCount + 1} 屏识别到 ${screenOrderTimes.length} 笔订单: [${topOrder.parsed.full}(${topOrder.status}) (顶) -> ${bottomOrder.parsed.full}(${bottomOrder.status}) (底)] | 检索目标: "${targetTime}" | 方向: [${searchDirection === 'down' ? '向下寻找 ⬇️' : '往回寻找 ⬆️'}]`);
     } else {
       logger?.console(`[时间序识别] 当前第 ${swipeCount + 1} 屏未提取到卡片时间戳，进行整屏文本匹配 | 检索目标: "${targetTime}"`);
     }
 
-    // 检查当前画面中是否有匹配目标时间的卡片
-    // 1) 优先从提取出的时间项中匹配
-    for (const entry of screenOrderTimes) {
-      if (
-        (parsedTarget && entry.parsed.timeStr === parsedTarget.timeStr) ||
-        entry.parsed.full.includes(targetTime) ||
-        normalizeText(entry.item.text).includes(normalizeText(targetTime))
-      ) {
-        targetTimeItem = entry.item;
-        break;
-      }
+    // 检查当前画面中是否有匹配目标时间的卡片（优先选择“有效”订单）
+    const matchedEntries = screenOrderTimes.filter(entry =>
+      (parsedTarget && entry.parsed.timeStr === parsedTarget.timeStr) ||
+      entry.parsed.full.includes(targetTime) ||
+      normalizeText(entry.item.text).includes(normalizeText(targetTime))
+    );
+
+    if (matchedEntries.length > 0) {
+      const validOne = matchedEntries.find(e => e.status === 'valid');
+      targetTimeItem = validOne ? validOne.item : matchedEntries[0].item;
+      logger?.console(`[定位成功] 在当前页面精确找到目标订单: "${targetTimeItem.text}" (y=${Math.round(targetTimeItem.top)}, 状态: ${validOne ? '有效' : '常规'})`);
+      break;
     }
 
-    // 2) 兜底在全局 items 中模糊匹配 targetTime
+    // 兜底在全局 items 中模糊匹配 targetTime
     if (!targetTimeItem) {
-      targetTimeItem = observation.items.find(i => {
+      const candidate = observation.items.find(i => {
         if (i.top < 75 || i.top > observation.height * 0.85) return false;
         const t = normalizeText(i.text);
         return t.includes(normalizeText(targetTime));
       });
+      if (candidate) {
+        targetTimeItem = candidate;
+        logger?.console(`[定位成功] 在当前页面模糊匹配到目标订单: "${targetTimeItem.text}" (y=${Math.round(targetTimeItem.top)})`);
+        break;
+      }
     }
 
-    if (targetTimeItem) {
-      logger?.console(`[定位成功] 在当前页面第 ${swipeCount + 1} 屏精确找到目标时间条目: "${targetTimeItem.text}" (y=${Math.round(targetTimeItem.top)})`);
-      break;
+    const isAtTop = isHistoryListAtTop(observation.items);
+
+    // 核心判定 1（用户硬性规则）：
+    // “如果滑到顶了还没有，那就是订单失败/没有这个订单，直接报错联系管理员”
+    if (searchDirection === 'up' && (isAtTop || (screenOrderTimes.length > 0 && screenDigest === previousScreenDigest && upSwipeCount > 0))) {
+      logger?.console(`[订单失败 ❌] 已往回滑到历史列表最顶部（顶栏搜索框已完全展示），仍未找到时间为 "${targetTime}" 的订单！`);
+      throw new Error(`【订单失败】：丫丫历史列表中未找到时间为 "${targetTime}" 的有效订单（已往回滑到最顶部确认），订单失败/没有这个订单，请联系管理员！`);
     }
 
-    // 智能早停 1：列表触底判定（连续两屏订单时间序列完全一致，没有更多数据）
-    if (screenOrderTimes.length > 0 && screenDigest === previousScreenDigest && swipeCount > 0) {
-      logger?.console(`[触底终止 🛑] 当前滑动后屏幕内容无变化，已触底且未找到目标时间 "${targetTime}" 的订单，提前终止查找！`);
-      throw new Error(`【触底智能终止】：丫丫历史列表已滑动到底部（无更多新订单），未找到时间为 "${targetTime}" 的有效订单！`);
-    }
-    previousScreenDigest = screenDigest;
-
-    // 智能早停 2：时间序单调性早停（不要硬找！列表严格降序，若最底订单已早于目标时间，则确认不存在）
+    // 核心判定 2（用户硬性规则）：
+    // “这个页面是根据时间排序的，如果发现时间过了，需要往回找”
+    // 列表按时间降序（新 -> 旧）。
+    // 若当前屏最底部订单的时间已经早于目标时间，说明时间滑过了，必须转入往回找！
     if (screenOrderTimes.length > 0 && parsedTarget) {
       const bottomOrder = screenOrderTimes[screenOrderTimes.length - 1];
       let isPastTarget = false;
 
       if (parsedTarget.hasDate && bottomOrder.parsed.hasDate) {
-        // 两者均含完整日期（例如 10-25 16:05 与 10-25 15:30）
         if (bottomOrder.parsed.totalMinutes < parsedTarget.totalMinutes) {
           isPastTarget = true;
         }
       } else if (!parsedTarget.hasDate) {
-        // 目标时间仅有时分（如 "16:05"），若同日或底部时分已明显更早
-        // 丫丫列表是按到期时间从新到旧排列（降序），首屏通常是最新订单
-        // 若当前屏最底部的时分已经早于目标时分（如已降至 15:40 < 16:05）
         const targetMin = parsedTarget.hours * 60 + parsedTarget.minutes;
         const bottomMin = bottomOrder.parsed.hours * 60 + bottomOrder.parsed.minutes;
         if (bottomMin < targetMin) {
@@ -788,20 +822,41 @@ async function executeReloginMode(phone, control, worker, directory, state, init
         }
       }
 
-      if (isPastTarget) {
-        logger?.console(`[智能终止 🛑] 当前屏底部订单时间已降至 "${bottomOrder.parsed.full}"，已早于目标时间 "${targetTime}"！`);
-        logger?.console(`[智能终止 🛑] 丫丫历史列表按时间降序排列，确认目标订单已越界不存在，终止无效硬找！`);
-        throw new Error(`【时间序智能终止】：丫丫历史列表按时间降序排列，当前已滑动至 ${bottomOrder.parsed.full}，已早于目标时间 "${targetTime}"，确认该订单不存在，提前终止查找！`);
+      if (isPastTarget && searchDirection === 'down') {
+        searchDirection = 'up';
+        logger?.console(`[时间已过 ⚠️] 检测到当前屏底部时间 (${bottomOrder.parsed.full}) 已早于目标时间 (${targetTime})！`);
+        logger?.console(`[往回寻找 ⬆️] 根据业务规则触发往回找，开始向下拉动查看上方更新的记录...`);
       }
     }
 
-    // 向上滑动列表以滚动到下一屏
-    logger?.console(`[列表滚动] 当前屏未匹配到 "${targetTime}"，执行向上滚动查找 (第 ${swipeCount + 1} 次)...`);
-    await control.swipe(
-      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.65) },
-      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.35) },
-      { durationMs: 350, steps: 10 }
-    );
+    // 触底回查：若向下翻到底部无新内容仍未找到，也转为往回找
+    if (screenOrderTimes.length > 0 && screenDigest === previousScreenDigest && searchDirection === 'down' && swipeCount > 0) {
+      searchDirection = 'up';
+      logger?.console(`[触底回查 ⚠️] 列表已翻至最底部，未匹配到目标，切换为【往回寻找】向上回翻核验...`);
+    }
+
+    previousScreenDigest = screenDigest;
+
+    // 根据当前方向执行滑动
+    if (searchDirection === 'up') {
+      upSwipeCount++;
+      // 往回找：手势向下滑动（swipe down，屏幕内容向下滚，展示上方更新的记录）
+      logger?.console(`[往回寻找 ⬆️] 正在向上回翻寻找更早前滑过的记录 (第 ${upSwipeCount} 次回翻)...`);
+      await control.swipe(
+        { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.35) },
+        { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.65) },
+        { durationMs: 320, steps: 10 }
+      );
+    } else {
+      // 向下找：手势向上滑动（swipe up，屏幕内容向上滚，展示下方更早的记录）
+      logger?.console(`[向下滚动 ⬇️] 当前屏未匹配到 "${targetTime}"，向下滚动查找更早记录 (第 ${swipeCount + 1} 次)...`);
+      await control.swipe(
+        { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.65) },
+        { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.35) },
+        { durationMs: 350, steps: 10 }
+      );
+    }
+
     await control.flush();
     await sleep(800);
 
@@ -810,7 +865,7 @@ async function executeReloginMode(phone, control, worker, directory, state, init
   }
 
   if (!targetTimeItem) {
-    throw new Error(`在【历史】列表中翻页检索 ${maxSwipes} 次后，仍未能找到时间为 "${targetTime}" 的有效订单`);
+    throw new Error(`【订单失败】：在【历史】列表中检索未找到时间为 "${targetTime}" 的有效订单，订单失败/没有这个订单，请联系管理员！`);
   }
 
   // 4. 定位属于该订单卡片的“订单号”与“复扫”按钮
