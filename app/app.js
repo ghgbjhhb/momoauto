@@ -797,7 +797,7 @@ function updateDeviceCard(card, device, index) {
     if (label) label.textContent = online ? '在线' : '连接中';
   }
 
-  // 更新或插入当前使用的 IP / 域名 Badge
+  // 更新或插入当前使用的 IP / 域名 Badge（节点信息动态比对，避免无谓重绘）
   let ipBadge = card.querySelector('.device-ip-badge');
   const configured = Boolean(device.currentIp);
   if (!ipBadge) {
@@ -810,15 +810,31 @@ function updateDeviceCard(card, device, index) {
     }
   }
   if (ipBadge) {
-    ipBadge.className = 'device-ip-badge' + (configured ? ' configured' : ' unconfigured');
-    if (configured) {
-      ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text"></span>`;
-      ipBadge.querySelector('.ip-text').textContent = device.currentIp;
-      ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
-    } else {
-      ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
-      ipBadge.title = '当前云机未配置代理 IP 或域名';
+    const currentIpText = ipBadge.querySelector('.ip-text')?.textContent || '';
+    const wasConfigured = ipBadge.classList.contains('configured');
+    if (wasConfigured !== configured || currentIpText !== (device.currentIp || '未配置')) {
+      ipBadge.className = 'device-ip-badge' + (configured ? ' configured' : ' unconfigured');
+      if (configured) {
+        ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text"></span>`;
+        ipBadge.querySelector('.ip-text').textContent = device.currentIp;
+        ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
+      } else {
+        ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
+        ipBadge.title = '当前云机未配置代理 IP 或域名';
+      }
     }
+    ipBadge.onclick = configured ? event => {
+      event.stopPropagation();
+      const ip = device.currentIp;
+      if (!ip) return;
+      copyToClipboard(ip, `已复制当前 IP/域名: ${ip}`);
+      const textEl = ipBadge.querySelector('.ip-text');
+      if (textEl) {
+        const orig = textEl.textContent;
+        textEl.textContent = '已复制✓';
+        setTimeout(() => { textEl.textContent = orig; }, 1500);
+      }
+    } : null;
   }
 
   // 确保底部不再显示旧的 ID Badge
@@ -914,7 +930,7 @@ function renderDeviceGrid() {
   renderSelectedDevice();
   renderPreviewSummary();
   renderPipelineStepper();
-  startPreview();
+  requestAllPreviews();
 }
 
 function stopPreview() {
@@ -2044,6 +2060,7 @@ async function executeScript(script, button, card) {
       window.AppLogger?.info('Script', `脚本执行成功达成 [${script.title}] (运行ID: ${scriptRunId})`);
     }
     requestAllPreviews();
+    if (state.tokenConfigured) loadDevices(true);
   } catch (error) {
     if (state.activeRun && state.activeRun.id !== scriptRunId) return;
     if (run.stopConfirmed) {
@@ -2576,32 +2593,43 @@ async function loadScripts() {
   }
 }
 
-async function loadDevices() {
-  elements.refreshDevices.disabled = true;
-  elements.refreshDevices.textContent = '读取中…';
+let isDevicesLoading = false;
+async function loadDevices(isBackground = false) {
+  if (isDevicesLoading) return;
+  if (isBackground && (!state.tokenConfigured || document.hidden)) return;
+  isDevicesLoading = true;
+  if (!isBackground && elements.refreshDevices) {
+    elements.refreshDevices.disabled = true;
+    elements.refreshDevices.textContent = '读取中…';
+  }
   try {
     const data = await requestJson('/api/devices');
     state.devices = Array.isArray(data.devices) ? data.devices : [];
     renderDeviceGrid();
     renderSharedActivity();
     updateSharedRunControls();
-    if (!state.devices.length) showToast('当前账号没有可用云机');
+    if (!isBackground && !state.devices.length) showToast('当前账号没有可用云机');
   } catch (error) {
-    state.devices = [];
-    state.selectedDeviceId = '';
-    renderDeviceGrid();
-    renderSharedActivity();
-    updateSharedRunControls();
-    showToast(error.message);
+    if (!isBackground) {
+      state.devices = [];
+      state.selectedDeviceId = '';
+      renderDeviceGrid();
+      renderSharedActivity();
+      updateSharedRunControls();
+      showToast(error.message);
+    }
     if (error.status === 401 || /Token|YUNMOMO_TOKEN/.test(error.message)) {
       state.tokenConfigured = false;
-      elements.sessionBridge.hidden = false;
-      elements.sessionSettings.hidden = false;
+      if (elements.sessionBridge) elements.sessionBridge.hidden = false;
+      if (elements.sessionSettings) elements.sessionSettings.hidden = false;
       setService('error', '网页登录已过期');
     }
   } finally {
-    elements.refreshDevices.disabled = false;
-    elements.refreshDevices.textContent = '刷新';
+    isDevicesLoading = false;
+    if (!isBackground && elements.refreshDevices) {
+      elements.refreshDevices.disabled = false;
+      elements.refreshDevices.textContent = '刷新';
+    }
   }
 }
 
@@ -3019,5 +3047,19 @@ async function init() {
 }
 
 setInterval(loadSharedRuntimeState, 1500);
+
+// 云手机操作大屏节点与设备状态后台轮询（每 3 秒自动静默刷新一次，节点变动无感同步，无需手动刷新网页）
+setInterval(() => {
+  if (state.tokenConfigured) {
+    loadDevices(true);
+  }
+}, 3000);
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.tokenConfigured) {
+    loadDevices(true);
+  }
+});
+
 init();
 

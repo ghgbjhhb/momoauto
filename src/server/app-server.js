@@ -381,7 +381,7 @@ async function listDevices() {
       return base;
     }));
     const validRecords = records.filter(Boolean);
-    if (sharedClient === owner) deviceCache = { records: validRecords, expires: Date.now() + 5000 };
+    if (sharedClient === owner) deviceCache = { records: validRecords, expires: Date.now() + 2500 };
     return validRecords;
   })().finally(() => { if (deviceListing === listing) deviceListing = null; });
   deviceListing = listing;
@@ -1981,6 +1981,7 @@ async function handler(request, response) {
         return;
       }
       const result = await executeScript(body, user);
+      deviceCache = null;
       json(response, 200, result);
       return;
     }
