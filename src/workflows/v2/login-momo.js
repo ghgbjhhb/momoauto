@@ -40,6 +40,8 @@ const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
 const DEFAULT_TIMEOUT_MS = 60000;
 const DEFAULT_TARGET_TIME = '16:05';
+// TODO: 当前默认使用【历史复扫模式 (relogin)】，方便下次随时修改切换为【直接一键授权模式 (direct)】
+const DEFAULT_YAYA_MODE = 'relogin';
 
 function formatLogTime() {
   const d = new Date();
@@ -329,21 +331,26 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-agree-${state.counter++}`);
     }
 
-    // 6. 第二阶段：调用丫丫登录（复扫模式，目标时间: targetTime）
-    log.console(`[5/5] 第一阶段协议确认完成，正在启动丫丫登录复扫授权 (目标时间: "${targetTime}")...`);
+    // 6. 第二阶段：调用丫丫登录（默认复扫模式 relogin，传入目标订单时间 targetTime）
+    // TODO: 当前调用丫丫时默认使用【历史复扫模式 (relogin)】进行测试。
+    // 若下次需要切换为【直接一键授权模式 (direct)】，直接修改默认值或传入 options.yayaMode = 'direct'
+    const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
+    const modeLabel = yayaMode === 'relogin' ? '历史复扫' : '直接授权';
+
+    log.console(`[5/5] 第一阶段协议确认完成，正在启动丫丫登录授权 (模式: ${modeLabel}, 目标时间: "${targetTime}")...`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-before-yaya-auth', '启动丫丫复扫前画面', log);
 
     const { runYayaWorkflow } = require('./login-yaya');
     yayaResult = await runYayaWorkflow({
       client,
       deviceId: resolvedDeviceId,
-      mode: 'relogin',
+      mode: yayaMode, // TODO: 默认 relogin 复扫，方便下次随时修改为 direct
       targetTime,
       control,
       worker,
     }, log);
 
-    log.console(`[5/5] 丫丫复扫授权流程执行完成: ${yayaResult?.summary || yayaResult?.message || '成功'}`);
+    log.console(`[5/5] 丫丫${modeLabel}流程执行完成: ${yayaResult?.summary || yayaResult?.message || '成功'}`);
     await sleep(2500);
 
     // 7. 终态现场截图与归档
@@ -379,6 +386,7 @@ function parseCliArgs(argv) {
     execute: argv.includes('--execute'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
+    yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE, // TODO: 默认 relogin 复扫，方便下次随时修改为 direct
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -388,6 +396,9 @@ function parseCliArgs(argv) {
     } else if (a === '--target-time' || a === '--time') {
       const val = argv[++i];
       if (val && !val.startsWith('--')) opts.targetTime = val;
+    } else if (a === '--yaya-mode' || a === '--mode') {
+      const val = argv[++i];
+      if (val && !val.startsWith('--')) opts.yayaMode = val;
     }
   }
   return opts;

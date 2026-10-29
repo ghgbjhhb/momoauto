@@ -247,6 +247,8 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     category: 'momo',
     version: 'v2',
     parameters: [
+      // TODO: 当前默认使用复扫模式 (relogin)，方便下次随时切换为直接一键授权 (direct)
+      { name: 'yayaMode', label: '丫丫授权模式', choices: ['relogin', 'direct'], defaultValue: 'relogin' },
       { name: 'targetTime', label: '丫丫复扫订单时间', defaultValue: '16:05', placeholder: '如 16:05，匹配历史订单' }
     ]
   },
