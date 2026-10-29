@@ -842,6 +842,11 @@ async function runYayaWorkflow(customParams = {}) {
       logger.file('Control connected successfully');
     }
 
+    // 0. 最前置：在执行流程前先按 Home 键退出任意前台应用，确保从桌面安全启动
+    logger.console('[0/4] 初始化：按 Home 键退出当前前台应用并返回桌面...');
+    await sendHome(control);
+    await sleep(800);
+
     // 1. 确认主屏幕就绪
     logger.console('[1/4] 正在确认主屏幕状态...');
     const home = await confirmHome(phone, control, worker, directory, state, options);
