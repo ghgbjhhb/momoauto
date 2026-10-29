@@ -1627,6 +1627,15 @@ function loadAdminDisk() {
         clearAdminDiskActivePreviewUrl();
         previewDialog.close();
       });
+      previewDialog.addEventListener('click', (e) => {
+        const rect = previewDialog.getBoundingClientRect();
+        const inDialog = (rect.top <= e.clientY && e.clientY <= rect.top + rect.height
+          && rect.left <= e.clientX && e.clientX <= rect.left + rect.width);
+        if (!inDialog) {
+          clearAdminDiskActivePreviewUrl();
+          previewDialog.close();
+        }
+      });
       previewDialog.addEventListener('close', clearAdminDiskActivePreviewUrl);
     }
   }

@@ -2748,22 +2748,28 @@ body {
   color: var(--text-dim);
 }
 
-/* 预览弹窗 */
+/* 预览弹窗 (强制固定在视口正中央，无论页面如何滚动均完美居中) */
 .disk-preview-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
   background: #ffffff;
-  width: min(760px, 92vw);
+  width: min(780px, 92vw);
   max-height: 85vh;
   padding: 0;
   box-sizing: border-box;
   overflow: hidden;
+  z-index: 1050;
 }
 
 .disk-preview-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
 }
 
 .disk-dialog-header {
@@ -2791,6 +2797,10 @@ body {
   box-sizing: border-box;
   max-height: calc(85vh - 55px);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 窄屏自适应兜底 */
