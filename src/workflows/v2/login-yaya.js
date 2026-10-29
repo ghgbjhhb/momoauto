@@ -82,7 +82,7 @@ async function getLatestAuthHistory(deviceId) {
     const content = await fs.readFile(HISTORY_FILE, 'utf8');
     const list = JSON.parse(content);
     if (!Array.isArray(list)) return null;
-    return list.find(item => !deviceId || item.deviceId === deviceId) || null;
+    return list.find(item => (!deviceId || item.deviceId === deviceId) && item.mode === 'direct') || null;
   } catch {
     return null;
   }
@@ -554,8 +554,20 @@ async function executeReloginMode(phone, control, worker, directory, state, init
     observation = await screenshotAndOcr(phone, worker, directory, state.counter);
   }
 
-  // 2. 确定目标时间匹配条件 (优先取入参，其次环境变量，默认16:05)
-  const targetTime = options.targetTime || process.env.YAYA_TARGET_TIME || '16:05';
+  // 2. 确定目标时间匹配条件 (优先取入参，若未传入则自动读取本设备最近一次授权记录的时间分秒)
+  let targetTime = options.targetTime || process.env.YAYA_TARGET_TIME;
+  if (!targetTime) {
+    const latestAuth = await getLatestAuthHistory(deviceId);
+    if (latestAuth?.clickedTimeFormatted) {
+      // 提取 HH:mm，如 "2026-10-29 16:05:12" -> "16:05" (对应24小时到期卡片上的到期时间分秒)
+      const match = latestAuth.clickedTimeFormatted.match(/(\d{2}:\d{2})/);
+      if (match) {
+        targetTime = match[1];
+        logger?.console(`[历史检索] 未显式传参，自动继承该设备最近授权记录的时间特征: "${targetTime}" (${latestAuth.clickedTimeFormatted})`);
+      }
+    }
+  }
+  if (!targetTime) targetTime = '16:05';
   logger?.console(`[历史检索] 正在检索目标订单，目标时间特征: "${targetTime}"...`);
 
   // 3. 在列表中滚动查找包含目标时间特征的卡片
@@ -807,7 +819,7 @@ async function runYayaWorkflow(customParams = {}) {
     promptSettleMs: numberOr(customParams.promptSettleMs ?? process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
     maxPromptActions: numberOr(customParams.maxPromptActions ?? process.env.YUNMOMO_YAYA_MAX_PROMPTS, 12),
     maxPagesPerDirection: numberOr(customParams.maxPagesPerDirection ?? process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
-    targetTime: customParams.targetTime || cliArgs.targetTime || process.env.YAYA_TARGET_TIME || '16:05',
+    targetTime: customParams.targetTime || cliArgs.targetTime || process.env.YAYA_TARGET_TIME || null,
   };
 
   const client = customParams.client || new YunmomoClient({ timeoutMs: 100000 });
