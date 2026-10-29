@@ -5,16 +5,16 @@
  *
  * 业务流程规范（严格参照 GEMINI.md 核心守则）：
  * 1. 状态机识别：
- *    - 若处于“你的性别是？”界面：精准定位并点击“女生”卡片进入资料页；
+ *    - 若处于“你的性别是？”界面：精确全等匹配“女生”卡片文本（避免被副标题“男生还是女生”子串干扰），点击进入资料页；
  *    - 若已处于“你的昵称和生日是？”界面：直接推进；
  * 2. 昵称处理：
- *    - 点击昵称输入框聚焦，前后全方位双向退格彻底清空原有微信旧昵称残留；
- *    - 填入指定网名（默认内置“菲菲菲”，显式保留词库扩展 TODO 注释）；
- *    - 检测软键盘状态，发送返回键收起输入法，杜绝遮挡下方生日项；
+ *    - 依副标题精准定位下方输入框，双向全范围清空残留字符；
+ *    - 粘贴指定网名（默认内置“菲菲菲”，显式保留词库扩展 TODO 注释）；
+ *    - 发送返回键收起输入法，杜绝遮挡下方生日项；
  * 3. 生日选择：
- *    - 通过 TAB + DPAD_CENTER 精准唤起生日滚轮选择弹窗，杜绝重新唤起输入法的焦点问题；
- *    - 动态自适应屏幕分辨率比例 (400x720 / 360x640)，严格拟人化仿真手势对“年、月、日”三列进行向上滑动滚动；
- *    - 通过 tapBox 动态计算“确定”按钮的绝对物理坐标点击保存，确保生日生效；
+ *    - 通过 TAB + DPAD_CENTER 精准唤起生日滚轮选择弹窗，杜绝焦点误触输入法；
+ *    - 自适应屏幕分辨率比例 (400x720 / 360x640)，仿真手势对“年、月、日”三列向上滑动滚动；
+ *    - 通过 tapBox 动态计算“确定”按钮物理坐标点击保存，确保生日生效；
  * 4. 终态推进：
  *    - 通过 tapBox 动态计算高亮可用的“下一步”按钮坐标并点击，进入后续阶段（头像设置）。
  */
@@ -167,14 +167,15 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     // 若在性别选择页，点击女生卡片
     if (isGenderScreen(obs.items)) {
       log.console('[1/4] 检测到性别选择页，选择“女生”...');
-      const femaleItem = obs.items.find(i => i.text.includes('女生'));
+      // 必须精准全等匹配“女生”，严禁使用 includes('女生') 误匹配副标题“让大家了解下你是男生还是女生”
+      const femaleItem = obs.items.find(i => i.text.trim() === '女生');
       if (femaleItem) {
         const pt = tapBox(control, femaleItem, obs);
         await control.tap(pt.x, pt.y);
       } else {
         const scaleX = control.screenWidth / Math.max(1, obs.width);
         const scaleY = control.screenHeight / Math.max(1, obs.height);
-        await control.tap(Math.round(263 * scaleX), Math.round(400 * scaleY));
+        await control.tap(Math.round(263 * scaleX), Math.round(465 * scaleY));
       }
       await control.flush();
       await sleep(1500);
@@ -199,18 +200,18 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     const scaleX = control.screenWidth / Math.max(1, obs.width);
     const scaleY = control.screenHeight / Math.max(1, obs.height);
 
-    // 点击昵称输入框聚焦
-    const nickItem = obs.items.find(i => i.text.includes('菲菲') || i.text.includes('如何称呼') || i.text.includes('你的昵称'));
-    const nickPt = nickItem ? tapBox(control, nickItem, obs, 40) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
+    // 依据副标题文本动态定位输入框热区
+    const subtitleItem = obs.items.find(i => i.text.includes('如何称呼') || i.text.includes('了解你'));
+    const nickPt = subtitleItem ? tapBox(control, subtitleItem, obs, 45) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
     await control.tap(nickPt.x, nickPt.y);
     await control.flush();
     await sleep(600);
 
     // 双向清空残留旧字符（向右移光标退格 + 向左移光标前向删除）
-    for (let i = 0; i < 25; i++) control.key(protocol.KEY_CODES.DPAD_RIGHT);
+    for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_RIGHT);
     for (let i = 0; i < 50; i++) control.key(protocol.KEY_CODES.DEL);
-    for (let i = 0; i < 25; i++) control.key(protocol.KEY_CODES.DPAD_LEFT);
-    for (let i = 0; i < 25; i++) control.key(112); // KEYCODE_FORWARD_DEL
+    for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_LEFT);
+    for (let i = 0; i < 30; i++) control.key(112); // KEYCODE_FORWARD_DEL
     await control.flush();
     await sleep(400);
 
@@ -285,7 +286,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     // 点击确定保存生日
     log.console('[3/4] 点击确定保存所选生日...');
     obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wheel-confirm-${state.counter++}`);
-    const okItem = obs.items.find(i => i.text.includes('确定'));
+    const okItem = obs.items.find(i => i.text.trim() === '确定' || i.text.includes('确定'));
     if (okItem) {
       const okPt = tapBox(control, okItem, obs);
       await control.tap(okPt.x, okPt.y);
@@ -300,7 +301,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
     // 5. 点击下一步
     log.console('[4/4] 点击“下一步”提交资料...');
-    const nextBtn = obs.items.find(i => i.text.includes('下一步'));
+    const nextBtn = obs.items.find(i => i.text.trim() === '下一步' || i.text.includes('下一步'));
     if (nextBtn) {
       const nextPt = tapBox(control, nextBtn, obs);
       await control.tap(nextPt.x, nextPt.y);
