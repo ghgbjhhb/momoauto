@@ -21,6 +21,7 @@ const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const { SmsService } = require('../../server/sms/service');
+const { solveCaptcha } = require('../../tools/captcha');
 const shared = require('../../automation/screen');
 const protocol = require('../../protocol');
 
@@ -93,9 +94,19 @@ function matchesDevice(record, targetId) {
 }
 
 function isBindPhoneScreen(items) {
-  return items.some(it => {
+  const hasPhoneHeader = items.some(it => {
     const t = normalizeText(it.text);
     return t.includes('手机绑定') || t.includes('绑定手机号') || t.includes('输入手机号码') || t.includes('编入手机号码') || t.includes('确保你的账号安全');
+  });
+  const hasCaptchaTitle = items.some(it => normalizeText(it.text).includes('验证码校验'));
+  // 严格互斥：必须不含有二级“验证码校验”安全页特征
+  return hasPhoneHeader && !hasCaptchaTitle;
+}
+
+function isCaptchaVerifyScreen(items) {
+  return items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('验证码校验') || t.includes('点击按钮开始验证') || t.includes('依次点击');
   });
 }
 
@@ -137,6 +148,112 @@ function findGetCodeBtn(items) {
 
 function findSubmitBtn(items) {
   return items.find(it => normalizeText(it.text) === '提交');
+}
+
+/**
+ * 点选/行为验证码自动处理过盾模块
+ */
+async function handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, maxRounds = 3) {
+  for (let round = 1; round <= maxRounds; round++) {
+    log.console(`[过盾 ${round}/${maxRounds}] 正在分析当前验证码校验界面...`);
+
+    let obs = await screenshotAndOcr(phone, worker, ocrDir, `captcha-r${round}-inspect`);
+
+    // 1. 若当前在“点击按钮开始验证”中间状态，点击该按钮唤起弹窗
+    const startBtn = obs.items.find(i => i.text.includes('开始验证') || i.text.includes('点击按钮'));
+    if (startBtn) {
+      const pt = tapBox(control, startBtn, obs);
+      log.console(`[过盾 ${round}/${maxRounds}] 点击「点击按钮开始验证」 (${pt.x}, ${pt.y})...`);
+      await control.tap(pt.x, pt.y);
+      await control.flush();
+      await sleep(2500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `captcha-r${round}-after-click`);
+    }
+
+    // 2. 检查是否出现验证码点选弹窗
+    const hasCaptchaDialog = obs.items.some(i => i.text.includes('依次点击') || i.text.includes('看不清') || i.text.includes('确定'));
+    if (!hasCaptchaDialog) {
+      // 若已经不在此页（说明已过盾或跳转回手机绑定页）
+      if (isBindPhoneScreen(obs.items)) {
+        log.console(`[过盾 ${round}/${maxRounds}] 屏幕已回到手机绑定页，过盾成功！`);
+        return { ok: true, round };
+      }
+      log.console(`[过盾 ${round}/${maxRounds}] 未检测到弹窗，等待 1.5 秒重试...`);
+      await sleep(1500);
+      continue;
+    }
+
+    // 3. 截取当前全屏并调用 solveCaptcha 视觉解析
+    log.console(`[过盾 ${round}/${maxRounds}] 验证码弹窗就绪，正在调用 DeepSeek 视觉模型深度解析目标...`);
+    const s = await phone.screenshot({ level: 2 }).catch(() => null);
+    if (!s?.data) {
+      log.console(`[过盾 ${round}/${maxRounds}] 截屏失败，重试...`);
+      await sleep(1000);
+      continue;
+    }
+
+    let result;
+    try {
+      result = await solveCaptcha(s.data);
+    } catch (err) {
+      log.console(`[过盾 ${round}/${maxRounds}] 视觉模型解析异常: ${err.message}`);
+      // 点击刷新按钮刷新一张新题
+      const refreshBtn = obs.items.find(i => i.text.includes('刷新') || i.text.includes('看不清'));
+      if (refreshBtn) {
+        const rPt = tapBox(control, refreshBtn, obs);
+        await control.tap(rPt.x, rPt.y);
+        await control.flush();
+      }
+      await sleep(2000);
+      continue;
+    }
+
+    if (!result?.targets?.length) {
+      log.console(`[过盾 ${round}/${maxRounds}] 视觉模型未能解析出目标图标，重试下一轮...`);
+      await sleep(2000);
+      continue;
+    }
+
+    log.console(`[过盾 ${round}/${maxRounds}] 视觉解析完成！按顺序点击目标: [${(result.promptOrder || []).join(' -> ')}]`);
+
+    // 4. 按顺序逐个点击目标图标
+    const scaleX = control.screenWidth / Math.max(1, obs.width);
+    const scaleY = control.screenHeight / Math.max(1, obs.height);
+    for (const t of result.targets) {
+      const tapX = Math.round(t.x * scaleX);
+      const tapY = Math.round(t.y * scaleY);
+      log.console(`[过盾 ${round}/${maxRounds}] 点击目标 #${t.order} [${t.name}]: (${tapX}, ${tapY})`);
+      await control.tap(tapX, tapY);
+      await control.flush();
+      await sleep(500 + Math.floor(Math.random() * 200));
+    }
+
+    // 5. 点击底部的「确定」按钮
+    const confItem = obs.items.find(i => i.text.trim() === '确定');
+    const confPt = confItem ? tapBox(control, confItem, obs) : {
+      x: Math.round((result.confirmButton?.x || 180) * scaleX),
+      y: Math.round((result.confirmButton?.y || 465) * scaleY)
+    };
+    log.console(`[过盾 ${round}/${maxRounds}] 点击「确定」按钮 (${confPt.x}, ${confPt.y})...`);
+    await control.tap(confPt.x, confPt.y);
+    await control.flush();
+    await sleep(2500);
+
+    // 6. 核验点击确定后的页面状态
+    obs = await screenshotAndOcr(phone, worker, ocrDir, `captcha-r${round}-result`);
+    await captureMilestoneScreenshot(phone, screenshotsDir, `04-captcha-r${round}-result`, `第${round}轮验证码处理结果`, log);
+
+    const stillInCaptcha = isCaptchaVerifyScreen(obs.items);
+    if (!stillInCaptcha && isBindPhoneScreen(obs.items)) {
+      log.console(`[过盾 ${round}/${maxRounds}] 【成功】验证码校验已通过，已确认回到手机绑定主页！`);
+      return { ok: true, round };
+    } else {
+      log.console(`[过盾 ${round}/${maxRounds}] 本轮未通过（界面仍在安全校验页或题目刷新），准备下一轮...`);
+      await sleep(1500);
+    }
+  }
+
+  return { ok: false, message: '超过最大重试轮数' };
 }
 
 async function runBindPhone(client, targetDeviceId, options = {}, logger = console) {
@@ -188,9 +305,26 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-state', '初始分析画面', log);
 
-    // 校验必须处于手机绑定页面
-    if (!isBindPhoneScreen(obs.items)) {
-      throw new Error('未处于“手机绑定”界面，当前屏幕不匹配，请确认前台状态！');
+    // 校验必须处于手机绑定页面或验证码校验页面
+    if (!isBindPhoneScreen(obs.items) && !isCaptchaVerifyScreen(obs.items)) {
+      throw new Error('未处于“手机绑定”相关界面，当前屏幕不匹配，请确认前台状态！');
+    }
+
+    const inCaptchaPage = isCaptchaVerifyScreen(obs.items);
+    if (inCaptchaPage) {
+      log.console('[1/3] 识别当前已处于「验证码校验」人机安全页，直接无缝启动验证码处理过盾...');
+      const captchaResult = await handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, 3);
+      return {
+        ok: captchaResult?.ok || false,
+        state: captchaResult?.ok ? 'code_sent' : 'security_challenge',
+        runId,
+        projectCode,
+        phoneNumber,
+        sessionId,
+        captchaResult,
+        screenshotsDir,
+        lastScreenshotPath,
+      };
     }
 
     log.console('[1/3] 确认当前处于“手机绑定”界面！');
@@ -326,8 +460,15 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       return t.includes('验证码校验') || t.includes('点击按钮开始验证') || t.includes('安全验证') || t.includes('拖动') || t.includes('滑块') || t.includes('按住滑块');
     });
 
+    let captchaResult = null;
     if (hasSecurity) {
-      log.console('[3/3] 【安全核验】成功识别进入「验证码校验」人机安全验证页（点击按钮开始验证），现场截图已保存！');
+      log.console('[3/3] 【安全核验】成功识别进入「验证码校验」页，立即启动验证码自动处理模块...');
+      captchaResult = await handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, 3);
+      if (captchaResult?.ok) {
+        log.console('[3/3] 【过盾成功】验证码校验已完成！');
+      } else {
+        log.console(`[3/3] 【过盾提示】验证码处理结束: ${captchaResult?.message || '已尝试全部轮数'}`);
+      }
     } else if (hasCountdown) {
       log.console('[3/3] 【验证码已发送】按钮已进入倒计时状态！');
     } else {
@@ -336,11 +477,12 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     return {
       ok: true,
-      state: hasCountdown ? 'code_sent' : (hasSecurity ? 'security_challenge' : 'clicked_get_code'),
+      state: hasCountdown || captchaResult?.ok ? 'code_sent' : (hasSecurity ? 'security_challenge' : 'clicked_get_code'),
       runId,
       projectCode,
       phoneNumber,
       sessionId,
+      captchaResult,
       screenshotsDir,
       lastScreenshotPath,
     };
