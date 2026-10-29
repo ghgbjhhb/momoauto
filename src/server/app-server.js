@@ -196,6 +196,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     id: 'flow-11', order: 11, title: 'MOMO首页养号',
     file: 'flows/momo/11-momo首页养号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
+    version: 'v2',
     parameters: [
       { name: 'cycles', label: '循环轮数', choices: ['1', '2', '3', '5', '10'], defaultValue: '1' },
       { name: 'mode', label: '刷新方式', choices: ['random', 'button', 'pull'], defaultValue: 'random' }
@@ -243,7 +244,8 @@ const SCRIPT_DEFINITIONS = Object.freeze([
   {
     id: 'flow-16', order: 16, title: '陌陌一键上号',
     file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
-    category: 'momo'
+    category: 'momo',
+    version: 'v2'
   },
   {
     id: 'flow-all', title: '执行全流程 (V3)', file: 'flows/v3/执行全部.js', args: ['--execute'],
