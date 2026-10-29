@@ -137,7 +137,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     requiresCertificate: step.order === 2,
     ...(step.order === 2.1 ? {
       parameters: [
-        { name: 'filePath', label: '真机参数', defaultValue: 'todo' }
+        { name: 'filePath', label: '真机参数', defaultValue: '', placeholder: '留空默认自动导入云盘可用真参' }
       ]
     } : {}),
     ...(step.order === 3 ? {
@@ -764,6 +764,10 @@ async function executeScriptMeasured(body, user = null) {
     }
 
     const env = { ...localEnv, ...process.env };
+    if (ownerUserId) {
+      env.YUNMOMO_USER_ID = ownerUserId;
+      env.YUNMOMO_USER_ROLE = user?.role || 'user';
+    }
     const token = activeToken();
     if (token) env.YUNMOMO_TOKEN = token;
     configureScript(script, body, env);
@@ -969,6 +973,18 @@ function getCloudDiskFiles(dirName) {
           }
         } catch {}
       }
+      let zhencanStatus = null;
+      if (dir === '真参') {
+        const rec = authService.getZhencanFileRecord(entry.name);
+        zhencanStatus = {
+          status: rec?.status || 'available',
+          isUsed: rec?.status === 'used',
+          usedAt: rec?.used_at || null,
+          usedAtFormatted: rec?.used_at ? new Date(rec.used_at).toLocaleString('zh-CN') : '',
+          usedOnDeviceId: rec?.used_on_device_id || '',
+          usedOnDeviceName: rec?.used_on_device_name || ''
+        };
+      }
       files.push({
         name: entry.name,
         size: stat.size,
@@ -979,7 +995,8 @@ function getCloudDiskFiles(dirName) {
         ext,
         isImage,
         isText,
-        previewInfo
+        previewInfo,
+        zhencanStatus
       });
     } catch {}
   }
@@ -1233,7 +1250,16 @@ async function handler(request, response) {
       if (!user) {
         json(response, 200, { ok: false, user: null });
       } else {
-        json(response, 200, { ok: true, user });
+        const zhencanBalance = authService.getUserZhencanBalance(user.id);
+        const ipStatus = authService.db.getUserIpStatus(user.id);
+        json(response, 200, {
+          ok: true,
+          user: {
+            ...user,
+            zhencanBalance,
+            ipStatus
+          }
+        });
       }
       return;
     }
@@ -2026,6 +2052,26 @@ async function handler(request, response) {
       json(response, 200, { ok: true, name, dir });
       return;
     }
+    if (request.method === 'POST' && url.pathname === '/api/cloud-disk/zhencan/toggle-status') {
+      if (!requireAdmin(response)) return;
+      const body = await readJsonBody(request);
+      const rawName = body?.fileName || body?.name || '';
+      const name = path.basename(String(rawName).trim());
+      const targetStatus = body?.status === 'used' ? 'used' : 'available';
+      if (!name) {
+        json(response, 400, { ok: false, error: '缺少文件名' });
+        return;
+      }
+      authService.setZhencanFileStatus(name, targetStatus);
+      const statusLabel = targetStatus === 'available' ? '【可用】' : '【已使用】';
+      json(response, 200, {
+        ok: true,
+        fileName: name,
+        status: targetStatus,
+        message: `真参配置 [${name}] 状态已变更为: ${statusLabel}`
+      });
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/api/cloud-disk/send-to-device') {
       if (!requireAdmin(response)) return;
       const body = await readJsonBody(request);
@@ -2060,6 +2106,30 @@ async function handler(request, response) {
       }
 
       if (dir === '真参') {
+        // 校验真参文件使用状态 (单机单参规则)
+        const record = authService.getZhencanFileRecord(name);
+        if (record && record.status === 'used' && !body?.force) {
+          const dateText = record.used_at ? new Date(record.used_at).toLocaleString('zh-CN') : '此前';
+          const devText = record.used_on_device_name || record.used_on_device_id || '其他云机';
+          json(response, 400, {
+            ok: false,
+            error: `该真参文件已于 ${dateText} 导入过云机 (${devText})！默认每个参数只能使用一次。如需重新使用，请先将其状态重置为【启用】。`
+          });
+          return;
+        }
+
+        // 校验操作用户真参配额
+        if (user.role !== 'admin') {
+          const balance = authService.getUserZhencanBalance(user.id);
+          if (balance <= 0) {
+            json(response, 400, {
+              ok: false,
+              error: '真参额度不足（剩余 0 套）！请先通过卡密兑换真参配额后再执行推送。'
+            });
+            return;
+          }
+        }
+
         const fileContent = fs.readFileSync(filePath, 'utf8');
         let parsed;
         try {
@@ -2081,9 +2151,21 @@ async function handler(request, response) {
           devinfo: fileContent
         });
         const replyMsg = typeof cloudRes === 'string' ? cloudRes : (cloudRes?.message || cloudRes?.data || '设置成功');
+
+        // 标记真参为已使用并核销额度
+        let targetDevName = 'SF'; try { const devList = await listDevices(); targetDevName = devList.find(d => d.deviceId === deviceId)?.name || 'SF'; } catch {}
+        authService.markZhencanFileUsed(name, {
+          userId: user.id,
+          deviceId,
+          deviceName: targetDevName
+        });
+        if (user.role !== 'admin') {
+          authService.consumeZhencanQuota(user, 1, { fileName: name, deviceId, deviceName: targetDevName });
+        }
+
         json(response, 200, {
           ok: true,
-          message: `真参配置 [${name}] 已成功下发并应用到云机！品牌: ${deviceInfo.brand}, 型号: ${deviceInfo.model}`,
+          message: `真参配置 [${name}] 已成功下发并应用到云机！已标记为已使用。品牌: ${deviceInfo.brand}, 型号: ${deviceInfo.model}`,
           deviceInfo,
           cloudResult: replyMsg
         });

@@ -550,6 +550,35 @@ class AuthService {
     return allocations.some(a => a.device_id === deviceId && a.expire_at > Date.now());
   }
 
+  getUserZhencanBalance(userId) {
+    return this.db.getUserZhencanBalance(userId);
+  }
+
+  consumeZhencanQuota(user, count = 1, metadata = {}) {
+    if (!user) throw new Error('未授权用户，无法扣减真参配额');
+    if (user.role === 'admin') {
+      // 管理员拥有调试与管理特权，记录操作但免扣除
+      return 999999;
+    }
+    return this.db.consumeZhencanQuota(user.id, count, metadata);
+  }
+
+  getZhencanFileRecord(fileName) {
+    return this.db.getZhencanFileRecord(fileName);
+  }
+
+  getAllZhencanRecords() {
+    return this.db.getAllZhencanRecords();
+  }
+
+  markZhencanFileUsed(fileName, { userId = '', deviceId = '', deviceName = '' } = {}) {
+    return this.db.markZhencanFileUsed(fileName, { userId, deviceId, deviceName });
+  }
+
+  setZhencanFileStatus(fileName, status) {
+    return this.db.setZhencanFileStatus(fileName, status);
+  }
+
   sweepExpiredAllocations(onExpired) {
     const expired = this.db.expireAndRecycleDevices(Date.now());
     if (expired.length > 0 && typeof onExpired === 'function') {

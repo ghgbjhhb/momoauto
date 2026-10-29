@@ -1236,13 +1236,29 @@ function renderAdminDiskFileList() {
       metaText = file.sizeFormatted;
     }
 
+    let statusBadge = '';
+    let toggleBtn = '';
+    if (file.zhencanStatus) {
+      if (file.zhencanStatus.status === 'used') {
+        const titleTip = '使用时间: ' + (file.zhencanStatus.usedAtFormatted || '此前') + ' | 目标云机: ' + (file.zhencanStatus.usedOnDeviceName || file.zhencanStatus.usedOnDeviceId || '未知');
+        statusBadge = '<span class="badge-status-used" style="background:#fff2f0; color:#cf1322; border:1px solid #ffccc7; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;" title="' + escapeHtml(titleTip) + '">🔴 已使用 (' + (file.zhencanStatus.usedAtFormatted ? file.zhencanStatus.usedAtFormatted.slice(5, 16) : '已导入') + ')</span>';
+        toggleBtn = '<button type="button" class="disk-action-btn success" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; padding:4px 10px; font-size:12px;" onclick="toggleZhencanStatus(\'' + escapeHtml(file.name) + '\', \'available\')" title="将该真参重置为可用状态，允许再次导入">🔄 重新启用</button>';
+      } else {
+        statusBadge = '<span class="badge-status-avail" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;">🟢 可用</span>';
+        toggleBtn = '<button type="button" class="disk-action-btn subtle" style="color:#8c8c8c; border:1px solid #d9d9d9; padding:4px 10px; font-size:12px;" onclick="toggleZhencanStatus(\'' + escapeHtml(file.name) + '\', \'used\')" title="将该真参标记为已使用">🚫 设为已用</button>';
+      }
+    }
+
     return '<div class="disk-file-card" data-filename="' + escapeHtml(file.name) + '">' +
       thumbHtml +
       '<div class="disk-file-main">' +
-        '<div class="disk-file-title" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</div>' +
+        '<div class="disk-file-title" title="' + escapeHtml(file.name) + '">' +
+          escapeHtml(file.name) + statusBadge +
+        '</div>' +
         '<div class="disk-file-meta">' + metaText + '</div>' +
       '</div>' +
       '<div class="disk-file-actions">' +
+        toggleBtn +
         '<button type="button" class="disk-action-btn primary push-btn" onclick="sendAdminDiskFileToDevice(\'' + escapeHtml(file.name) + '\')">' +
           '🚀 推送到云机' +
         '</button>' +
@@ -2282,3 +2298,19 @@ function debounce(fn, delay = 300) {
 checkAuth();
 const initialTab = getTabFromUrl();
 switchTab(initialTab, { updateHistory: false });
+
+window.toggleZhencanStatus = async function(fileName, targetStatus) {
+  try {
+    const res = await fetch('/api/cloud-disk/zhencan/toggle-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName, status: targetStatus })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || '操作失败');
+    showToast(data.message || '真参状态已更新', 'success');
+    loadAdminDiskFiles();
+  } catch (err) {
+    showToast('更新真参状态失败: ' + err.message, 'error');
+  }
+};

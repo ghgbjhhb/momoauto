@@ -213,7 +213,14 @@
         <div class="disk-file-card" data-filename="${escapeHtml(file.name)}" data-isimage="${Boolean(file.isImage)}" data-istext="${Boolean(file.isText)}">
           ${thumbHtml}
           <div class="disk-file-main">
-            <div class="disk-file-title" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+            <div class="disk-file-title" title="${escapeHtml(file.name)}">
+              ${escapeHtml(file.name)}
+              ${isParamsDir && file.zhencanStatus ? (
+                file.zhencanStatus.status === 'used'
+                  ? `<span class="badge-status-used" style="background:#fff2f0; color:#cf1322; border:1px solid #ffccc7; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;" title="使用时间: ${file.zhencanStatus.usedAtFormatted || '此前'} | 云机: ${file.zhencanStatus.usedOnDeviceName || file.zhencanStatus.usedOnDeviceId || '未知'}">🔴 已使用 (${file.zhencanStatus.usedAtFormatted ? file.zhencanStatus.usedAtFormatted.slice(5, 16) : '已导入'})</span>`
+                  : `<span class="badge-status-avail" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;">🟢 可用</span>`
+              ) : ''}
+            </div>
             <div class="disk-file-meta">
               <span class="meta-item">📦 ${escapeHtml(file.sizeFormatted)}</span>
               <span class="meta-item">🕒 ${dateStr}</span>
@@ -221,6 +228,11 @@
             ${extraBadgeHtml}
           </div>
           <div class="disk-file-actions">
+            ${isParamsDir && file.zhencanStatus ? (
+              file.zhencanStatus.status === 'used'
+                ? `<button type="button" class="disk-action-btn success" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; padding:4px 10px; font-size:12px;" onclick="window.CloudDisk.toggleStatus(this.closest('.disk-file-card').dataset.filename, 'available')" title="将该真参重置为可用状态，允许再次导入">🔄 重新启用</button>`
+                : `<button type="button" class="disk-action-btn subtle" style="color:#8c8c8c; border:1px solid #d9d9d9; padding:4px 10px; font-size:12px;" onclick="window.CloudDisk.toggleStatus(this.closest('.disk-file-card').dataset.filename, 'used')" title="将该真参标记为已使用">🚫 设为已用</button>`
+            ) : ''}
             <button type="button" class="disk-action-btn primary push-btn" ${sendBtnDisabled} onclick="window.CloudDisk.sendToDevice(this.closest('.disk-file-card').dataset.filename)">
               ${sendBtnText}
             </button>
@@ -520,6 +532,22 @@
     viewFile,
     previewImage,
     deleteFile,
+    toggleStatus: async function(fileName, status) {
+      try {
+        const res = await fetch('/api/cloud-disk/zhencan/toggle-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName, status })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || '操作失败');
+        if (typeof showToast === 'function') showToast(data.message || '真参状态已更新', 'success');
+        fetchFileList();
+      } catch (err) {
+        if (typeof showToast === 'function') showToast('更新真参状态失败: ' + err.message, 'error');
+        else alert(err.message);
+      }
+    },
     onDeviceSelected: function (deviceId) {
       state.selectedDeviceId = deviceId;
       updateDeviceBanner();

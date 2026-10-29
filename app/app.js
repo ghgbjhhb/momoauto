@@ -2997,6 +2997,7 @@ if (elements.submitRedeemBtn) {
       elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:rgba(46,160,67,0.15); border:1px solid rgba(46,160,67,0.35); color:#3fb950;';
       setTimeout(async () => {
         elements.redeemDialog?.close();
+        await checkAuth();
         if (data.result.deviceId || data.result.deviceName) {
           await loadDevices();
         }
@@ -3045,6 +3046,28 @@ async function checkAuth() {
     if (elements.userPill && !isEmbed) {
       elements.userPill.style.display = 'block';
       elements.userPill.textContent = `${isAdmin ? '管理员' : '用户'}: ${data.user.email}`;
+    }
+    const zhencanQuotaEl = document.getElementById('topbarZhencanQuota');
+    const zhencanCountEl = document.getElementById('topbarZhencanCount');
+    if (zhencanQuotaEl && !isEmbed) {
+      zhencanQuotaEl.style.display = 'inline-flex';
+      if (isAdmin) {
+        zhencanQuotaEl.innerHTML = '🧬 真参: <strong>管理员无限</strong>';
+        zhencanQuotaEl.title = '管理员特权免扣真参配额';
+      } else {
+        const count = parseInt(data.user.zhencanBalance, 10) || 0;
+        if (zhencanCountEl) zhencanCountEl.textContent = String(count);
+        zhencanQuotaEl.title = `当前可用真参配额: ${count} 套，导入真参自动核销 1 套，可通过卡密兑换充值`;
+        if (count <= 0) {
+          zhencanQuotaEl.style.background = '#fff2f0';
+          zhencanQuotaEl.style.borderColor = '#ffccc7';
+          zhencanQuotaEl.style.color = '#cf1322';
+        } else {
+          zhencanQuotaEl.style.background = '#f6ffed';
+          zhencanQuotaEl.style.borderColor = '#b7eb8f';
+          zhencanQuotaEl.style.color = '#237804';
+        }
+      }
     }
     if (elements.openPasswordModalBtn && !isEmbed) {
       elements.openPasswordModalBtn.style.display = 'inline-flex';

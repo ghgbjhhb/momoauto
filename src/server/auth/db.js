@@ -171,6 +171,20 @@ class AuthDatabase {
       CREATE INDEX IF NOT EXISTS idx_sms_session ON sms_records(session_id);
       CREATE INDEX IF NOT EXISTS idx_sms_logs_created ON sms_call_logs(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_sms_logs_phone ON sms_call_logs(phone_number);
+
+      CREATE TABLE IF NOT EXISTS cloud_disk_zhencan (
+        id TEXT PRIMARY KEY,
+        file_name TEXT UNIQUE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'available',
+        used_at INTEGER,
+        used_by_user_id TEXT,
+        used_on_device_id TEXT,
+        used_on_device_name TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_zhencan_filename ON cloud_disk_zhencan(file_name);
+      CREATE INDEX IF NOT EXISTS idx_zhencan_status ON cloud_disk_zhencan(status);
     `);
 
     // 平滑升级已有 users 表字段
@@ -367,6 +381,86 @@ class AuthDatabase {
   getUserZhencanBalance(userId) {
     const row = this.db.prepare("SELECT amount FROM user_entitlements WHERE user_id = ? AND type = 'zhencan'").get(userId);
     return row ? (row.amount || 0) : 0;
+  }
+
+  consumeZhencanQuota(userId, count = 1, metadata = {}) {
+    const now = Date.now();
+    const num = Math.max(1, parseInt(count, 10) || 1);
+    const existing = this.db.prepare("SELECT * FROM user_entitlements WHERE user_id = ? AND type = 'zhencan'").get(userId);
+    const current = existing ? (existing.amount || 0) : 0;
+    if (current < num) {
+      throw new Error(`真参配额不足（剩余 ${current} 套，需要 ${num} 套）！请先通过卡密兑换真参配额后再执行导入。`);
+    }
+    const newAmount = current - num;
+    this.db.prepare(`
+      UPDATE user_entitlements SET amount = ?, updated_at = ?
+      WHERE id = ?
+    `).run(newAmount, now, existing.id);
+    return newAmount;
+  }
+
+  // --- Cloud Disk Zhencan Status ---
+  getZhencanFileRecord(fileName) {
+    if (!fileName) return null;
+    let row = this.db.prepare('SELECT * FROM cloud_disk_zhencan WHERE file_name = ?').get(fileName);
+    if (!row) {
+      const now = Date.now();
+      const id = 'zc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+      this.db.prepare(`
+        INSERT INTO cloud_disk_zhencan (id, file_name, status, created_at, updated_at)
+        VALUES (?, ?, 'available', ?, ?)
+      `).run(id, fileName, now, now);
+      row = this.db.prepare('SELECT * FROM cloud_disk_zhencan WHERE file_name = ?').get(fileName);
+    }
+    return row;
+  }
+
+  getAllZhencanRecords() {
+    const rows = this.db.prepare('SELECT * FROM cloud_disk_zhencan').all();
+    const map = Object.create(null);
+    for (const r of rows) {
+      map[r.file_name] = r;
+    }
+    return map;
+  }
+
+  markZhencanFileUsed(fileName, { userId = '', deviceId = '', deviceName = '' } = {}) {
+    if (!fileName) return;
+    const now = Date.now();
+    const existing = this.db.prepare('SELECT * FROM cloud_disk_zhencan WHERE file_name = ?').get(fileName);
+    if (existing) {
+      this.db.prepare(`
+        UPDATE cloud_disk_zhencan
+        SET status = 'used', used_at = ?, used_by_user_id = ?, used_on_device_id = ?, used_on_device_name = ?, updated_at = ?
+        WHERE id = ?
+      `).run(now, userId, deviceId, deviceName, now, existing.id);
+    } else {
+      const id = 'zc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+      this.db.prepare(`
+        INSERT INTO cloud_disk_zhencan (id, file_name, status, used_at, used_by_user_id, used_on_device_id, used_on_device_name, created_at, updated_at)
+        VALUES (?, ?, 'used', ?, ?, ?, ?, ?, ?)
+      `).run(id, fileName, now, userId, deviceId, deviceName, now, now);
+    }
+  }
+
+  setZhencanFileStatus(fileName, status) {
+    if (!fileName) return;
+    const now = Date.now();
+    const validStatus = status === 'used' ? 'used' : 'available';
+    const existing = this.db.prepare('SELECT * FROM cloud_disk_zhencan WHERE file_name = ?').get(fileName);
+    if (existing) {
+      this.db.prepare(`
+        UPDATE cloud_disk_zhencan
+        SET status = ?, updated_at = ?
+        WHERE id = ?
+      `).run(validStatus, now, existing.id);
+    } else {
+      const id = 'zc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+      this.db.prepare(`
+        INSERT INTO cloud_disk_zhencan (id, file_name, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(id, fileName, validStatus, now, now);
+    }
   }
 
   addOrExtendIp(userId, durationDays, metadata = {}) {
