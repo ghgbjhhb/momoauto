@@ -1915,9 +1915,10 @@ async function executeScript(script, button, card) {
     }
   }
 
+  let resetConfirmed = false;
   if (script.destructive) {
     const isV2 = script.id === 'flow-09-v2';
-    const resetConfirmed = await showInPageConfirm({
+    resetConfirmed = await showInPageConfirm({
       title: isV2 ? '确认执行【重置数据】？' : '确认执行【改机重置】？',
       message: isV2
         ? `确认对 <strong>${escapeHtml(deviceLabel(currentDevice()))}</strong> 执行“重置数据”？<br><span style="color:#ff4d4f; font-weight:600;">警告：即将重置该设备，此操作不可恢复！</span><br>清空该设备所有数据并恢复出厂设置。`
