@@ -2180,13 +2180,23 @@ async function handler(request, response) {
 
       if (dir === '头像') {
         const fileBuffer = fs.readFileSync(filePath);
-        const uploadRes = await c.cloudDisk().upload(fileBuffer, { fileName: name });
-        const fileRecord = uploadRes?.data ?? uploadRes;
-        const sendRes = await c.cloudDisk().sendToDevices([deviceId], [fileRecord], { fileType: 'picture' });
+        const disk = c.cloudDisk();
+        let listRes = await disk.list({ name });
+        let fileRecord = listRes.records?.find(r => r.name === name);
+        if (!fileRecord) {
+          await disk.upload(fileBuffer, { fileName: name });
+          listRes = await disk.list({ name });
+          fileRecord = listRes.records?.find(r => r.name === name);
+        }
+        if (!fileRecord || !fileRecord.url) {
+          json(response, 500, { ok: false, error: `未能获取到中转站文件记录: ${name}` });
+          return;
+        }
+
+        const sendRes = await disk.sendToDevices([deviceId], [fileRecord], { fileType: 'auto' });
         json(response, 200, {
           ok: true,
           message: `头像图片 [${name}] 已成功推送到云机相册！`,
-          uploadResult: uploadRes,
           sendResult: sendRes
         });
         return;
