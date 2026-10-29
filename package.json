@@ -78,6 +78,7 @@
     "flow:13": "node flows/momo/13-momo联系人及消息入库.js",
     "flow:14": "node flows/momo/14-momoAI回复.js",
     "flow:15": "node flows/momo/15-momo监听中枢.js",
+    "flow:16": "node flows/momo/16-momo一键上号.js",
     "momo:ai-reply": "node src/workflows/momo-ai-reply.js",
     "momo:brain": "node scripts/momo-brain.js"
   },

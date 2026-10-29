@@ -241,6 +241,11 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
+    id: 'flow-16', order: 16, title: '陌陌一键上号',
+    file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
+    category: 'momo'
+  },
+  {
     id: 'flow-all', title: '执行全流程 (V3)', file: 'flows/v3/执行全部.js', args: ['--execute'],
     requiresDevice: true, requiresCertificate: true, batch: true, category: 'all', version: 'v3'
   }
