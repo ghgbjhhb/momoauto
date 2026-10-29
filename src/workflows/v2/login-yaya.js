@@ -594,25 +594,67 @@ async function executeReloginMode(phone, control, worker, directory, state, init
   }
 
   // 4. 定位属于该订单卡片的“订单号”与“复扫”按钮
-  // 订单号通常位于 targetTimeItem 上方 10~50px 内
-  const orderItem = observation.items.find(i => i.text.includes('订单号') && Math.abs(i.top - targetTimeItem.top) < 60);
+  const findRescanBtn = (items, timeItem) => items.find(i => {
+    const t = normalizeText(i.text);
+    return (t === '复扫' || t.includes('复扫')) &&
+           i.top > timeItem.top &&
+           i.top < timeItem.top + 130;
+  });
+
+  let cardRescanBtn = findRescanBtn(observation.items, targetTimeItem);
+
+  // 若卡片位置过低（超过视口高度 55%）导致底部按键可能被底栏遮挡，或者初次未识别到复扫按钮，执行一次平滑上移微调
+  if (!cardRescanBtn || targetTimeItem.top > observation.height * 0.55) {
+    logger?.console(`[视口对齐] 目标卡片偏底 (y=${Math.round(targetTimeItem.top)})，执行平滑微调使其完整居中...`);
+    await control.swipe(
+      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.6) },
+      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.4) },
+      { durationMs: 300, steps: 8 }
+    );
+    await control.flush();
+    await sleep(800);
+
+    state.counter += 1;
+    observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+
+    // 在新视口重新定位目标时间项与复扫按键
+    const recheckedTime = observation.items.find(i => normalizeText(i.text).includes(normalizeText(targetTime)));
+    if (recheckedTime) {
+      targetTimeItem = recheckedTime;
+      logger?.console(`[视口对齐] 微调后重新定位目标时间条目: "${targetTimeItem.text}" (y=${Math.round(targetTimeItem.top)})`);
+    }
+    cardRescanBtn = findRescanBtn(observation.items, targetTimeItem);
+  }
+
+  // 提取订单号
+  const orderItem = observation.items.find(i => i.text.includes('订单号') && Math.abs(i.top - targetTimeItem.top) < 70);
   if (orderItem) {
     const match = orderItem.text.match(/订单号[：:]\s*([a-zA-Z0-9]+)/);
     orderNumber = match ? match[1] : orderItem.text;
     logger?.console(`[订单信息] 匹配到订单号: ${orderNumber}`);
   }
 
-  // “复扫”按钮属于该卡片，严格位于 targetTimeItem 下方 20~90px 内且在其水平对应区域
-  const cardRescanBtn = observation.items.find(i => {
-    const t = normalizeText(i.text);
-    return t === '复扫' && i.top > targetTimeItem.top && i.top < targetTimeItem.top + 90;
-  });
-
   if (!cardRescanBtn) {
+    const nearby = observation.items.filter(i => Math.abs(i.top - targetTimeItem.top) < 160);
+    logger?.file('Nearby items around targetTimeItem', { targetTimeItem, nearby });
     throw new Error(`已找到 "${targetTime}" 卡片，但未能定位到该卡片对应的“复扫”按钮`);
   }
 
-  const rescanPoint = tapBox(control, cardRescanBtn, observation);
+  let rescanPoint;
+  if (normalizeText(cardRescanBtn.text) === '复扫') {
+    rescanPoint = tapBox(control, cardRescanBtn, observation);
+  } else {
+    // 若 OCR 将多个按钮合为一个文本框，例如“复制卡密 复扫”
+    const norm = cardRescanBtn.text.replace(/\s+/g, '');
+    const idx = norm.indexOf('复扫');
+    const frac = norm.length > 0 ? (idx + 1) / norm.length : 0.5;
+    const clickX = cardRescanBtn.left + cardRescanBtn.width * frac;
+    const clickY = cardRescanBtn.centerY;
+    rescanPoint = {
+      x: Math.round(clickX * (control.screenWidth / observation.width)),
+      y: Math.round(clickY * (control.screenHeight / observation.height)),
+    };
+  }
   const clickedAt = Date.now();
   const clickedTimeFormatted = formatDateTime(clickedAt);
   const clickedAtIso = new Date(clickedAt).toISOString();
