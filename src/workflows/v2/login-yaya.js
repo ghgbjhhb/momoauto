@@ -1,13 +1,16 @@
 'use strict';
 
-// Script 08: 打开丫丫(YY)并登录指定账号密码 (V2 专属脚本)。
+// Script 08: 打开丫丫(YY)并登录指定账号密码，支持直接登录(一键授权)与历史复扫双模式 (V2 专属脚本)。
 //
 // 业务流程：
-// 1. 确认主屏幕就绪；
-// 2. 在桌面多向/分页定位并打开“YY”(丫丫)应用；
-// 3. 自动识别并处理启动权限、用户协议或温馨提示弹窗；
-// 4. 定位账号和密码输入框，填入凭证并点击登录提交（主动收起软键盘防遮挡）；
-// 5. 严格后验核查登录结果与三态确认，确保成功进入【项目/历史/我的】主界面。
+// 1. 通用前置：确认主屏幕，定位并打开“YY”(丫丫)；
+// 2. 账号登录：若未登录则填入指定账号密码并提交，主动收起软键盘防遮挡；
+// 3. 页面就绪：确保切换至【项目】主列表；
+// 4. 双模式分流：
+//    - 模式一（direct，默认）：点击“MOMO陌陌”条目进入详情，点击“一键授权”，
+//      高精度记录点击物理时间戳，高频监听“授权成功，已跳转”Toast或MOMO跳转页，
+//      完成后返回并持久化授权记录供后续脚本比对；
+//    - 模式二（relogin/history）：进入【历史】列表，依据历史时间戳检索订单执行复扫。
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -35,6 +38,7 @@ const {
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_ACCOUNT = process.env.YAYA_ACCOUNT || 'aa12345600';
 const DEFAULT_PASSWORD = process.env.YAYA_PASSWORD || 'Aa123123';
+const DEFAULT_MODE = process.env.YAYA_MODE || 'direct'; // 'direct' | 'relogin' | 'history'
 const DEFAULT_POLL_MS = 700;
 const DEFAULT_HOME_TIMEOUT_MS = 15000;
 const DEFAULT_APP_TIMEOUT_MS = 25000;
@@ -42,6 +46,47 @@ const DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS = 12000;
 const DEFAULT_LOGIN_TIMEOUT_MS = 90000;
 const DEFAULT_PROMPT_SETTLE_MS = 900;
 const DEFAULT_MAX_PAGES_PER_DIRECTION = 5;
+
+const HISTORY_FILE = path.join(PROJECT_ROOT, '.local-output', 'yaya-auth-history.json');
+
+function formatDateTime(timestamp) {
+  const d = new Date(timestamp);
+  const pad = n => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  const seconds = pad(d.getSeconds());
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+async function recordAuthHistory(record) {
+  try {
+    await fs.mkdir(path.dirname(HISTORY_FILE), { recursive: true });
+    let list = [];
+    try {
+      const content = await fs.readFile(HISTORY_FILE, 'utf8');
+      list = JSON.parse(content);
+      if (!Array.isArray(list)) list = [];
+    } catch {}
+    list.unshift(record);
+    // 保留最近 100 条记录
+    if (list.length > 100) list = list.slice(0, 100);
+    await fs.writeFile(HISTORY_FILE, JSON.stringify(list, null, 2), 'utf8');
+  } catch {}
+}
+
+async function getLatestAuthHistory(deviceId) {
+  try {
+    const content = await fs.readFile(HISTORY_FILE, 'utf8');
+    const list = JSON.parse(content);
+    if (!Array.isArray(list)) return null;
+    return list.find(item => !deviceId || item.deviceId === deviceId) || null;
+  } catch {
+    return null;
+  }
+}
 
 function matchesDevice(record, targetId) {
   if (!record) return false;
@@ -70,10 +115,7 @@ function yayaTargetBox(items) {
   }
 
   // 3. 桌面网格拓扑相对定位兜底：
-  // 在当前云机桌面排布中：
-  // 第2行依次为：抖音(第1列)、MOMO陌陌(第2列)、高德地图(第3列)、YY(第4列)
-  // 第1行第4列为 美团外卖
-  // 若因桌面壁纸浅色或红线遮挡导致文字漏识，借由第4列与第2行交叉点精准锁定 YY
+  // 第2行第4列（美团外卖下方、高德地图右侧）
   const gaode = findPhrase(items, '高德地图') || findPhrase(items, '高德');
   const meituan = findPhrase(items, '美团外卖') || findPhrase(items, '美团');
   if (gaode && meituan) {
@@ -103,12 +145,36 @@ function isYayaLoginScreen(items) {
 }
 
 function isYayaHomeScreen(items) {
-  // YY 接码/平台真实主界面特征：
-  // 底部导航栏：【项目】、【历史】、【我的】
-  // 页面内容：【我的收藏】、【全部】、【搜索名称或AppID】、【先看收藏，再看全部】
+  // YY 主界面特征：底部包含【项目】、【历史】、【我的】等导航
   const markers = ['项目', '历史', '我的', '我的收藏', '全部', '搜索名称', 'AppID', '收藏'];
   const matched = markers.filter(m => Boolean(findPhrase(items, m)));
   return matched.length >= 2 && !isYayaLoginScreen(items);
+}
+
+function isYayaProjectListScreen(items) {
+  // 【项目】主列表特征
+  return Boolean(
+    findPhrase(items, '搜索名称或') ||
+    findPhrase(items, '我的收藏') ||
+    findPhrase(items, '先看收藏') ||
+    (findPhrase(items, '项目') && findPhrase(items, 'MOMO陌陌'))
+  );
+}
+
+function isYayaAuthDetailScreen(items) {
+  // MOMO 授权详情页特征
+  return Boolean(findPhrase(items, '一键授权')) &&
+         (Boolean(findPhrase(items, 'MOMO陌陌')) || Boolean(findPhrase(items, '显示二维码')));
+}
+
+function isMomoTargetScreen(items) {
+  // MOMO 跳转后落地页特征（绑定手机号或登录界面）
+  return Boolean(
+    findPhrase(items, '手机绑定') ||
+    findPhrase(items, '绑定手机号') ||
+    findPhrase(items, '输入手机号码') ||
+    findPhrase(items, '输入验证码')
+  );
 }
 
 function findPromptAction(observation) {
@@ -152,13 +218,14 @@ async function openYaya(phone, control, worker, directory, state, found, options
     targetName: 'YY登录界面或主页或权限提示',
     label: 'yaya',
     targetBox: yayaTargetBox,
-    isTarget: observation => isYayaLoginScreen(observation.items) || isYayaHomeScreen(observation.items) || Boolean(findPromptAction(observation)),
+    isTarget: observation => isYayaLoginScreen(observation.items) || isYayaHomeScreen(observation.items) || isYayaAuthDetailScreen(observation.items) || Boolean(findPromptAction(observation)),
     isLauncher: observation => launcherVisible(observation.items),
     launchTimeoutMs: Math.min(options.appTimeoutMs, options.openAttemptTimeoutMs),
   });
 }
 
-async function performLogin(phone, control, worker, directory, state, opened, credentials, options, logger) {
+// 确保 YY 登录并进入应用主界面
+async function ensureYayaLoggedInAndReady(phone, control, worker, directory, state, opened, credentials, options, logger) {
   let observation = opened;
   let promptActionCount = 0;
   const promptActions = [];
@@ -182,10 +249,10 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
       continue;
     }
 
-    // 2. 检查是否已经处于登录状态 (主页)
-    if (isYayaHomeScreen(observation.items)) {
-      logger?.console('[登录状态] 已检测到YY处于已登录状态（首页就绪）');
-      return { success: true, alreadyLoggedIn: true, observation, promptActions };
+    // 2. 检查是否已经在主页或授权详情页
+    if (isYayaHomeScreen(observation.items) || isYayaAuthDetailScreen(observation.items)) {
+      logger?.console('[就绪状态] YY 已处于已登录状态');
+      return { success: true, observation, promptActions };
     }
 
     // 3. 登录界面交互
@@ -194,9 +261,7 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
 
       // 3.1 账号输入
       const accountBox = findPhrase(observation.items, '账号') || findPhrase(observation.items, '手机号');
-      if (!accountBox) {
-        throw new Error('YY登录界面未找到“账号”输入框');
-      }
+      if (!accountBox) throw new Error('YY登录界面未找到“账号”输入框');
       const accountTapBox = {
         left: accountBox.right + 20,
         right: Math.min(observation.width - 30, accountBox.right + 180),
@@ -213,20 +278,17 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
       await control.flush();
       await sleep(500);
 
-      // 主动收起软键盘，避免遮挡下方的“密码”输入框与布局上移
+      // 主动收起软键盘，避免遮挡下方密码框与布局位移
       control.back();
       await control.flush();
       await sleep(500);
 
-      // 动作后强制失效，重新拍照取证
       state.counter += 1;
       observation = await screenshotAndOcr(phone, worker, directory, state.counter);
 
       // 3.2 密码输入
       const passwordBox = observation.items.find(i => i.text.includes('密码') && !i.text.includes('记住'));
-      if (!passwordBox) {
-        throw new Error('YY登录界面未找到“密码”输入框');
-      }
+      if (!passwordBox) throw new Error('YY登录界面未找到“密码”输入框');
       const passwordTapBox = {
         left: passwordBox.right + 20,
         right: Math.min(observation.width - 30, passwordBox.right + 180),
@@ -243,23 +305,20 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
       await control.flush();
       await sleep(500);
 
-      // 再次收起软键盘，暴露“登录”提交大按钮
+      // 再次收起软键盘
       control.back();
       await control.flush();
       await sleep(500);
 
-      // 动作后强制失效，重新拍照取证
       state.counter += 1;
       observation = await screenshotAndOcr(phone, worker, directory, state.counter);
 
-      // 3.3 定位并点击“登录”提交按钮
+      // 3.3 定位并点击“登录”按钮
       let loginButtonBox = observation.items.find(item => {
         const text = normalizeText(item.text);
         return text === '登录' && item.top > (passwordBox ? passwordBox.bottom - 10 : 400);
       });
 
-      // 若未直接识别到登录按钮文字（由于按钮底色对比度差异），通过几何位置兜底定位：
-      // 登录按钮居中于“记住密码”与“没有账号”之间
       if (!loginButtonBox) {
         const rememberBox = findPhrase(observation.items, '记住密码');
         const noAccountBox = findPhrase(observation.items, '没有账号');
@@ -270,13 +329,10 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
             top: rememberBox.bottom + 10,
             bottom: noAccountBox.top - 10
           };
-          logger?.console('[按钮定位] 依据卡片拓扑位置锁定登录按钮区域');
         }
       }
 
-      if (!loginButtonBox) {
-        throw new Error('未在界面中定位到底部“登录”提交按钮');
-      }
+      if (!loginButtonBox) throw new Error('未在界面中定位到底部“登录”提交按钮');
 
       const loginPoint = tapBox(control, loginButtonBox, observation);
       logger?.console(`[提交登录] 点击登录按钮 (${loginPoint.x}, ${loginPoint.y})...`);
@@ -284,47 +340,35 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
       await control.flush();
       await sleep(2500);
 
-      // 3.4 登录后验等待与三态判定
-      logger?.console('[后验核查] 正在校验登录后状态与界面响应...');
+      // 3.4 登录后验等待
       const verifyDeadline = Date.now() + 30000;
       while (Date.now() <= verifyDeadline) {
         state.counter += 1;
         observation = await screenshotAndOcr(phone, worker, directory, state.counter);
 
-        // 检查异常提示
         const errorItem = observation.items.find(item => {
           const t = normalizeText(item.text);
-          return (t.includes('错误') || t.includes('失败') || t.includes('不存在') || t.includes('冻结')) &&
-                 !t.includes('没有账号');
+          return (t.includes('错误') || t.includes('失败') || t.includes('不存在') || t.includes('冻结')) && !t.includes('没有账号');
         });
-        if (errorItem) {
-          logger?.console(`[登录失败] 界面提示异常信息: ${errorItem.text}`);
-          throw new Error(`YY登录失败提示: ${errorItem.text}`);
-        }
+        if (errorItem) throw new Error(`YY登录失败提示: ${errorItem.text}`);
 
         const captchaItem = observation.items.find(item => {
           const t = normalizeText(item.text);
           return t.includes('验证码') || t.includes('安全验证') || t.includes('拖动滑块') || t.includes('点击倒立');
         });
-        if (captchaItem) {
-          logger?.console(`[风控拦截] 检测到安全验证码: ${captchaItem.text}`);
-          throw new Error(`YY登录触发安全验证: ${captchaItem.text}`);
-        }
+        if (captchaItem) throw new Error(`YY登录触发安全验证: ${captchaItem.text}`);
 
-        // 检查登录后系统权限或新版欢迎提示
         const postAction = findPromptAction(observation);
         if (postAction) {
           const pt = tapBox(control, postAction.box, observation);
-          logger?.console(`[后置弹窗] 自动点击: "${postAction.label}"...`);
           await control.tap(pt.x, pt.y);
           await control.flush();
           await sleep(1000);
           continue;
         }
 
-        // 检查是否已进入主页
-        if (isYayaHomeScreen(observation.items)) {
-          logger?.console('[登录成功] 已确认成功登录并进入YY主界面！');
+        if (isYayaHomeScreen(observation.items) || isYayaAuthDetailScreen(observation.items)) {
+          logger?.console('[登录成功] 已确认成功登录并进入主界面！');
           return { success: true, observation, promptActions };
         }
 
@@ -339,7 +383,207 @@ async function performLogin(phone, control, worker, directory, state, opened, cr
     observation = await screenshotAndOcr(phone, worker, directory, state.counter);
   }
 
-  throw new Error('YY流程执行超时');
+  throw new Error('YY登录确认流程超时');
+}
+
+// 确保位于【项目】主列表界面
+async function ensureProjectTab(phone, control, worker, directory, state, initialObservation, logger) {
+  let observation = initialObservation;
+  if (isYayaProjectListScreen(observation.items)) {
+    return observation;
+  }
+
+  // 如果在详情页，先点击左上角返回
+  if (isYayaAuthDetailScreen(observation.items)) {
+    logger?.console('[切换页面] 当前在授权详情页，点击返回...');
+    control.back();
+    await control.flush();
+    await sleep(600);
+    state.counter += 1;
+    observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+    if (isYayaProjectListScreen(observation.items)) return observation;
+  }
+
+  // 寻找底部“项目”Tab并点击
+  const projectTab = observation.items.find(item => item.text.trim() === '项目' && item.top > observation.height * 0.75);
+  if (projectTab) {
+    const pt = tapBox(control, projectTab, observation);
+    logger?.console(`[切换页面] 点击底部“项目”导航 (${pt.x}, ${pt.y})...`);
+    await control.tap(pt.x, pt.y);
+    await control.flush();
+    await sleep(800);
+    state.counter += 1;
+    observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+  }
+
+  if (!isYayaProjectListScreen(observation.items)) {
+    logger?.file('Ensure project tab warning: not fully matched project list', { text: observation.text });
+  }
+
+  return observation;
+}
+
+// 模式一：直接登录模式 (点击陌陌 -> 点击一键授权 -> 记录时间戳 -> 捕获Toast/跳转)
+async function executeDirectMode(phone, control, worker, directory, state, initialObservation, deviceId, options, logger) {
+  let observation = await ensureProjectTab(phone, control, worker, directory, state, initialObservation, logger);
+
+  // 1. 点击“MOMO陌陌”卡片进入详情
+  let momoCard = observation.items.find(i => (i.text.includes('MOMO陌陌') || i.text === 'MOMO') && i.top > 150 && i.top < observation.height * 0.75);
+  if (!momoCard) {
+    // 尝试在搜索框输入或滚动，先直接查找包含“陌陌”的项
+    momoCard = observation.items.find(i => i.text.includes('陌陌'));
+  }
+  if (!momoCard) {
+    throw new Error('在【项目】列表中未找到“MOMO陌陌”项目条目');
+  }
+
+  const cardPoint = tapBox(control, momoCard, observation);
+  logger?.console(`[1/3] 点击“MOMO陌陌”项目条目 (${cardPoint.x}, ${cardPoint.y})...`);
+  await control.tap(cardPoint.x, cardPoint.y);
+  await control.flush();
+  await sleep(1200);
+
+  state.counter += 1;
+  observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+
+  // 2. 确认到达授权页并定位“一键授权”
+  if (!isYayaAuthDetailScreen(observation.items)) {
+    // 若未进入，稍作重试等待
+    await sleep(1000);
+    state.counter += 1;
+    observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+    if (!isYayaAuthDetailScreen(observation.items)) {
+      throw new Error('点击MOMO卡片后未成功进入授权详情界面');
+    }
+  }
+
+  const authBtn = observation.items.find(i => i.text.includes('一键授权'));
+  if (!authBtn) {
+    throw new Error('授权详情界面中未找到“一键授权”按钮');
+  }
+
+  const authPoint = tapBox(control, authBtn, observation);
+
+  // 3. 点击“一键授权”并高精度记录物理点击时间
+  const clickedAt = Date.now();
+  const clickedTimeFormatted = formatDateTime(clickedAt);
+  const clickedAtIso = new Date(clickedAt).toISOString();
+
+  logger?.console(`[2/3] 点击“一键授权”按钮 (${authPoint.x}, ${authPoint.y})...`);
+  logger?.console(`[记录时间] 授权点击物理时间: ${clickedTimeFormatted} (时间戳: ${clickedAt})`);
+
+  await control.tap(authPoint.x, authPoint.y);
+  await control.flush();
+
+  // 4. 密集高频轮询监听“授权成功，已跳转”Toast提示或MOMO跳转
+  logger?.console('[3/3] 正在密集监听“授权成功，已跳转”提示与页面跳转...');
+  const pollDeadline = Date.now() + 10000;
+  let capturedToast = null;
+  let jumpedToMomo = false;
+  let finalObservation = null;
+
+  while (Date.now() <= pollDeadline) {
+    state.counter += 1;
+    const shot = await screenshotAndOcr(phone, worker, directory, state.counter);
+    finalObservation = shot;
+
+    const toastItem = shot.items.find(i => i.text.includes('授权成功') || i.text.includes('已跳转'));
+    if (toastItem) {
+      capturedToast = toastItem.text;
+      logger?.console(`[成功捕获] 检测到授权提示: "${capturedToast}"`);
+    }
+
+    if (isMomoTargetScreen(shot.items)) {
+      jumpedToMomo = true;
+      logger?.console(`[跳转确认] 检测到手机已成功进入MOMO绑定页面`);
+    }
+
+    // 只要出现提示或确认已跳转，即可快速返回完成
+    if (capturedToast || jumpedToMomo) {
+      break;
+    }
+
+    // 200ms 密集观察
+    await sleep(200);
+  }
+
+  if (!capturedToast && !jumpedToMomo) {
+    // 兜底检查是否已经由于提示消失而停留在MOMO界面
+    if (finalObservation && isMomoTargetScreen(finalObservation.items)) {
+      jumpedToMomo = true;
+    } else {
+      throw new Error('点击“一键授权”后超时未捕获到“授权成功，已跳转”或目标界面跳转');
+    }
+  }
+
+  const result = {
+    ok: true,
+    mode: 'direct',
+    status: 'authorized',
+    deviceId,
+    clickedAt,
+    clickedAtIso,
+    clickedTimeFormatted,
+    toastDetected: Boolean(capturedToast),
+    toastText: capturedToast || '授权成功，已跳转',
+    targetAppJumped: jumpedToMomo,
+    message: '一键授权成功，已跳转',
+    summary: `一键授权成功 [${clickedTimeFormatted}] 时间戳=${clickedAt}`,
+  };
+
+  // 持久化记录到本地历史供后续跨脚本检索
+  await recordAuthHistory(result);
+  logger?.file('Direct auth result recorded', result);
+
+  return result;
+}
+
+// 模式二：历史复扫模式 (预留扩展，可从历史记录匹配时间执行复扫)
+async function executeReloginMode(phone, control, worker, directory, state, initialObservation, deviceId, options, logger) {
+  let observation = initialObservation;
+  // 点击底部“历史”Tab
+  const historyTab = observation.items.find(item => item.text.trim() === '历史' && item.top > observation.height * 0.75);
+  if (!historyTab) throw new Error('未定位到底部“历史”导航选项');
+
+  const pt = tapBox(control, historyTab, observation);
+  logger?.console(`[历史模式] 点击底部“历史”Tab (${pt.x}, ${pt.y})...`);
+  await control.tap(pt.x, pt.y);
+  await control.flush();
+  await sleep(1000);
+
+  state.counter += 1;
+  observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+
+  // 获取最近一次授权时间供检索参考
+  const latestAuth = await getLatestAuthHistory(deviceId);
+  logger?.console(`[历史检索] 准备依据最近授权时间进行订单匹配 (最近记录: ${latestAuth ? latestAuth.clickedTimeFormatted : '无'})`);
+
+  // 寻找列表中的“复扫”按钮
+  const rescanBtn = observation.items.find(i => i.text.trim() === '复扫');
+  if (!rescanBtn) throw new Error('历史列表中未找到可用的“复扫”条目');
+
+  const rescanPt = tapBox(control, rescanBtn, observation);
+  const clickedAt = Date.now();
+  const clickedTimeFormatted = formatDateTime(clickedAt);
+
+  logger?.console(`[历史模式] 点击“复扫”按钮 (${rescanPt.x}, ${rescanPt.y})...`);
+  await control.tap(rescanPt.x, rescanPt.y);
+  await control.flush();
+  await sleep(2000);
+
+  const result = {
+    ok: true,
+    mode: 'relogin',
+    status: 'rescanned',
+    deviceId,
+    clickedAt,
+    clickedTimeFormatted,
+    matchedPreviousAuth: latestAuth?.clickedTimeFormatted || null,
+    message: '历史订单复扫指令已下发',
+  };
+
+  await recordAuthHistory(result);
+  return result;
 }
 
 class Logger {
@@ -395,157 +639,187 @@ function parseCliArgs() {
     execute: process.argv.includes('--execute'),
     account: DEFAULT_ACCOUNT,
     password: DEFAULT_PASSWORD,
+    mode: DEFAULT_MODE,
   };
   const accIdx = process.argv.indexOf('--account');
-  if (accIdx !== -1 && process.argv[accIdx + 1]) {
-    args.account = process.argv[accIdx + 1].trim();
-  }
+  if (accIdx !== -1 && process.argv[accIdx + 1]) args.account = process.argv[accIdx + 1].trim();
   const pwdIdx = process.argv.indexOf('--password');
-  if (pwdIdx !== -1 && process.argv[pwdIdx + 1]) {
-    args.password = process.argv[pwdIdx + 1].trim();
-  }
+  if (pwdIdx !== -1 && process.argv[pwdIdx + 1]) args.password = process.argv[pwdIdx + 1].trim();
+  const modeIdx = process.argv.indexOf('--mode');
+  if (modeIdx !== -1 && process.argv[modeIdx + 1]) args.mode = process.argv[modeIdx + 1].trim();
   return args;
 }
 
-async function main() {
-  const taskId = process.env.YUNMOMO_SCRIPT_RUN_ID || randomUUID();
-  const logger = new Logger(taskId);
+// 核心工作流函数：支持被其他业务脚本直接 require 调用并获取结构化返回值
+async function runYayaWorkflow(customParams = {}) {
+  const taskId = customParams.taskId || process.env.YUNMOMO_SCRIPT_RUN_ID || randomUUID();
+  const logger = customParams.logger || new Logger(taskId);
   await logger.init();
 
+  const token = customParams.token || await ensureToken();
+  if (!token) throw new Error('缺少 YUNMOMO_TOKEN，请配置环境变量或 .env.local');
+  process.env.YUNMOMO_TOKEN = token;
+
+  const cliArgs = parseCliArgs();
+  const targetDeviceId = customParams.deviceId || process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID;
+  const mode = customParams.mode || cliArgs.mode || DEFAULT_MODE;
+  const credentials = {
+    account: customParams.account || cliArgs.account || DEFAULT_ACCOUNT,
+    password: customParams.password || cliArgs.password || DEFAULT_PASSWORD,
+  };
+
+  const options = {
+    pollMs: numberOr(customParams.pollMs ?? process.env.YUNMOMO_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(customParams.homeTimeoutMs ?? process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(customParams.appTimeoutMs ?? process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    openAttemptTimeoutMs: numberOr(customParams.openAttemptTimeoutMs ?? process.env.YUNMOMO_OPEN_ATTEMPT_TIMEOUT_MS, DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS),
+    loginTimeoutMs: numberOr(customParams.loginTimeoutMs ?? process.env.YUNMOMO_LOGIN_TIMEOUT_MS, DEFAULT_LOGIN_TIMEOUT_MS),
+    promptSettleMs: numberOr(customParams.promptSettleMs ?? process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
+    maxPromptActions: numberOr(customParams.maxPromptActions ?? process.env.YUNMOMO_YAYA_MAX_PROMPTS, 12),
+    maxPagesPerDirection: numberOr(customParams.maxPagesPerDirection ?? process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+  };
+
+  const client = customParams.client || new YunmomoClient({ timeoutMs: 100000 });
+  const devices = await client.listDevices({ size: 50000 });
+  let target = (devices.records || []).find(record => matchesDevice(record, targetDeviceId));
+  if (!target && devices.records?.length > 0 && !customParams.deviceId && !process.env.YUNMOMO_DEVICE_ID) {
+    target = (devices.records || []).find(record => {
+      const sdk = String(record.sdkVersion || '').trim().toLowerCase();
+      return sdk === 'v2';
+    });
+  }
+  if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
+
+  const resolvedDeviceId = deviceIdOf(target);
+  const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+  logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, mode });
+
+  logger.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+  logger.console(`[运行模式] ${mode === 'direct' ? '模式一：直接登录(一键授权)' : '模式二：历史复扫'}`);
+
+  const phone = client.device(resolvedDeviceId);
+  const control = customParams.control || await phone.openControl({ udid: target.udid });
+  const ownsControl = !customParams.control;
+  const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-yaya-');
+  const worker = customParams.worker || new RapidOcrWorker();
+  const ownsWorker = !customParams.worker;
+  const state = { counter: 0 };
+
   try {
-    const token = await ensureToken();
-    if (!token) throw new Error('缺少 YUNMOMO_TOKEN，请配置环境变量或 .env.local');
-    process.env.YUNMOMO_TOKEN = token;
-
-    const cliArgs = parseCliArgs();
-    const targetDeviceId = process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID;
-    const credentials = {
-      account: cliArgs.account,
-      password: cliArgs.password,
-    };
-
-    const options = {
-      pollMs: numberOr(process.env.YUNMOMO_POLL_MS, DEFAULT_POLL_MS),
-      homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
-      appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
-      openAttemptTimeoutMs: numberOr(process.env.YUNMOMO_OPEN_ATTEMPT_TIMEOUT_MS, DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS),
-      loginTimeoutMs: numberOr(process.env.YUNMOMO_LOGIN_TIMEOUT_MS, DEFAULT_LOGIN_TIMEOUT_MS),
-      promptSettleMs: numberOr(process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
-      maxPromptActions: numberOr(process.env.YUNMOMO_YAYA_MAX_PROMPTS, 12),
-      maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
-    };
-
-    const client = new YunmomoClient({ timeoutMs: 100000 });
-    const devices = await client.listDevices({ size: 50000 });
-    let target = (devices.records || []).find(record => matchesDevice(record, targetDeviceId));
-    if (!target && devices.records?.length > 0 && !process.env.YUNMOMO_DEVICE_ID) {
-      target = (devices.records || []).find(record => {
-        const sdk = String(record.sdkVersion || '').trim().toLowerCase();
-        return sdk === 'v2';
-      });
-    }
-    if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
-
-    const resolvedDeviceId = deviceIdOf(target);
-    const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
-    logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion });
-
-    logger.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-    logger.console(`[执行操作] 丫丫(YY)应用启动与登录 (账号: ${credentials.account})`);
-
-    const shouldExecute = cliArgs.execute || process.env.YUNMOMO_CONFIRM_YAYA_LOGIN === 'YES';
-    if (!shouldExecute) {
-      logger.console('[提示] 本脚本将打开YY应用并执行账号登录。如需执行，请传入 --execute 参数。');
-      logger.console(`[完整日志] ${logger.relativeLogPath}`);
-      return;
-    }
-
-    const phone = client.device(resolvedDeviceId);
-    const control = await phone.openControl({ udid: target.udid });
-    const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-yaya-');
-    const worker = new RapidOcrWorker();
-    const state = { counter: 0 };
-    let success = false;
-
-    try {
+    if (!control.connected) {
       await control.connect();
       logger.file('Control connected successfully');
+    }
 
-      // 1. 确认主屏幕就绪
-      logger.console('[1/3] 正在确认主屏幕状态...');
-      const home = await confirmHome(phone, control, worker, directory, state, options);
-      logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
+    // 1. 确认主屏幕就绪
+    logger.console('[1/4] 正在确认主屏幕状态...');
+    const home = await confirmHome(phone, control, worker, directory, state, options);
+    logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
 
-      // 2. 寻找并打开 YY
-      logger.console('[2/3] 正在桌面寻找并打开应用“YY”...');
-      const found = await findApp(
+    // 2. 寻找并打开 YY
+    logger.console('[2/4] 正在桌面寻找并打开应用“YY”...');
+    const found = await findApp(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      home,
+      options,
+      yayaTargetBox,
+      'YY',
+    );
+    logger.file('App located on launcher', { page: found.page, point: found.point });
+
+    const opened = await openYaya(phone, control, worker, directory, state, found, options);
+    logger.console(`[2/4] 已点击应用图标并进入YY应用 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
+
+    // 3. 通用前置：登录账号密码并确认主界面
+    logger.console('[3/4] 正在核验账号登录态与弹窗...');
+    const loginResult = await ensureYayaLoggedInAndReady(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      opened.opened,
+      credentials,
+      options,
+      logger,
+    );
+
+    // 4. 双模式分流执行
+    logger.console(`[4/4] 正在执行业务流程模式: [${mode}]...`);
+    let workflowResult;
+    if (mode === 'direct') {
+      workflowResult = await executeDirectMode(
         phone,
         control,
         worker,
         directory,
         state,
-        home,
-        options,
-        yayaTargetBox,
-        'YY',
-      );
-      logger.file('App located on launcher', { page: found.page, point: found.point });
-
-      const opened = await openYaya(phone, control, worker, directory, state, found, options);
-      logger.console(`[2/3] 已点击应用图标并进入应用 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
-      logger.file('App opened observation', { text: opened.opened.text });
-
-      // 3. 执行登录与弹窗处理
-      logger.console('[3/3] 正在执行YY账号密码登录与状态核验...');
-      const loginResult = await performLogin(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        opened.opened,
-        credentials,
+        loginResult.observation,
+        resolvedDeviceId,
         options,
         logger,
       );
-
-      success = loginResult.success;
-
-      logger.file('Task execution summary', {
-        success,
-        alreadyLoggedIn: loginResult.alreadyLoggedIn,
-        promptActions: loginResult.promptActions,
-        screenshotObservations: state.counter,
-      });
-
-      if (!success) {
-        throw new Error('丫丫(YY)登录流程未完全成功');
-      }
-
-      logger.console(`[完成] 丫丫(YY)登录成功并已就绪！`);
-      logger.console(`       目标设备: ${deviceName} (${resolvedDeviceId})`);
-      logger.console(`       登录账号: ${credentials.account}`);
-      logger.console(`[执行结果] 成功`);
-      logger.console(`[完整日志] ${logger.relativeLogPath}`);
-    } finally {
-      await worker.close();
-      await control.close();
-      if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
-        await fs.rm(directory, { recursive: true, force: true });
-      } else {
-        logger.console(`[截图归档] ${directory}`);
-      }
+    } else {
+      workflowResult = await executeReloginMode(
+        phone,
+        control,
+        worker,
+        directory,
+        state,
+        loginResult.observation,
+        resolvedDeviceId,
+        options,
+        logger,
+      );
     }
-  } catch (err) {
-    logger.file('TASK EXCEPTION', { message: err.message, stack: err.stack });
-    logger.console(`[执行结果] 失败: ${err.message}`);
+
+    logger.console(`[完成] YY业务流程执行成功！`);
+    logger.console(`       模式: ${workflowResult.mode} | 状态: ${workflowResult.status}`);
+    logger.console(`       授权点击时间: ${workflowResult.clickedTimeFormatted} (${workflowResult.clickedAt})`);
+    if (workflowResult.toastText) {
+      logger.console(`       捕获提示: ${workflowResult.toastText}`);
+    }
+    logger.console(`[执行结果] 成功`);
     logger.console(`[完整日志] ${logger.relativeLogPath}`);
+
+    return workflowResult;
+  } finally {
+    if (ownsWorker) await worker.close();
+    if (ownsControl) await control.close();
+    if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
+      await fs.rm(directory, { recursive: true, force: true });
+    } else {
+      logger.console(`[截图归档] ${directory}`);
+    }
+  }
+}
+
+async function main() {
+  const cliArgs = parseCliArgs();
+  const shouldExecute = cliArgs.execute || process.env.YUNMOMO_CONFIRM_YAYA_LOGIN === 'YES';
+  if (!shouldExecute) {
+    console.log('[提示] 本脚本将打开YY应用并执行业务模式操作。如需执行，请传入 --execute 参数。');
+    console.log('       支持模式: --mode direct (直接授权，默认) 或 --mode relogin (历史复扫)');
+    return;
+  }
+
+  try {
+    const result = await runYayaWorkflow();
+    // 供其他以子进程调用的脚本解析结构化 JSON
+    console.log('\n--- 结构化返回值 JSON ---');
+    console.log(JSON.stringify(result));
+    return result;
+  } catch (err) {
+    console.error(`[执行结果] 失败: ${err.message}`);
     throw err;
   }
 }
 
-openYaya = require('../../automation/timing').timed('workflow.login-yaya.openYaya', openYaya);
-performLogin = require('../../automation/timing').timed('workflow.login-yaya.performLogin', performLogin);
+runYayaWorkflow = require('../../automation/timing').timed('workflow.login-yaya.run', runYayaWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.login-yaya', main);
 
 if (require.main === module) {
@@ -556,10 +830,18 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runYayaWorkflow,
+  recordAuthHistory,
+  getLatestAuthHistory,
   yayaTargetBox,
   isYayaLoginScreen,
   isYayaHomeScreen,
+  isYayaProjectListScreen,
+  isYayaAuthDetailScreen,
+  isMomoTargetScreen,
   findPromptAction,
   openYaya,
-  performLogin,
+  ensureYayaLoggedInAndReady,
+  executeDirectMode,
+  executeReloginMode,
 };
