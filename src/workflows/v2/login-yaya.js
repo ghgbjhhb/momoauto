@@ -82,7 +82,22 @@ async function getLatestAuthHistory(deviceId) {
     const content = await fs.readFile(HISTORY_FILE, 'utf8');
     const list = JSON.parse(content);
     if (!Array.isArray(list)) return null;
-    return list.find(item => (!deviceId || item.deviceId === deviceId) && item.mode === 'direct') || null;
+    return list.find(item => !deviceId || item.deviceId === deviceId) || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getLatestAuthTargetTime(deviceId) {
+  try {
+    const content = await fs.readFile(HISTORY_FILE, 'utf8');
+    const list = JSON.parse(content);
+    if (!Array.isArray(list)) return null;
+    const item = list.find(it => (!deviceId || it.deviceId === deviceId) && (it.targetTimeMatched || it.mode === 'direct'));
+    if (!item) return null;
+    if (item.targetTimeMatched) return item.targetTimeMatched;
+    const timeMatch = item.clickedTimeFormatted?.match(/(\d{2}:\d{2})/);
+    return timeMatch ? timeMatch[1] : null;
   } catch {
     return null;
   }
@@ -542,29 +557,35 @@ async function executeDirectMode(phone, control, worker, directory, state, initi
 async function executeReloginMode(phone, control, worker, directory, state, initialObservation, deviceId, options, logger) {
   let observation = initialObservation;
 
-  // 1. 确保切换到底部“历史”Tab
+  // 1. 确保切换到底部“历史”Tab并复位到列表顶部
   const historyTab = observation.items.find(item => item.text.trim() === '历史' && item.top > observation.height * 0.75);
   if (historyTab) {
     const pt = tapBox(control, historyTab, observation);
     logger?.console(`[历史模式] 点击底部“历史”Tab (${pt.x}, ${pt.y})...`);
     await control.tap(pt.x, pt.y);
     await control.flush();
-    await sleep(1000);
+    await sleep(800);
+
+    // 下拉复位确保从列表顶部（最新订单）开始向下检索
+    await control.swipe(
+      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.4) },
+      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.75) },
+      { durationMs: 250, steps: 8 }
+    );
+    await control.flush();
+    await sleep(600);
+
     state.counter += 1;
     observation = await screenshotAndOcr(phone, worker, directory, state.counter);
   }
 
-  // 2. 确定目标时间匹配条件 (优先取入参，若未传入则自动读取本设备最近一次授权记录的时间分秒)
+  // 2. 确定目标时间匹配条件 (优先入参，次取环境变量，再次自动提取历史有效订单到期时间，兜底默认16:05)
   let targetTime = options.targetTime || process.env.YAYA_TARGET_TIME;
   if (!targetTime) {
-    const latestAuth = await getLatestAuthHistory(deviceId);
-    if (latestAuth?.clickedTimeFormatted) {
-      // 提取 HH:mm，如 "2026-10-29 16:05:12" -> "16:05" (对应24小时到期卡片上的到期时间分秒)
-      const match = latestAuth.clickedTimeFormatted.match(/(\d{2}:\d{2})/);
-      if (match) {
-        targetTime = match[1];
-        logger?.console(`[历史检索] 未显式传参，自动继承该设备最近授权记录的时间特征: "${targetTime}" (${latestAuth.clickedTimeFormatted})`);
-      }
+    const autoTime = await getLatestAuthTargetTime(deviceId);
+    if (autoTime) {
+      targetTime = autoTime;
+      logger?.console(`[智能关联] 未显式传参，自动从历史授权记录中继承目标订单时间: "${targetTime}"`);
     }
   }
   if (!targetTime) targetTime = '16:05';
