@@ -343,8 +343,9 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       if (!isBirthdayWheelDialog(obs.items)) {
         log.console(`[3/7] 设置女生网名: "${nickname}"...`);
 
-        const subtitleItem = obs.items.find(i => i.text.includes('如何称呼') || i.text.includes('了解你'));
-        const nickPt = subtitleItem ? tapBox(control, subtitleItem, obs, 45) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
+        // 精准定位网名输入框（位于副标题下方，y 约 350~400 区间，排除标题与生日）
+        const nickBox = obs.items.find(i => (i.top >= 330 && i.bottom <= 410) && !i.text.includes('生日') && !i.text.includes('如何称呼') && !i.text.includes('你的昵称'));
+        const nickPt = nickBox ? tapBox(control, nickBox, obs) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
         await control.tap(nickPt.x, nickPt.y);
         await control.flush();
         await sleep(600);
@@ -352,22 +353,31 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
         // 彻底清空旧昵称：Ctrl+A 全选 + DEL 删除
         control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
         control.key(protocol.KEY_CODES.DEL);
-        for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
+        for (let i = 0; i < 15; i++) control.key(protocol.KEY_CODES.DEL);
         await control.flush();
         await sleep(300);
 
-        // 逐字模拟真人输入新昵称
-        for (const char of nickname) {
-          await control.text(char);
+        // 输入新昵称：中文字符通过剪贴板+Ctrl+V原子注入，英文字符逐字击键
+        const isAscii = /^[\x00-\x7F]*$/.test(nickname);
+        if (isAscii) {
+          for (const char of nickname) {
+            await control.text(char);
+            await control.flush();
+            await sleep(100 + Math.floor(Math.random() * 80));
+          }
+        } else {
+          control.setClipboard(nickname);
           await control.flush();
-          await sleep(100 + Math.floor(Math.random() * 80));
+          await sleep(300);
+          control.key(protocol.KEY_CODES.V, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+          await control.flush();
         }
         await sleep(600);
 
-        // 点击空白安全区（顶部标题与输入框之间）使输入框失焦收起软键盘（严禁使用 control.back()，避免误退回上一页性别选择！）
-        await control.tap(Math.round(control.screenWidth / 2), Math.round(180 * scaleY));
+        // 点击空白安全区（顶部标题上方）使输入框失焦收起软键盘（严禁使用 control.back()，避免误退回上一页性别选择！）
+        await control.tap(Math.round(control.screenWidth / 2), Math.round(100 * scaleY));
         await control.flush();
-        await sleep(600);
+        await sleep(800);
         lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
       }
 
@@ -509,6 +519,19 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-next-${state.counter++}`);
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-avatar-page', '到达头像设置界面', log);
+
+      // 若点击下一步后仍停留在昵称生日页（例如软键盘未收起或按钮初次失焦），补击一次“下一步”
+      if (isNicknameAndBirthdayScreen(obs.items)) {
+        log.console('[3/7] 仍在昵称生日页，补击“下一步”...');
+        const retryBtn = obs.items.find(i => i.text.trim() === '下一步' || i.text.includes('下一步'));
+        if (retryBtn) {
+          const pt = tapBox(control, retryBtn, obs);
+          await control.tap(pt.x, pt.y);
+          await control.flush();
+          await sleep(2500);
+          obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-retry-next-${state.counter++}`);
+        }
+      }
     }
 
     // 分支 3：处于“最后上传一张头像吧”界面、素材包下载中或权限弹窗
