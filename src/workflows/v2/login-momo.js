@@ -25,6 +25,7 @@ const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
+const { logAuthBudget, recordAuthStart } = require('../../automation/auth-session');
 
 const {
   numberOr,
@@ -411,14 +412,17 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
         });
 
         log.console('[3/5] 丫丫授权完成');
+        await logAuthBudget(log, resolvedDeviceId, '微信授权完成');
         await sleep(2500);
       }
     } else {
       log.console('[1/5] 检测到当前已处于微信登录后阶段（资料完善界面），直接进入阶段二！');
+      await logAuthBudget(log, resolvedDeviceId, '资料完善初始判定');
     }
 
     // 4 & 5. 第二阶段：资料完善与头像配置 (复用现有 phone, control, worker 管道)
     log.console('[4/5] 启动陌陌资料完善流程 (选择女生/网名/生日/选第一张头像/恢复代理)...');
+    await logAuthBudget(log, resolvedDeviceId, '进入资料完善流程');
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-before-setup-profile', '进入资料完善前画面', log);
 
     const profileLogger = {
@@ -443,6 +447,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     }, profileLogger);
 
     log.console('[5/5] 【一键上号全流程达成】已成功完成资料设置并进入手机绑定界面，安全停下！');
+    await logAuthBudget(log, resolvedDeviceId, '到达手机绑定停靠点');
 
     lastScreenshotPath = profileResult.lastScreenshotPath || lastScreenshotPath;
 

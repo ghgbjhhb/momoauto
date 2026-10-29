@@ -35,6 +35,7 @@ const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
+const { logAuthBudget } = require('../../automation/auth-session');
 const protocol = require('../../protocol');
 
 const {
@@ -807,6 +808,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '13-final-phone-bind', '到达手机绑定终态', log);
     log.console('[7/7] 【成功达成】已成功到达“手机绑定”界面，资料完善全流程圆满结束并在此停下！');
+    await logAuthBudget(log, resolvedDeviceId, '资料完善到达手机绑定');
 
     return {
       ok: true,

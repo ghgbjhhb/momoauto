@@ -34,6 +34,7 @@ const {
   sendHome,
   mergedBox,
 } = require('../../automation/screen');
+const { recordAuthStart } = require('../../automation/auth-session');
 
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_ACCOUNT = process.env.YAYA_ACCOUNT || 'aa12345600';
@@ -548,6 +549,8 @@ async function executeDirectMode(phone, control, worker, directory, state, initi
 
   // 持久化记录到本地历史供后续跨脚本检索
   await recordAuthHistory(result);
+  await recordAuthStart({ deviceId, source: 'yaya_direct', timestamp: clickedAt });
+  logger?.console(`[微信授权计时 ⏱️] 微信授权计时已启动！8分钟（480秒）生命周期倒计时开始...`);
   logger?.file('Direct auth result recorded', result);
 
   return result;
@@ -741,6 +744,8 @@ async function executeReloginMode(phone, control, worker, directory, state, init
   };
 
   await recordAuthHistory(result);
+  await recordAuthStart({ deviceId, source: 'yaya_relogin', timestamp: clickedAt });
+  logger?.console(`[微信授权计时 ⏱️] 微信授权计时已启动！8分钟（480秒）生命周期倒计时开始...`);
   logger?.file('Relogin rescan result recorded', result);
 
   return result;

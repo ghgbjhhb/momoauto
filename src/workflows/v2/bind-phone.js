@@ -24,6 +24,11 @@ const { SmsService } = require('../../server/sms/service');
 const { solveCaptcha } = require('../../tools/captcha');
 const shared = require('../../automation/screen');
 const protocol = require('../../protocol');
+const {
+  logAuthBudget,
+  recordPhoneCodeRequested,
+  getPhoneBindState,
+} = require('../../automation/auth-session');
 
 const {
   sleep,
@@ -128,10 +133,23 @@ function findPhoneInputBox(items) {
 function findVerifyCodeInputBox(items) {
   for (const it of items) {
     // 限制在纵向 245~310 像素范围内的验证码输入行
-    if (it.top >= 245 && it.bottom <= 310) {
+    if (it.top >= 240 && it.bottom <= 315) {
       const t = normalizeText(it.text);
-      if (!t.includes('获取')) {
+      if (!t.includes('获取') && !t.includes('重新')) {
         return it;
+      }
+    }
+  }
+  return null;
+}
+
+function getExistingVerifyCodeOnScreen(items) {
+  for (const it of items) {
+    if (it.top >= 240 && it.bottom <= 315) {
+      const t = normalizeText(it.text);
+      if (!t.includes('获取') && !t.includes('重新')) {
+        const m = t.match(/\b\d{4,6}\b/);
+        if (m) return m[0];
       }
     }
   }
@@ -308,6 +326,9 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-state', '初始分析画面', log);
 
+    // 0. 检查并记录微信授权预算生命周期（8 分钟时限）
+    await logAuthBudget(log, resolvedDeviceId, '手机绑定初始化');
+
     // 校验必须处于手机绑定页面或验证码校验页面
     if (!isBindPhoneScreen(obs.items) && !isCaptchaVerifyScreen(obs.items)) {
       throw new Error('未处于“手机绑定”相关界面，当前屏幕不匹配，请确认前台状态！');
@@ -326,6 +347,15 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     }
 
     log.console('[1/5] 确认当前处于“手机绑定”界面！');
+
+    // 检查界面上是否已有已填入的验证码
+    const existingCodeOnScreen = getExistingVerifyCodeOnScreen(obs.items);
+    if (existingCodeOnScreen) {
+      log.console(`[识别发现] 屏幕验证码输入栏已显示存在验证码: "${existingCodeOnScreen}"`);
+      if (!verifyCode) {
+        verifyCode = existingCodeOnScreen;
+      }
+    }
 
     // 2. 从接码平台取号 (若未直接传入手机号)
     if (!phoneNumber) {
@@ -405,18 +435,30 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       log.console(`[2/5] 【后验确认】手机号 ${phoneNumber} 已准确键入手机号栏！`);
     }
 
-    // 4. 点击「获取验证码」按钮（若未进入倒计时状态且未显式跳过）
+    // 4. 判定是否跳过「获取验证码」
+    // 核心业务规则（用户硬性约束）：
+    // 1) 按钮在 60 秒后即使文字恢复为“获取验证码”，若此前已获取过或已持有验证码，严禁重复点击！
+    // 2) 只要来验证码了或框内已有验证码，直接输入推进，严禁重复获取！
     let hasCountdown = obs.items.some(it => {
       const t = normalizeText(it.text);
       return t.includes('重新获取') || /\d+s/i.test(t) || /\d+秒/.test(t) || (it.top >= 240 && it.bottom <= 315 && /\d{1,2}/.test(t));
     });
 
+    const isCodeReady = Boolean(verifyCode) || Boolean(existingCodeOnScreen);
+    const phoneBindState = await getPhoneBindState(resolvedDeviceId, phoneNumber);
+    const hasRequestedBefore = Boolean(phoneBindState?.hasRequestedCode && phoneBindState?.isRecentRequest);
+
     if (hasCountdown) {
-      log.console('[3/5] 检测到验证码已发送并处于倒计时状态，跳过重复点击。');
+      log.console('[3/5] 检测到验证码已发送并处于倒计时状态，跳过重复获取。');
     } else if (options.skipGetCode) {
       log.console('[3/5] 参数指定直接进入验证码键入阶段，跳过获取验证码点击。');
+    } else if (isCodeReady) {
+      log.console(`[3/5] 【防重复规则】当前验证码已在位/已就绪 [${verifyCode || existingCodeOnScreen}]（按钮虽在60秒后恢复，但严禁重复获取），直接跳过获取步骤！`);
+    } else if (hasRequestedBefore) {
+      log.console(`[3/5] 【防重复规则】会话记录显示近期已向手机号 ${phoneNumber} 请求过验证码（已耗时: ${phoneBindState.elapsedFormatted}，严禁重复获取），跳过获取按钮！`);
     } else {
       log.console('[3/5] 正在定位并点击「获取验证码」按钮...');
+      await logAuthBudget(log, resolvedDeviceId, '点击获取验证码前');
       const getCodeBtn = findGetCodeBtn(obs.items);
       let codePt;
       if (getCodeBtn) {
@@ -445,6 +487,15 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
         await sleep(1500);
         obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-captcha-done-${state.counter++}`);
       }
+
+      // 标记已获取过验证码，防止二次点击
+      await recordPhoneCodeRequested({
+        deviceId: resolvedDeviceId,
+        phoneNumber,
+        sessionId,
+        timestamp: Date.now(),
+      });
+      log.console(`[3/5] 【状态记录】已记录验证码请求时间戳，防重复获取机制已生效！`);
     }
 
     // 5. 确保界面处于「手机绑定」以键入验证码
@@ -463,49 +514,60 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     }
 
     // 6. 定位「输入验证码」框并模拟人工逐字打字输入 (严禁直接粘贴)
-    log.console(`[4/5] 定位验证码输入框并开始模拟打字输入: "${verifyCode}"...`);
-    const verifyBox = findVerifyCodeInputBox(obs.items);
-    let vPt;
-    if (verifyBox) {
-      vPt = tapBox(control, verifyBox, obs);
-      log.console(`[4/5] 点击验证码输入框热区 (${vPt.x}, ${vPt.y}) [${verifyBox.text}]...`);
+    const onScreenCode = getExistingVerifyCodeOnScreen(obs.items);
+    const cleanTargetCode = String(verifyCode || '').trim();
+
+    if (cleanTargetCode && onScreenCode && onScreenCode === cleanTargetCode) {
+      log.console(`[4/5] 【后验确认】验证码输入框中已准确存在目标验证码 "${cleanTargetCode}"，跳过重复打字！`);
     } else {
-      vPt = { x: Math.round(81 * scaleX), y: Math.round(267 * scaleY) };
-      log.console(`[4/5] 使用默认热区 (${vPt.x}, ${vPt.y}) 点击验证码输入框...`);
-    }
+      if (!cleanTargetCode) {
+        throw new Error('未提供或未获取到有效的验证码，无法继续输入！');
+      }
+      log.console(`[4/5] 定位验证码输入框并开始模拟打字输入: "${cleanTargetCode}"...`);
+      const verifyBox = findVerifyCodeInputBox(obs.items);
+      let vPt;
+      if (verifyBox) {
+        vPt = tapBox(control, verifyBox, obs);
+        log.console(`[4/5] 点击验证码输入框热区 (${vPt.x}, ${vPt.y}) [${verifyBox.text}]...`);
+      } else {
+        vPt = { x: Math.round(81 * scaleX), y: Math.round(267 * scaleY) };
+        log.console(`[4/5] 使用默认热区 (${vPt.x}, ${vPt.y}) 点击验证码输入框...`);
+      }
 
-    await control.tap(vPt.x, vPt.y);
-    await control.flush();
-    await sleep(600);
-
-    // 彻底清空原有残留：Ctrl+A 全选 + DEL 删除
-    control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
-    control.key(protocol.KEY_CODES.DEL);
-    for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
-    await control.flush();
-    await sleep(300);
-
-    // 逐字模拟真人打字输入验证码 (带拟人化敲击微停顿，严禁直接黏贴)
-    log.console(`[4/5] 模拟人工逐字击键键入验证码: "${verifyCode}"...`);
-    for (let i = 0; i < verifyCode.length; i++) {
-      const char = verifyCode[i];
-      await control.text(char);
+      await control.tap(vPt.x, vPt.y);
       await control.flush();
-      const keyDelay = 90 + Math.floor(Math.random() * 110);
-      await sleep(keyDelay);
+      await sleep(600);
+
+      // 彻底清空原有残留：Ctrl+A 全选 + DEL 删除
+      control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+      control.key(protocol.KEY_CODES.DEL);
+      for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
+      await control.flush();
+      await sleep(300);
+
+      // 逐字模拟真人打字输入验证码 (带拟人化敲击微停顿，严禁直接黏贴)
+      log.console(`[4/5] 模拟人工逐字击键键入验证码: "${cleanTargetCode}"...`);
+      for (let i = 0; i < cleanTargetCode.length; i++) {
+        const char = cleanTargetCode[i];
+        await control.text(char);
+        await control.flush();
+        const keyDelay = 90 + Math.floor(Math.random() * 110);
+        await sleep(keyDelay);
+      }
+
+      await sleep(600);
+      // 点击空白安全区（顶部标题与提示文字之间）使输入框失焦收起软键盘
+      await control.tap(Math.round(180 * scaleX), Math.round(120 * scaleY));
+      await control.flush();
+      await sleep(1000);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-code-typed-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-code-typed', '验证码模拟打字完成', log);
+      log.console(`[4/5] 【后验确认】验证码 ${cleanTargetCode} 已准确完成模拟打字输入！`);
     }
-
-    await sleep(600);
-    // 点击空白安全区（顶部标题与提示文字之间）使输入框失焦收起软键盘
-    await control.tap(Math.round(180 * scaleX), Math.round(120 * scaleY));
-    await control.flush();
-    await sleep(1000);
-
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-code-typed-${state.counter++}`);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-code-typed', '验证码模拟打字完成', log);
-    log.console(`[4/5] 【后验确认】验证码 ${verifyCode} 已准确完成模拟打字输入！`);
 
     // 7. 定位并点击「提交」按钮
+    await logAuthBudget(log, resolvedDeviceId, '点击提交前');
     log.console('[5/5] 正在定位并点击「提交」按钮...');
     const submitBtn = findSubmitBtn(obs.items);
     let sPt;
@@ -521,10 +583,40 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     await control.flush();
     await sleep(2500);
 
-    // 8. 终态现场确认
+    // 8. 终态现场确认与结果捕获
     obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-final-submitted-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-final-submitted', '点击提交后终态现场', log);
+
+    // 核心检测：是否弹出“请重新授权”Toast或提示
+    const reauthItem = obs.items.find(it => {
+      const t = normalizeText(it.text);
+      return t.includes('请重新授权') || t.includes('重新授权');
+    });
+
+    if (reauthItem) {
+      const sessionAfter = await logAuthBudget(log, resolvedDeviceId, '提交后出现重新授权提示');
+      const elapsedStr = sessionAfter ? sessionAfter.elapsedFormatted : '未知';
+      log.console(`[5/5] ⚠️ 【服务端风控拦截】检测到界面弹出提示: "${reauthItem.text}"！`);
+      log.console(`[5/5] ⚠️ 【超时诊断根因】：从微信授权开始计时至今耗时 ${elapsedStr}（陌陌临时授权凭证生命周期仅 8 分钟，超出该时间提交必被阻断）！`);
+      return {
+        ok: false,
+        state: 'reauth_required',
+        toastText: reauthItem.text,
+        message: `陌陌提示“请重新授权” (从微信授权到提交耗时 ${elapsedStr}，超出8分钟上限)`,
+        elapsedMs: sessionAfter?.elapsedMs,
+        elapsedFormatted: elapsedStr,
+        runId,
+        projectCode,
+        phoneNumber,
+        verifyCode: cleanTargetCode,
+        sessionId,
+        screenshotsDir,
+        lastScreenshotPath,
+      };
+    }
+
     log.console('[5/5] 【终态完成】已完成点击提交，终态现场截图已保存！');
+    await logAuthBudget(log, resolvedDeviceId, '手机绑定全流程达成');
 
     return {
       ok: true,
@@ -581,7 +673,18 @@ function parseCliArgs(argv) {
 
 function printSummary(result, duration, error = null) {
   console.log('\n' + '='.repeat(60));
-  if (result?.ok) {
+  if (result?.state === 'reauth_required') {
+    console.log('【执行结果】：需重新授权 (微信授权生命周期已超过 8 分钟)');
+    console.log('【任务名称】：陌陌手机绑定');
+    console.log('【退出状态码】：1');
+    console.log(`【拦截提示】：${result.toastText || '请重新授权'}`);
+    console.log(`【根本原因】：从微信授权到提交耗时 ${result.elapsedFormatted || '未知'}，超出陌陌平台 8 分钟会话凭证有效期上限！`);
+    const shotPath = result?.lastScreenshotPath;
+    if (shotPath) {
+      console.log(`【现场截图】：${path.relative(PROJECT_ROOT, shotPath)}`);
+    }
+    console.log(`【执行耗时】：${duration} 秒`);
+  } else if (result?.ok) {
     console.log('【执行结果】：成功');
     console.log('【任务名称】：陌陌手机绑定');
     console.log('【退出状态码】：0');
