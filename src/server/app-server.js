@@ -253,6 +253,15 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
+    id: 'flow-17', order: 17, title: '陌陌资料完善 (性别/昵称/生日)',
+    file: 'flows/momo/17-momo资料完善.js', args: ['--execute'], requiresDevice: true,
+    category: 'momo',
+    version: 'v2',
+    parameters: [
+      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' }
+    ]
+  },
+  {
     id: 'flow-all', title: '执行全流程 (V3)', file: 'flows/v3/执行全部.js', args: ['--execute'],
     requiresDevice: true, requiresCertificate: true, batch: true, category: 'all', version: 'v3'
   }
@@ -938,6 +947,9 @@ function configureScript(script, body, env) {
   if (script.id === 'flow-16') {
     if (options.yayaMode?.trim()) env.YAYA_MODE = options.yayaMode.trim();
     if (options.targetTime?.trim()) env.YAYA_TARGET_TIME = options.targetTime.trim();
+  }
+  if (script.id === 'flow-17') {
+    if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
   }
   if (script.id === 'flow-15') {
     if (options.mode?.trim()) env.YUNMOMO_MOMO_WATCH_MODE = options.mode.trim();
