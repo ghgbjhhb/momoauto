@@ -20,6 +20,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { SmsService } = require('../../server/sms/service');
 const shared = require('../../automation/screen');
 const protocol = require('../../protocol');
 
@@ -34,6 +35,8 @@ const {
 
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
+// 默认接码项目编码：陌陌换绑3
+const DEFAULT_PROJECT_CODE = '369990';
 
 function formatLogTime() {
   const d = new Date();
@@ -97,8 +100,11 @@ function isBindPhoneScreen(items) {
 function findPhoneInputBox(items) {
   for (const it of items) {
     const t = normalizeText(it.text);
-    if (t.includes('手机号码') || t.includes('编入手机') || t.includes('输入手机') || t.includes('+86')) {
-      return it;
+    // 严格限制在纵向 170~250 像素范围内的手机号输入行，避免误匹配顶部标题或状态栏
+    if (it.top >= 170 && it.bottom <= 250) {
+      if (t.includes('+86') || t.includes('手机') || t.includes('编入') || t.includes('输入')) {
+        return it;
+      }
     }
   }
   return null;
@@ -106,9 +112,12 @@ function findPhoneInputBox(items) {
 
 function findVerifyCodeInputBox(items) {
   for (const it of items) {
-    const t = normalizeText(it.text);
-    if (t.includes('验证码') && !t.includes('获取')) {
-      return it;
+    // 限制在纵向 245~310 像素范围内的验证码输入行
+    if (it.top >= 245 && it.bottom <= 310) {
+      const t = normalizeText(it.text);
+      if (!t.includes('获取')) {
+        return it;
+      }
     }
   }
   return null;
@@ -136,12 +145,14 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
   const resolvedDeviceId = deviceIdOf(target);
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
-  const phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || '').trim();
+  const projectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE).trim();
+  let phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || '').trim();
+  let sessionId = null;
 
-  await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, phoneNumber });
+  await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, projectCode, phoneNumber });
 
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  log.console(`[执行操作] 陌陌手机号绑定 (起始页面: 手机绑定)`);
+  log.console(`[执行操作] 陌陌手机号绑定 (接码项目: 陌陌换绑3 [${projectCode}] -> 模拟打字输入)`);
 
   const phone = options.phone || client.device(resolvedDeviceId);
   const ownControl = !options.control;
@@ -172,60 +183,118 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     log.console('[1/3] 确认当前处于“手机绑定”界面！');
 
+    // 2. 从接码平台取号 (若未直接传入手机号)
+    if (!phoneNumber) {
+      log.console(`[接码平台] 正在向玄武平台申请手机号 (项目编码: ${projectCode} 陌陌换绑3)...`);
+      const smsService = new SmsService();
+      const smsClient = smsService.getClient();
+      const phoneRes = await smsClient.getPhone(projectCode);
+      if (!phoneRes.success || !phoneRes.phoneNumber) {
+        throw new Error(`玄武接码取号失败: ${phoneRes.message || phoneRes.errorMessage || '未返回可用手机号'}`);
+      }
+      phoneNumber = String(phoneRes.phoneNumber).trim();
+      sessionId = phoneRes.sessionId;
+      log.console(`[接码平台] 取号成功: ${phoneNumber} (sessionId: ${sessionId}, 耗时: ${phoneRes.latencyMs}ms)`);
+      await log.file('Phone acquired from Xuanwu', { projectCode, phoneNumber, sessionId, raw: phoneRes.raw });
+    } else {
+      log.console(`[手机号] 使用传入的指定手机号: ${phoneNumber}`);
+    }
+
     const scaleX = control.screenWidth / Math.max(1, obs.width);
     const scaleY = control.screenHeight / Math.max(1, obs.height);
 
-    // 2. 定位手机号输入框与交互准备
-    const phoneBox = findPhoneInputBox(obs.items);
-    if (phoneBox) {
-      log.console(`[2/3] 找到手机号输入区域 (文本: "${phoneBox.text}")...`);
-    } else {
-      log.console('[2/3] 使用默认比例定位手机号输入区域...');
-    }
-
-    // 若传入了具体手机号，在此执行输入
-    if (phoneNumber) {
-      log.console(`[2/3] 正在输入手机号: ${phoneNumber}...`);
-      let tapPt;
-      if (phoneBox) {
-        // 点击 +86 偏右侧位置（输入框区域）
-        tapPt = {
-          x: Math.round((phoneBox.right + 20) * scaleX),
-          y: Math.round(((phoneBox.top + phoneBox.bottom) / 2) * scaleY)
-        };
-      } else {
-        tapPt = { x: Math.round(180 * scaleX), y: Math.round(212 * scaleY) };
-      }
-
-      await control.tap(tapPt.x, tapPt.y);
+    // 3. 先清理下方的验证码输入框残留（若存在）
+    const verifyBox = findVerifyCodeInputBox(obs.items);
+    if (verifyBox && (verifyBox.text.length > 5 || /\d/.test(verifyBox.text))) {
+      log.console(`[2/3] 清理验证码输入栏历史残留...`);
+      const vPt = tapBox(control, verifyBox, obs);
+      await control.tap(vPt.x, vPt.y);
       await control.flush();
-      await sleep(800);
-
-      // 清空原有内容并填入手机号
-      for (let i = 0; i < 15; i++) control.key(protocol.KEY_CODES.DEL);
+      await sleep(400);
+      control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+      control.key(protocol.KEY_CODES.DEL);
+      for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
       await control.flush();
       await sleep(300);
-
-      await control.text(phoneNumber);
-      await control.flush();
-      await sleep(800);
-
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-phone-${state.counter++}`);
-      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '02-phone-entered', '手机号输入就绪', log);
-      log.console(`[2/3] 手机号 ${phoneNumber} 输入完成！`);
-    } else {
-      log.console('[2/3] 当前未指定具体手机号码，输入框已定位就绪，等待接码业务接入。');
     }
 
-    // 3. 终态现场确认
-    log.console('[3/3] 手机绑定子脚本就绪，当前现场已保留！');
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-ready-state', '子脚本就绪现场', log);
+    // 4. 定位手机号输入框并模拟人工打字输入 (严禁直接粘贴)
+    log.console(`[2/3] 定位手机号输入框并开始模拟打字输入...`);
+    const phoneBox = findPhoneInputBox(obs.items);
+    if (!phoneBox) {
+      throw new Error('未在当前界面检测到手机号输入框！');
+    }
+
+    // 核心物理热区算法：
+    // 手机号输入行左侧 x: 35~85 固定为 "+86 v" 区号选择热区；
+    // 文本输入框主体位于 x: 100~310，中心取 x: 160 处于绝对安全输入热区；
+    // 纵向取 OCR 识别到的 phoneBox 中心行高，换算至 control 坐标系，绝不偏移。
+    const targetY = (phoneBox.top + phoneBox.bottom) / 2;
+    const tapPt = {
+      x: Math.round(160 * scaleX),
+      y: Math.round(targetY * scaleY)
+    };
+
+    log.console(`[2/3] 点击手机号输入热区 (${tapPt.x}, ${tapPt.y})...`);
+    await control.tap(tapPt.x, tapPt.y);
+    await control.flush();
+    await sleep(500);
+
+    // 彻底清空原有残留：采用 Ctrl+A 全选 + DEL 删除，彻底清空且绝不破坏光标与焦点
+    control.key(protocol.KEY_CODES.A, { metaState: protocol.META.CTRL_LEFT_ON || protocol.META.CTRL_ON });
+    control.key(protocol.KEY_CODES.DEL);
+    for (let i = 0; i < 10; i++) control.key(protocol.KEY_CODES.DEL);
+    await control.flush();
+    await sleep(300);
+
+    // 逐字模拟真人打字输入 (带拟人化敲击微停顿，严禁直接黏贴)
+    log.console(`[2/3] 模拟人工逐字击键键入手机号: "${phoneNumber}"...`);
+    for (let i = 0; i < phoneNumber.length; i++) {
+      const char = phoneNumber[i];
+      await control.text(char);
+      await control.flush();
+      const keyDelay = 90 + Math.floor(Math.random() * 110);
+      await sleep(keyDelay);
+    }
+
+    await sleep(600);
+    // 点击空白安全区（顶部标题与提示文字之间）使输入框失焦收起软键盘，严禁盲按 back 导致退出页面
+    await control.tap(Math.round(180 * scaleX), Math.round(120 * scaleY));
+    await control.flush();
+    await sleep(1000);
+
+    obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-typed-${state.counter++}`);
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '02-phone-typed', '手机号模拟打字完成', log);
+
+    // 后验硬契约（GEMINI.md）：校验手机号确实出现在了屏幕对应的手机号行（严禁将错就错）
+    const typedBox = findPhoneInputBox(obs.items);
+    const typedText = normalizeText(typedBox?.text || '');
+    const cleanPhone = phoneNumber.replace(/\s+/g, '');
+    const isMatched = typedText.includes(cleanPhone) || obs.items.some(it => it.top >= 170 && it.bottom <= 250 && normalizeText(it.text).includes(cleanPhone));
+    if (!isMatched) {
+      throw new Error(`后验核验失败：未在手机号输入栏检测到输入的完整号码 [${cleanPhone}]，当前行识别为: "${typedText}"`);
+    }
+
+    // 后验核验：验证码栏不能被误输入数字
+    const afterVerifyBox = findVerifyCodeInputBox(obs.items);
+    const afterVerifyText = normalizeText(afterVerifyBox?.text || '');
+    if (/\d{4,}/.test(afterVerifyText)) {
+      throw new Error(`后验核验失败：验证码栏检测到异常溢出数字: "${afterVerifyText}"`);
+    }
+
+    log.console(`[2/3] 【后验确认】手机号 ${phoneNumber} 已准确键入手机号栏，验证码栏清爽！`);
+
+    // 4. 终态现场确认
+    log.console('[3/3] 手机号输入就绪，现场已保留等待下一步！');
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-ready-state', '手机号输入完成现场', log);
 
     return {
       ok: true,
-      state: 'ready',
+      state: 'phone_typed',
       runId,
+      projectCode,
       phoneNumber,
+      sessionId,
       screenshotsDir,
       lastScreenshotPath,
     };
@@ -248,6 +317,7 @@ function parseCliArgs(argv) {
     execute: argv.includes('--execute'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '',
+    projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -257,6 +327,9 @@ function parseCliArgs(argv) {
     } else if (a === '--phone' || a === '--number') {
       const val = argv[++i];
       if (val && !val.startsWith('--')) opts.phoneNumber = val;
+    } else if (a === '--project-code' || a === '--project') {
+      const val = argv[++i];
+      if (val && !val.startsWith('--')) opts.projectCode = val;
     }
   }
   return opts;
