@@ -123,6 +123,11 @@ function launch(order) {
   const modeIdx = process.argv.indexOf('--mode');
   if (modeIdx !== -1 && process.argv[modeIdx + 1]) {
     env.YUNMOMO_LOCATION_MODE = process.argv[modeIdx + 1].trim();
+    env.YAYA_LOGIN_MODE = process.argv[modeIdx + 1].trim();
+  }
+  const timeIdx = process.argv.indexOf('--target-time');
+  if (timeIdx !== -1 && process.argv[timeIdx + 1]) {
+    env.YAYA_TARGET_TIME = process.argv[timeIdx + 1].trim();
   }
   const addrIdx = process.argv.indexOf('--address');
   if (addrIdx !== -1 && process.argv[addrIdx + 1]) {

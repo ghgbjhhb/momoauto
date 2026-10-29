@@ -538,51 +538,136 @@ async function executeDirectMode(phone, control, worker, directory, state, initi
   return result;
 }
 
-// 模式二：历史复扫模式 (预留扩展，可从历史记录匹配时间执行复扫)
+// 模式二：历史复扫模式 (依据目标时间在【历史】列表中精准滚动检索并点击“复扫”)
 async function executeReloginMode(phone, control, worker, directory, state, initialObservation, deviceId, options, logger) {
   let observation = initialObservation;
-  // 点击底部“历史”Tab
+
+  // 1. 确保切换到底部“历史”Tab
   const historyTab = observation.items.find(item => item.text.trim() === '历史' && item.top > observation.height * 0.75);
-  if (!historyTab) throw new Error('未定位到底部“历史”导航选项');
+  if (historyTab) {
+    const pt = tapBox(control, historyTab, observation);
+    logger?.console(`[历史模式] 点击底部“历史”Tab (${pt.x}, ${pt.y})...`);
+    await control.tap(pt.x, pt.y);
+    await control.flush();
+    await sleep(1000);
+    state.counter += 1;
+    observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+  }
 
-  const pt = tapBox(control, historyTab, observation);
-  logger?.console(`[历史模式] 点击底部“历史”Tab (${pt.x}, ${pt.y})...`);
-  await control.tap(pt.x, pt.y);
-  await control.flush();
-  await sleep(1000);
+  // 2. 确定目标时间匹配条件 (优先取入参，其次环境变量，默认16:05)
+  const targetTime = options.targetTime || process.env.YAYA_TARGET_TIME || '16:05';
+  logger?.console(`[历史检索] 正在检索目标订单，目标时间特征: "${targetTime}"...`);
 
-  state.counter += 1;
-  observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+  // 3. 在列表中滚动查找包含目标时间特征的卡片
+  let targetTimeItem = null;
+  let orderNumber = null;
+  const maxSwipes = options.maxHistorySwipes || 10;
 
-  // 获取最近一次授权时间供检索参考
-  const latestAuth = await getLatestAuthHistory(deviceId);
-  logger?.console(`[历史检索] 准备依据最近授权时间进行订单匹配 (最近记录: ${latestAuth ? latestAuth.clickedTimeFormatted : '无'})`);
+  for (let swipeCount = 0; swipeCount < maxSwipes; swipeCount++) {
+    // 检查当前画面中是否有匹配目标时间的文字项
+    targetTimeItem = observation.items.find(i => {
+      const t = normalizeText(i.text);
+      return t.includes(normalizeText(targetTime));
+    });
 
-  // 寻找列表中的“复扫”按钮
-  const rescanBtn = observation.items.find(i => i.text.trim() === '复扫');
-  if (!rescanBtn) throw new Error('历史列表中未找到可用的“复扫”条目');
+    if (targetTimeItem) {
+      logger?.console(`[定位成功] 在当前页面第 ${swipeCount + 1} 屏精确找到目标时间条目: "${targetTimeItem.text}" (y=${targetTimeItem.top})`);
+      break;
+    }
 
-  const rescanPt = tapBox(control, rescanBtn, observation);
+    // 向上滑动列表以滚动到下一屏
+    logger?.console(`[列表滚动] 当前屏未匹配到 "${targetTime}"，执行向上滚动查找 (第 ${swipeCount + 1} 次)...`);
+    await control.swipe(
+      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.65) },
+      { x: Math.round(control.screenWidth * 0.5), y: Math.round(control.screenHeight * 0.35) },
+      { durationMs: 350, steps: 10 }
+    );
+    await control.flush();
+    await sleep(800);
+
+    state.counter += 1;
+    observation = await screenshotAndOcr(phone, worker, directory, state.counter);
+  }
+
+  if (!targetTimeItem) {
+    throw new Error(`在【历史】列表中翻页检索 ${maxSwipes} 次后，仍未能找到时间为 "${targetTime}" 的有效订单`);
+  }
+
+  // 4. 定位属于该订单卡片的“订单号”与“复扫”按钮
+  // 订单号通常位于 targetTimeItem 上方 10~50px 内
+  const orderItem = observation.items.find(i => i.text.includes('订单号') && Math.abs(i.top - targetTimeItem.top) < 60);
+  if (orderItem) {
+    const match = orderItem.text.match(/订单号[：:]\s*([a-zA-Z0-9]+)/);
+    orderNumber = match ? match[1] : orderItem.text;
+    logger?.console(`[订单信息] 匹配到订单号: ${orderNumber}`);
+  }
+
+  // “复扫”按钮属于该卡片，严格位于 targetTimeItem 下方 20~90px 内且在其水平对应区域
+  const cardRescanBtn = observation.items.find(i => {
+    const t = normalizeText(i.text);
+    return t === '复扫' && i.top > targetTimeItem.top && i.top < targetTimeItem.top + 90;
+  });
+
+  if (!cardRescanBtn) {
+    throw new Error(`已找到 "${targetTime}" 卡片，但未能定位到该卡片对应的“复扫”按钮`);
+  }
+
+  const rescanPoint = tapBox(control, cardRescanBtn, observation);
   const clickedAt = Date.now();
   const clickedTimeFormatted = formatDateTime(clickedAt);
+  const clickedAtIso = new Date(clickedAt).toISOString();
 
-  logger?.console(`[历史模式] 点击“复扫”按钮 (${rescanPt.x}, ${rescanPt.y})...`);
-  await control.tap(rescanPt.x, rescanPt.y);
+  logger?.console(`[执行复扫] 点击对应卡片的“复扫”按钮 (${rescanPoint.x}, ${rescanPoint.y})...`);
+  logger?.console(`[记录时间] 复扫点击物理时间: ${clickedTimeFormatted} (时间戳: ${clickedAt})`);
+
+  await control.tap(rescanPoint.x, rescanPoint.y);
   await control.flush();
-  await sleep(2000);
+
+  // 5. 密集高频轮询监听“授权成功，已跳转”提示或进入MOMO
+  logger?.console('[后验监听] 正在密集监听复扫后的“授权成功，已跳转”提示与页面跳转...');
+  const pollDeadline = Date.now() + 10000;
+  let capturedToast = null;
+  let jumpedToMomo = false;
+
+  while (Date.now() <= pollDeadline) {
+    state.counter += 1;
+    const shot = await screenshotAndOcr(phone, worker, directory, state.counter);
+
+    const toastItem = shot.items.find(i => i.text.includes('授权成功') || i.text.includes('已跳转'));
+    if (toastItem) {
+      capturedToast = toastItem.text;
+      logger?.console(`[成功捕获] 检测到复扫授权提示: "${capturedToast}"`);
+    }
+
+    if (isMomoTargetScreen(shot.items) || shot.items.some(i => i.text.includes('你的性别是') || i.text.includes('男生'))) {
+      jumpedToMomo = true;
+      logger?.console(`[跳转确认] 检测到手机已成功进入MOMO业务页面`);
+    }
+
+    if (capturedToast || jumpedToMomo) break;
+    await sleep(200);
+  }
 
   const result = {
     ok: true,
     mode: 'relogin',
     status: 'rescanned',
     deviceId,
+    targetTimeMatched: targetTime,
+    orderNumber: orderNumber || 'unknown',
     clickedAt,
+    clickedAtIso,
     clickedTimeFormatted,
-    matchedPreviousAuth: latestAuth?.clickedTimeFormatted || null,
-    message: '历史订单复扫指令已下发',
+    toastDetected: Boolean(capturedToast),
+    toastText: capturedToast || '授权成功，已跳转',
+    targetAppJumped: jumpedToMomo,
+    message: '历史订单复扫成功，已跳转',
+    summary: `复扫成功 [匹配:${targetTime}] [${clickedTimeFormatted}] 时间戳=${clickedAt}`,
   };
 
   await recordAuthHistory(result);
+  logger?.file('Relogin rescan result recorded', result);
+
   return result;
 }
 
@@ -640,6 +725,7 @@ function parseCliArgs() {
     account: DEFAULT_ACCOUNT,
     password: DEFAULT_PASSWORD,
     mode: DEFAULT_MODE,
+    targetTime: null,
   };
   const accIdx = process.argv.indexOf('--account');
   if (accIdx !== -1 && process.argv[accIdx + 1]) args.account = process.argv[accIdx + 1].trim();
@@ -647,6 +733,8 @@ function parseCliArgs() {
   if (pwdIdx !== -1 && process.argv[pwdIdx + 1]) args.password = process.argv[pwdIdx + 1].trim();
   const modeIdx = process.argv.indexOf('--mode');
   if (modeIdx !== -1 && process.argv[modeIdx + 1]) args.mode = process.argv[modeIdx + 1].trim();
+  const timeIdx = process.argv.indexOf('--target-time');
+  if (timeIdx !== -1 && process.argv[timeIdx + 1]) args.targetTime = process.argv[timeIdx + 1].trim();
   return args;
 }
 
@@ -677,6 +765,7 @@ async function runYayaWorkflow(customParams = {}) {
     promptSettleMs: numberOr(customParams.promptSettleMs ?? process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
     maxPromptActions: numberOr(customParams.maxPromptActions ?? process.env.YUNMOMO_YAYA_MAX_PROMPTS, 12),
     maxPagesPerDirection: numberOr(customParams.maxPagesPerDirection ?? process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    targetTime: customParams.targetTime || cliArgs.targetTime || process.env.YAYA_TARGET_TIME || '16:05',
   };
 
   const client = customParams.client || new YunmomoClient({ timeoutMs: 100000 });
