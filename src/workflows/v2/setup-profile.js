@@ -261,19 +261,23 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
   log.console(`[执行操作] 陌陌资料完善 (性别/网名/生日 -> 头像/网速 -> 云盘传图 -> 允许权限 -> 选第一张图 -> 裁切/美化 -> 进入陌陌 -> 手机绑定停下)`);
 
-  const phone = client.device(resolvedDeviceId);
-  const control = await phone.openControl({ udid: target.udid });
+  const phone = options.phone || client.device(resolvedDeviceId);
+  const ownControl = !options.control;
+  const control = options.control || await phone.openControl({ udid: target.udid });
+  const ownWorker = !options.worker;
+  const worker = options.worker || new RapidOcrWorker();
   const runId = randomUUID();
   const screenshotsDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'setup-profile', runId);
   const ocrDir = await shared.createOcrDirectory('yunmomo-setup-profile-');
-  const worker = new RapidOcrWorker();
   const state = { counter: 0 };
   let lastScreenshotPath = null;
   let proxyRecorded = null;
   let savedProxyConfig = null;
 
   try {
-    await control.connect();
+    if (!control.connected) {
+      await control.connect();
+    }
     await log.file('Control connected successfully', { screen: `${control.screenWidth}x${control.screenHeight}` });
 
     // 1. 分析起始画面
@@ -782,10 +786,10 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     }
     throw Object.assign(error, { screenshotsDir, lastScreenshotPath });
   } finally {
-    await control.close().catch(() => {});
-    await worker.close().catch(() => {});
+    if (ownControl) await control.close().catch(() => {});
+    if (ownWorker) await worker.close().catch(() => {});
     if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
-      await fs.rm(ocrDir, { recursive: true, force: true });
+      await fs.rm(ocrDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 }

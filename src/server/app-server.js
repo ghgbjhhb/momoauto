@@ -242,14 +242,15 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
-    id: 'flow-16', order: 16, title: '陌陌一键上号',
+    id: 'flow-16', order: 16, title: '陌陌一键上号 (登录授权/资料完善/头像上传)',
     file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
     version: 'v2',
     parameters: [
       // TODO: 当前默认使用复扫模式 (relogin)，方便下次随时切换为直接一键授权 (direct)
       { name: 'yayaMode', label: '丫丫授权模式', choices: ['relogin', 'direct'], defaultValue: 'relogin' },
-      { name: 'targetTime', label: '丫丫复扫订单时间', defaultValue: '16:05', placeholder: '如 16:05，匹配历史订单' }
+      { name: 'targetTime', label: '丫丫复扫订单时间', defaultValue: '16:05', placeholder: '如 16:05，匹配历史订单' },
+      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' }
     ]
   },
   {
@@ -947,6 +948,7 @@ function configureScript(script, body, env) {
   if (script.id === 'flow-16') {
     if (options.yayaMode?.trim()) env.YAYA_MODE = options.yayaMode.trim();
     if (options.targetTime?.trim()) env.YAYA_TARGET_TIME = options.targetTime.trim();
+    if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
   }
   if (script.id === 'flow-17') {
     if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
