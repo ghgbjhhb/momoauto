@@ -1,13 +1,18 @@
 'use strict';
 
 /**
- * Script 16: 陌陌一键上号 (V2 专属脚本)
- * 第一阶段业务流程：
- * 1. 确认前台画面 / 桌面打开「MOMO陌陌」应用；
- * 2. 监听并处理首次启动隐私政策弹窗「欢迎使用MOMO陌陌APP」（点击「同意」）；
- * 3. 确认进入陌陌登录界面，定位并点击「微信登录」绿色图标；
- * 4. 监听并确认「用户使用协议」提示框，定位并点击「同意」；
- * 5. 保持当前页面状态，截图留痕归档，报告第一阶段执行完成并等待后续指令。
+ * MOMO 一键上号工作流 (第一阶段)
+ *
+ * 业务流程规范（严格参照 momo-contact-sync 与 momo-ai-reply 工业级标准）：
+ * 1. 设备与控制通道就绪，记录起始现场截图；
+ * 2. 状态机识别与执行：
+ *    - 若在桌面：定位「MOMO陌陌」图标并点击唤起应用；
+ *    - 若出现首次启动隐私弹窗「欢迎使用MOMO陌陌APP」：定位并点击「同意」；
+ *    - 若处于登录主界面：精准定位绿色「微信登录」按钮并点击；
+ *    - 若弹出「用户使用协议」提示框：定位并点击蓝底「同意」按钮；
+ * 3. 动作发出后上一轮观察证据立即强制失效，杜绝 TOCTOU 时差误判；
+ * 4. 关键里程碑全程截图留痕存盘归档；
+ * 5. 止于同意协议，保留当前页面，报告第一阶段执行完成并等待后续指令。
  */
 
 const fs = require('node:fs/promises');
@@ -16,7 +21,6 @@ const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT, redact } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
-const { openAppWithRecovery } = require('../../automation/app-navigation');
 
 const {
   numberOr,
@@ -28,31 +32,25 @@ const {
   RapidOcrWorker,
   screenshotAndOcr,
   confirmHome,
-  findApp,
   tapBox,
   homeAnchorMatches,
 } = shared;
 
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
-const DEFAULT_HOME_TIMEOUT_MS = 15000;
-const DEFAULT_APP_TIMEOUT_MS = 25000;
-const DEFAULT_ACTION_SETTLE_MS = 1200;
+const DEFAULT_TIMEOUT_MS = 60000;
 
-function formatDateTime(timestamp) {
-  const d = new Date(timestamp);
+function formatLogTime() {
+  const d = new Date();
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
 }
 
 function createLogger(logFilePath) {
   return {
     logPath: logFilePath,
     console(msg) {
-      const now = new Date();
-      const pad = n => String(n).padStart(2, '0');
-      const time = `[${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
-      console.log(`${time} ${msg}`);
+      console.log(`${formatLogTime()} ${msg}`);
     },
     async file(msg, extra = null) {
       if (!logFilePath) return;
@@ -66,6 +64,25 @@ function createLogger(logFilePath) {
   };
 }
 
+/**
+ * 采集关键里程碑截图并存盘
+ */
+async function captureMilestoneScreenshot(phone, dir, filename, desc, log = null) {
+  if (!phone || typeof phone.screenshot !== 'function' || !dir) return null;
+  try {
+    const res = await phone.screenshot({ level: 2 }).catch(() => null);
+    if (!res?.data) return null;
+    await fs.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `${filename}.png`);
+    await fs.writeFile(filePath, res.data);
+    const rel = path.relative(PROJECT_ROOT, filePath);
+    if (log) log.console(`【截图记录】：${desc} -> ${rel}`);
+    return filePath;
+  } catch {
+    return null;
+  }
+}
+
 function matchesDevice(record, targetId) {
   if (!record) return false;
   const id = deviceIdOf(record);
@@ -74,108 +91,86 @@ function matchesDevice(record, targetId) {
   return !sdk || sdk === 'v2';
 }
 
-function momoTargetBox(items) {
-  return (
-    findStrictPhrase(items, 'MOMO陌陌') ||
-    findPhrase(items, 'MOMO陌陌') ||
-    findStrictPhrase(items, '陌陌') ||
-    findPhrase(items, '陌陌') ||
-    findStrictPhrase(items, 'MOMO')
-  );
+// 桌面图标标签查找：仅匹配单行短标签，排除“欢迎使用MOMO陌陌APP”等长标题
+function findMomoLauncherIcon(items) {
+  return items.find(it => {
+    const norm = normalizeText(it.text);
+    return (norm === 'MOMO陌陌' || norm === '陌陌' || norm === 'MOMO') && it.text.length <= 6;
+  }) || null;
 }
 
+// 系统桌面判定：必须具备系统桌面特征，且严禁把带有弹窗或登录特征的页面误判为桌面
 function isLauncherScreen(items) {
-  return homeAnchorMatches(items).length >= 1 || Boolean(momoTargetBox(items));
+  const hasDialogOrLogin = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('欢迎使用') || t.includes('输入手机号码') || t.includes('用户使用协议') || t.includes('微信号');
+  });
+  if (hasDialogOrLogin) return false;
+  return homeAnchorMatches(items).length >= 2 || (
+    Boolean(findStrictPhrase(items, '微信')) &&
+    Boolean(findStrictPhrase(items, '设置')) &&
+    Boolean(findMomoLauncherIcon(items))
+  );
 }
 
-// 首次启动隐私弹窗判断
-function isMomoPrivacyDialog(items) {
-  const hasTitle = Boolean(
-    findPhrase(items, '欢迎使用MOMO陌陌') ||
-    findPhrase(items, '欢迎使用MOMO') ||
-    findPhrase(items, '陌陌隐私权政策') ||
-    findPhrase(items, '以了解我们是如何规范地收集') ||
-    findPhrase(items, '点击同意即表示您已阅读')
-  );
-  const hasAgree = Boolean(findStrictPhrase(items, '同意'));
+// 首次启动隐私弹窗「欢迎使用MOMO陌陌APP」
+function isPrivacyDialog(items) {
+  const hasTitle = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('欢迎使用MOMO') || t.includes('陌陌隐私权政策') || t.includes('规范地收集');
+  });
+  const hasAgree = items.some(it => normalizeText(it.text) === '同意');
   return hasTitle && hasAgree;
 }
 
-// 寻找首次启动隐私弹窗中的“同意”按钮（排除“不同意”）
-function findPrivacyAgreeBox(items, screenHeight = 640) {
-  const agreeCandidates = items.filter(it => normalizeText(it.text) === '同意');
-  if (!agreeCandidates.length) return null;
-  // 过滤出位于弹窗下部（y >= height * 0.55）且不包含“不同意”的条目
-  const valid = agreeCandidates.filter(it => {
-    const cy = it.centerY ?? (it.top + it.bottom) / 2;
-    return cy >= screenHeight * 0.5;
+function findPrivacyAgreeBox(items) {
+  const agrees = items.filter(it => normalizeText(it.text) === '同意');
+  return agrees[0] || null;
+}
+
+// 陌陌登录主页面
+function isLoginPage(items) {
+  if (isLauncherScreen(items)) return false;
+  return items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('想认识的新朋友') || t.includes('输入手机号码') || t.includes('获取验证码') || t.includes('插入手机号码');
   });
-  return valid[0] || agreeCandidates[0];
 }
 
-// 陌陌登录页判断
-function isMomoLoginPage(items) {
-  const loginCues = [
-    '想认识的新朋友都在这里',
-    '输入手机号码',
-    '获取验证码',
-    '登录遇到困难',
-    '我已阅读并同意陌陌用户',
-    '禁止未满18周岁',
-  ];
-  const matchCount = loginCues.reduce((cnt, cue) => cnt + (findPhrase(items, cue) ? 1 : 0), 0);
-  return matchCount >= 1;
-}
-
-// “用户使用协议”弹窗判断
+// 用户使用协议弹窗
 function isUserAgreementDialog(items) {
-  const hasDialogTitle = Boolean(
-    findPhrase(items, '用户使用协议') ||
-    (findPhrase(items, '阅读并同意') && findPhrase(items, '陌陌用户协议'))
-  );
-  const hasButtons = Boolean(findStrictPhrase(items, '同意') && findPhrase(items, '暂不同意'));
-  return hasDialogTitle || (hasButtons && Boolean(findPhrase(items, '陌陌')));
+  if (isLauncherScreen(items)) return false;
+  const hasTitle = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('用户使用协议') || (t.includes('阅读并同意') && t.includes('陌陌用户协议'));
+  });
+  const hasAgree = items.some(it => normalizeText(it.text) === '同意');
+  return hasTitle || (hasAgree && items.some(it => normalizeText(it.text).includes('暂不同意')));
 }
 
-// 寻找“用户使用协议”弹窗中的“同意”按钮
-function findUserAgreementAgreeBox(items, screenHeight = 640) {
-  const agreeCandidates = items.filter(it => normalizeText(it.text) === '同意');
-  if (!agreeCandidates.length) return null;
-  // 弹窗内的“同意”通常在弹窗中偏下部（y 在 0.45 ~ 0.65 之间），且在“暂不同意”上方
+function findUserAgreementAgreeBox(items) {
+  const agrees = items.filter(it => normalizeText(it.text) === '同意');
+  if (!agrees.length) return null;
   const disagree = items.find(it => normalizeText(it.text).includes('暂不同意'));
   if (disagree) {
     const disagreeY = disagree.centerY ?? (disagree.top + disagree.bottom) / 2;
-    const above = agreeCandidates.filter(it => {
+    const above = agrees.filter(it => {
       const cy = it.centerY ?? (it.top + it.bottom) / 2;
       return cy < disagreeY;
     });
     if (above.length) return above[0];
   }
-  return agreeCandidates[0];
+  return agrees[0];
 }
 
-// 后续界面（已经通过第一阶段进入的页面，如性别设置或已授权页）
-function isSubsequentPage(items) {
-  return Boolean(
-    findPhrase(items, '你的性别是') ||
-    findPhrase(items, '让大家了解下你是男生还是女生') ||
-    findPhrase(items, '填写资料') ||
-    findPhrase(items, '设置头像') ||
-    findPhrase(items, '微信号授权')
-  );
-}
-
-async function captureStepImage(phone, dir, filename) {
-  try {
-    const shot = await phone.screenshot({ level: 2 }).catch(() => null);
-    if (!shot?.data) return null;
-    await fs.mkdir(dir, { recursive: true });
-    const targetPath = path.join(dir, `${filename}.png`);
-    await fs.writeFile(targetPath, shot.data);
-    return targetPath;
-  } catch {
-    return null;
-  }
+// 最终完成状态（已进入微信授权界面或已进入个人资料填写界面）
+function isStep1FinishedState(items) {
+  if (isLauncherScreen(items)) return false;
+  return items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('登录微信') || t.includes('微信号QQ号') || t.includes('同意并登录') ||
+           t.includes('你的性别是') || t.includes('让大家了解下你是男生还是女生');
+  });
 }
 
 async function runMomoLogin(client, targetDeviceId, options = {}, logger = console) {
@@ -204,154 +199,151 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   const phone = client.device(resolvedDeviceId);
   const control = await phone.openControl({ udid: target.udid });
   const runId = randomUUID();
-  const artifactDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'login-momo', runId);
+  const screenshotsDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'login-momo', runId);
   const ocrDir = await shared.createOcrDirectory('yunmomo-momo-login-');
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
+  let lastScreenshotPath = null;
 
   try {
     await control.connect();
-    await log.file('Control connected successfully');
+    await log.file('Control connected successfully', { screen: `${control.screenWidth}x${control.screenHeight}` });
 
-    // 观察当前初始画面
+    // 1. 观察当前屏幕
     log.console('[1/4] 正在分析当前屏幕状态...');
-    let observation = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
-    await captureStepImage(phone, artifactDir, '01-inspect-initial');
+    let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-inspect', '初始分析画面', log);
 
-    // 检查是否已经在后续已登录/信息设置阶段
-    if (isSubsequentPage(observation.items)) {
-      log.console('[1/4] 当前已处于微信登录后阶段（如性别/资料设置界面），第一阶段目标已达成。');
-      await captureStepImage(phone, artifactDir, '08-final-state');
-      return { ok: true, state: 'already_completed', details: '已处于登录后资料页' };
+    // 检查是否已经处于第一阶段完成后的界面
+    if (isStep1FinishedState(obs.items)) {
+      log.console('[1/4] 检测到当前已处于微信授权或登录后资料页，第一阶段目标已达成。');
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-final-state', '已处于目标完成页', log);
+      return { ok: true, state: 'completed', screenshotsDir, lastScreenshotPath };
     }
 
-    // 若不在陌陌界面，则回桌面打开陌陌
-    const inMomo = isMomoPrivacyDialog(observation.items) || isMomoLoginPage(observation.items) || isUserAgreementDialog(observation.items);
-    if (!inMomo) {
-      log.console('[1/4] 当前不在陌陌界面，正在回到桌面并寻找应用...');
-      const home = await confirmHome(phone, control, worker, ocrDir, state, options);
-      await captureStepImage(phone, artifactDir, '02-home-confirmed');
+    // 若不在陌陌任何界面，则回桌面打开应用
+    const inMomoFlow = isPrivacyDialog(obs.items) || isLoginPage(obs.items) || isUserAgreementDialog(obs.items);
+    if (!inMomoFlow) {
+      log.console('[1/4] 当前未处于陌陌界面，正在回到桌面...');
+      if (!isLauncherScreen(obs.items)) {
+        await control.home();
+        await control.flush();
+        await sleep(1000);
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-home-${state.counter++}`);
+      }
+      await captureMilestoneScreenshot(phone, screenshotsDir, '02-launcher-screen', '桌面基准页', log);
 
-      log.console('[1/4] 正在桌面寻找应用“MOMO陌陌”...');
-      const found = await findApp(
-        phone,
-        control,
-        worker,
-        ocrDir,
-        state,
-        home,
-        options,
-        momoTargetBox,
-        'MOMO陌陌'
-      );
+      log.console('[1/4] 正在桌面定位应用“MOMO陌陌”...');
+      const iconItem = findMomoLauncherIcon(obs.items);
+      if (!iconItem) {
+        throw new Error('桌面未找到“MOMO陌陌”应用图标标签');
+      }
 
-      log.console('[2/4] 正在打开“MOMO陌陌”...');
-      const opened = await openAppWithRecovery(phone, control, worker, ocrDir, state, found, options, {
-        appName: 'MOMO陌陌',
-        targetName: '陌陌首次启动或登录界面',
-        label: 'momo',
-        targetBox: momoTargetBox,
-        isTarget: obs => isMomoPrivacyDialog(obs.items) || isMomoLoginPage(obs.items) || isUserAgreementDialog(obs.items) || isSubsequentPage(obs.items),
-        isLauncher: obs => isLauncherScreen(obs.items),
-        launchTimeoutMs: Math.min(options.appTimeoutMs ?? DEFAULT_APP_TIMEOUT_MS, 15000),
-      });
+      // 图标在文字上方 55px（在 360x640 下约 -55）
+      const clickPoint = tapBox(control, iconItem, obs, -55);
+      log.console(`[2/4] 点击应用图标启动陌陌 (坐标: x=${clickPoint.x}, y=${clickPoint.y})...`);
+      await control.tap(clickPoint.x, clickPoint.y);
+      await control.flush();
 
-      observation = opened.opened;
-      await captureStepImage(phone, artifactDir, '03-momo-opened');
-      log.console(`[2/4] 已打开应用并检测到目标界面响应`);
+      // 动作后旧证据立即作废，等待应用启动渲染
+      await sleep(2500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-open-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-app-opened', '应用打开响应画面', log);
     } else {
-      log.console('[1/4] 当前已处于陌陌界面，直接进入流程。');
+      log.console('[1/4] 当前已处于陌陌界面，直接推进流程。');
     }
 
-    // Step 2: 处理可能出现的首次启动隐私政策弹窗「欢迎使用MOMO陌陌APP」
-    if (isMomoPrivacyDialog(observation.items)) {
+    // 2. 处理可能出现的首次启动隐私政策弹窗「欢迎使用MOMO陌陌APP」
+    if (isPrivacyDialog(obs.items)) {
       log.console('[2/4] 检测到首次启动隐私政策弹窗「欢迎使用MOMO陌陌APP」，准备点击「同意」...');
-      const agreeBox = findPrivacyAgreeBox(observation.items, observation.height);
+      const agreeBox = findPrivacyAgreeBox(obs.items);
       if (!agreeBox) throw new Error('检测到隐私政策弹窗，但未找到「同意」按钮');
 
-      const point = tapBox(control, agreeBox, observation);
-      log.console(`[2/4] 点击「同意」按钮 (坐标: x=${point.x}, y=${point.y})`);
+      const point = tapBox(control, agreeBox, obs);
+      log.console(`[2/4] 点击隐私弹窗「同意」按钮 (坐标: x=${point.x}, y=${point.y})`);
       await control.tap(point.x, point.y);
       await control.flush();
-      await captureStepImage(phone, artifactDir, '04-privacy-dialog-agreed');
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-privacy-agreed', '已点击隐私政策同意', log);
 
-      // 动作后旧证据强制失效，等待界面跳转
-      await sleep(DEFAULT_ACTION_SETTLE_MS);
-      observation = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-privacy-${state.counter++}`);
+      // 动作后旧证据作废，等待开屏过渡并进入登录页
+      await sleep(2500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-after-privacy-${state.counter++}`);
     }
 
-    // 等待并确认登录界面
-    let waitLoginDeadline = Date.now() + 15000;
-    while (!isMomoLoginPage(observation.items) && !isUserAgreementDialog(observation.items) && !isSubsequentPage(observation.items) && Date.now() < waitLoginDeadline) {
-      log.console('[2/4] 正在等待陌陌登录页面加载...');
+    // 3. 等待并确认登录主界面
+    const loginDeadline = Date.now() + 15000;
+    while (!isLoginPage(obs.items) && !isUserAgreementDialog(obs.items) && !isStep1FinishedState(obs.items) && Date.now() < loginDeadline) {
+      log.console('[3/4] 正在等待陌陌登录页面渲染...');
       await sleep(DEFAULT_POLL_MS);
-      observation = await screenshotAndOcr(phone, worker, ocrDir, `step2-wait-login-${state.counter++}`);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wait-login-${state.counter++}`);
     }
 
-    if (isSubsequentPage(observation.items)) {
-      log.console('[3/4] 检测到已进入登录后阶段，第一阶段目标达成。');
-      await captureStepImage(phone, artifactDir, '08-final-state');
-      return { ok: true, state: 'completed', details: '已完成第一阶段' };
+    if (isStep1FinishedState(obs.items)) {
+      log.console('[3/4] 检测到已跳过二次确认直接进入后续阶段，第一阶段目标达成。');
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-final-state', '已处于目标完成页', log);
+      return { ok: true, state: 'completed', screenshotsDir, lastScreenshotPath };
     }
 
-    // Step 3: 在登录页面点击「微信登录」
-    if (isMomoLoginPage(observation.items)) {
-      log.console('[3/4] 已确认处于陌陌登录界面，正在定位微信登录按钮...');
-      await captureStepImage(phone, artifactDir, '05-login-page-confirmed');
+    // 4. 在登录主界面点击绿色「微信登录」按钮
+    if (isLoginPage(obs.items)) {
+      log.console('[3/4] 已确认处于陌陌登录界面，正在定位微信登录图标...');
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-login-page', '登录主界面就绪', log);
 
-      // 微信登录按钮定位（居于底部右侧，横坐标比例约 0.588，纵坐标比例约 0.826）
-      const scaleX = control.screenWidth / Math.max(1, observation.width);
-      const scaleY = control.screenHeight / Math.max(1, observation.height);
-      const wechatX = Math.round(control.screenWidth * 0.588);
-      const wechatY = Math.round(control.screenHeight * 0.826);
+      // 微信登录图标物理坐标精准计算：居于右侧（宽度比 0.585），底部靠下（高度比 0.887）
+      const wechatX = Math.round(control.screenWidth * 0.585);
+      const wechatY = Math.round(control.screenHeight * 0.887);
 
       log.console(`[3/4] 正在点击微信登录图标 (物理坐标: x=${wechatX}, y=${wechatY})...`);
       await control.tap(wechatX, wechatY);
       await control.flush();
-      await captureStepImage(phone, artifactDir, '06-wechat-clicked');
 
-      // 动作后旧坐标强制失效，等待弹出协议框
-      await sleep(1500);
-      observation = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-wechat-${state.counter++}`);
+      // 动作后旧证据作废，等待弹出使用协议
+      await sleep(1800);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-after-wechat-${state.counter++}`);
     }
 
-    // Step 4: 处理「用户使用协议」提示框
-    let agreementDeadline = Date.now() + 15000;
-    while (!isUserAgreementDialog(observation.items) && !isSubsequentPage(observation.items) && Date.now() < agreementDeadline) {
-      log.console('[4/4] 等待「用户使用协议」弹窗出现...');
+    // 5. 处理「用户使用协议」提示框
+    const agreementDeadline = Date.now() + 15000;
+    while (!isUserAgreementDialog(obs.items) && !isStep1FinishedState(obs.items) && Date.now() < agreementDeadline) {
+      log.console('[4/4] 正在等待「用户使用协议」提示框弹出...');
       await sleep(DEFAULT_POLL_MS);
-      observation = await screenshotAndOcr(phone, worker, ocrDir, `step4-wait-agreement-${state.counter++}`);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-wait-agreement-${state.counter++}`);
     }
 
-    if (isUserAgreementDialog(observation.items)) {
+    if (isUserAgreementDialog(obs.items)) {
       log.console('[4/4] 检测到「用户使用协议」弹窗，正在定位蓝底「同意」按钮...');
-      const agreeBox = findUserAgreementAgreeBox(observation.items, observation.height);
-      if (!agreeBox) throw new Error('检测到用户使用协议弹窗，但未能定位「同意」按钮');
+      const agreeBox = findUserAgreementAgreeBox(obs.items);
+      if (!agreeBox) throw new Error('检测到用户使用协议弹窗，但未找到「同意」按钮');
 
-      const point = tapBox(control, agreeBox, observation);
-      log.console(`[4/4] 点击「同意」按钮 (坐标: x=${point.x}, y=${point.y})`);
+      const point = tapBox(control, agreeBox, obs);
+      log.console(`[4/4] 点击协议弹窗「同意」按钮 (坐标: x=${point.x}, y=${point.y})`);
       await control.tap(point.x, point.y);
       await control.flush();
-      await captureStepImage(phone, artifactDir, '07-agreement-agreed');
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-agreement-agreed', '已点击使用协议同意', log);
 
-      // 动作后旧坐标作废，等待授权跳转
-      await sleep(2000);
-      observation = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-agree-${state.counter++}`);
-    } else if (isSubsequentPage(observation.items)) {
-      log.console('[4/4] 未弹出二次协议或已直接进入后续授权界面。');
+      // 动作后旧证据作废，等待界面响应授权
+      await sleep(2500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-agree-${state.counter++}`);
+    } else if (isStep1FinishedState(obs.items)) {
+      log.console('[4/4] 点击微信登录后已直接进入后续授权界面。');
     }
 
-    // Step 5: 截取最终状态留痕归档并完成第一阶段
-    log.console('[4/4] 第一阶段流程已完成（已打开陌陌 -> 点击微信登录 -> 点击同意协议）。');
-    const finalShotPath = await captureStepImage(phone, artifactDir, '08-final-state');
-    log.console(`[4/4] 当前界面已保持，留痕截图已保存至: ${finalShotPath ? path.relative(PROJECT_ROOT, finalShotPath) : 'artifact'}`);
+    // 6. 截取并保存第一阶段最终状态
+    log.console('[4/4] 第一阶段流程已执行完毕（打开陌陌 -> 点击微信登录 -> 点击同意协议）。');
+    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-final-state', '第一阶段最终保持画面', log);
 
     return {
       ok: true,
-      state: 'step1_completed',
+      state: 'completed',
       runId,
-      artifactDir: path.relative(PROJECT_ROOT, artifactDir),
+      screenshotsDir,
+      lastScreenshotPath,
     };
+  } catch (error) {
+    if (phone) {
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '99-error-snapshot', '失败现场截图', log);
+    }
+    throw Object.assign(error, { screenshotsDir, lastScreenshotPath });
   } finally {
     await control.close().catch(() => {});
     await worker.close().catch(() => {});
@@ -365,11 +357,7 @@ function parseCliArgs(argv) {
   const opts = {
     execute: argv.includes('--execute'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
-    pollMs: DEFAULT_POLL_MS,
-    homeTimeoutMs: DEFAULT_HOME_TIMEOUT_MS,
-    appTimeoutMs: DEFAULT_APP_TIMEOUT_MS,
   };
-
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--device-id') {
@@ -378,6 +366,39 @@ function parseCliArgs(argv) {
     }
   }
   return opts;
+}
+
+function printSummary(result, duration, error = null) {
+  console.log('\n' + '='.repeat(60));
+  if (result?.ok) {
+    console.log('【执行结果】：成功');
+    console.log('【任务名称】：陌陌一键上号 (第一阶段)');
+    console.log('【退出状态码】：0');
+    console.log(`【完成步骤】：已完成打开陌陌、点击微信登录与点击同意协议`);
+    console.log('【当前状态】：保留当前界面，等待下一步指令');
+    if (result.lastScreenshotPath) {
+      console.log(`【现场截图】：${path.relative(PROJECT_ROOT, result.lastScreenshotPath)}`);
+    }
+    if (result.screenshotsDir) {
+      console.log(`【截图归档】：${path.relative(PROJECT_ROOT, result.screenshotsDir)}`);
+    }
+    console.log(`【执行耗时】：${duration} 秒`);
+  } else {
+    console.log('【执行结果】：失败');
+    console.log('【任务名称】：陌陌一键上号 (第一阶段)');
+    console.log('【退出状态码】：1');
+    console.log(`【失败原因】：${error?.message || '未知错误'}`);
+    const shotPath = error?.lastScreenshotPath || result?.lastScreenshotPath;
+    if (shotPath) {
+      console.log(`【现场截图】：${path.relative(PROJECT_ROOT, shotPath)}`);
+    }
+    const dir = error?.screenshotsDir || result?.screenshotsDir;
+    if (dir) {
+      console.log(`【截图归档】：${path.relative(PROJECT_ROOT, dir)}`);
+    }
+    console.log(`【执行耗时】：${duration} 秒`);
+  }
+  console.log('='.repeat(60) + '\n');
 }
 
 async function main() {
@@ -398,23 +419,11 @@ async function main() {
     const result = await runMomoLogin(client, options.deviceId, options, logger);
 
     const duration = ((Date.now() - startMs) / 1000).toFixed(2);
-    console.log('\n' + '='.repeat(60));
-    console.log('【执行结果】：成功');
-    console.log('【任务名称】：陌陌一键上号 (第一阶段)');
-    console.log('【退出状态码】：0');
-    console.log(`【执行耗时】：${duration} 秒`);
-    console.log('【当前状态】：已完成打开陌陌、点击微信登录与同意协议，保留当前页面等待下一步指令');
-    console.log('='.repeat(60) + '\n');
+    printSummary(result, duration, null);
     process.exitCode = 0;
   } catch (error) {
     const duration = ((Date.now() - startMs) / 1000).toFixed(2);
-    console.log('\n' + '='.repeat(60));
-    console.log('【执行结果】：失败');
-    console.log('【任务名称】：陌陌一键上号 (第一阶段)');
-    console.log('【退出状态码】：1');
-    console.log(`【失败原因】：${error.message}`);
-    console.log(`【执行耗时】：${duration} 秒`);
-    console.log('='.repeat(60) + '\n');
+    printSummary(null, duration, error);
     process.exitCode = 1;
     throw error;
   }
@@ -423,7 +432,7 @@ async function main() {
 module.exports = {
   main,
   runMomoLogin,
-  isMomoPrivacyDialog,
-  isMomoLoginPage,
+  isPrivacyDialog,
+  isLoginPage,
   isUserAgreementDialog,
 };
