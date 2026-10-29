@@ -137,7 +137,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     requiresCertificate: step.order === 2,
     ...(step.order === 2.1 ? {
       parameters: [
-        { name: 'filePath', label: '真机参数', defaultValue: '', placeholder: '留空默认自动导入云盘可用真参' }
+        { name: 'filePath', label: '云盘真参文件', defaultValue: '', placeholder: '留空默认自动获取云盘可用真参' }
       ]
     } : {}),
     ...(step.order === 3 ? {
@@ -863,8 +863,14 @@ function configureScript(script, body, env) {
   }
   if (script.destructive && body.resetConfirmed !== true) throw invalidOptions('重置/改机会清除设备数据，请先确认目标设备及操作');
   if (script.id.startsWith('flow-02.1') || script.id.startsWith('flow-2.1')) {
-    if (options.filePath?.trim()) {
-      env.YUNMOMO_REAL_PARAMS_FILE = options.filePath.trim();
+    const rawVal = (options.filePath || options.fileName || '').trim();
+    if (rawVal && rawVal.toLowerCase() !== 'todo' && rawVal.toLowerCase() !== 'auto') {
+      const fileName = path.basename(rawVal);
+      const targetInDisk = path.join(CLOUD_DISK_ROOT, '真参', fileName);
+      if (!fs.existsSync(targetInDisk)) {
+        throw invalidOptions(`云盘真参文件不存在：[${fileName}]。本脚本必须获取系统后台云盘参数，严禁任何第三方或外部路径导入！`);
+      }
+      env.YUNMOMO_REAL_PARAMS_FILE = fileName;
     }
   }
   if (script.id.startsWith('flow-03')) {

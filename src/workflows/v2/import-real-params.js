@@ -11,8 +11,19 @@ const { YunmomoClient } = require('../../index');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { getAuthService } = require('../../server/auth/service');
 
-const CLOUD_DISK_ZHENCAN_DIR = path.join(PROJECT_ROOT, 'storage', 'cloud-disk', '真参');
-const FALLBACK_PARAMS_PATH = 'C:\\Users\\Administrator\\Downloads\\22101316UCP_batch_05.txt';
+const CLOUD_DISK_ZHENCAN_DIR = path.resolve(PROJECT_ROOT, 'storage', 'cloud-disk', '真参');
+
+/**
+ * 校验目标真参文件是否合法且严格位于系统后台云盘目录内，彻底杜绝任何第三方或外部路径导入
+ */
+function assertInsideCloudDisk(targetPath) {
+  const resolved = path.resolve(targetPath);
+  const rel = path.relative(CLOUD_DISK_ZHENCAN_DIR, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || rel.includes('..') || path.dirname(rel) !== '.') {
+    throw new Error(`安全规则拦截：真机参数必须且只能从系统后台云盘 (storage/cloud-disk/真参) 获取，严禁使用任何第三方或外部路径导入文件 [${targetPath}]！`);
+  }
+  return resolved;
+}
 
 function deviceIdOf(record) {
   return String(record?.deviceId ?? record?.id ?? '');
@@ -93,24 +104,29 @@ async function resolveRealParamsFile(authService, forceReimport = false) {
     }
   }
 
-  // 1. 若显式指定了具体文件
+  // 1. 若显式指定了具体文件（严格限制只能是后台云盘内的真参文件）
   if (explicitPath) {
-    let targetPath = explicitPath;
-    if (!path.isAbsolute(targetPath)) {
-      const inCloudDisk = path.join(CLOUD_DISK_ZHENCAN_DIR, explicitPath);
-      targetPath = fsSync.existsSync(inCloudDisk) ? inCloudDisk : path.resolve(PROJECT_ROOT, explicitPath);
+    let targetPath;
+    if (path.isAbsolute(explicitPath)) {
+      targetPath = assertInsideCloudDisk(explicitPath);
+    } else {
+      targetPath = assertInsideCloudDisk(path.join(CLOUD_DISK_ZHENCAN_DIR, path.basename(explicitPath)));
     }
     const fileName = path.basename(targetPath);
+    if (!fsSync.existsSync(targetPath)) {
+      throw new Error(`未在后台云盘 (storage/cloud-disk/真参) 中找到真参文件 [${fileName}]！本脚本必须获取后台云盘参数，严禁第三方外部导入。请先在管理后台【资源云盘】上传此文件。`);
+    }
+
     const record = authService.getZhencanFileRecord(fileName);
     if (record && record.status === 'used' && !forceReimport) {
       const dateText = record.used_at ? new Date(record.used_at).toLocaleString('zh-CN') : '此前';
       const devText = record.used_on_device_name || record.used_on_device_id || '其他设备';
-      throw new Error(`真参文件 [${fileName}] 已于 ${dateText} 导入过云机 (${devText})！根据单机单参规则，每个参数文件默认只能导入一次。如需再次使用，请在后台【资源云盘】将其状态设置为【启用】。`);
+      throw new Error(`云盘真参文件 [${fileName}] 已于 ${dateText} 导入过云机 (${devText})！根据单机单参规则，每个参数文件默认只能导入一次。如需再次使用，请在后台【资源云盘】将其状态设置为【启用】。`);
     }
     return { filePath: targetPath, fileName, isAuto: false };
   }
 
-  // 2. 默认行为：自动从后台云盘查找未使用的真参文件
+  // 2. 默认行为：自动从后台云盘查找未使用的可用真参文件（绝对禁止第三方外部兜底）
   if (!fsSync.existsSync(CLOUD_DISK_ZHENCAN_DIR)) {
     fsSync.mkdirSync(CLOUD_DISK_ZHENCAN_DIR, { recursive: true });
   }
@@ -122,11 +138,7 @@ async function resolveRealParamsFile(authService, forceReimport = false) {
   });
 
   if (paramFiles.length === 0) {
-    // 若云盘尚无文件，尝试检查旧的单机固定路径兜底
-    if (fsSync.existsSync(FALLBACK_PARAMS_PATH)) {
-      return { filePath: FALLBACK_PARAMS_PATH, fileName: path.basename(FALLBACK_PARAMS_PATH), isAuto: false };
-    }
-    throw new Error('后台云盘 (storage/cloud-disk/真参) 中暂无真参文件！请先在管理后台【资源云盘】上传真参。');
+    throw new Error('后台云盘 (storage/cloud-disk/真参) 中暂无真参文件！调用本流程必须通过系统后台云盘获取参数，严禁第三方外部导入。请先在管理后台【资源云盘】上传真参。');
   }
 
   const allRecords = authService.getAllZhencanRecords();
