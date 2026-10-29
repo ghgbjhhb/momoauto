@@ -249,6 +249,49 @@ async function sendHome(control) {
   await control.flush();
 }
 
+async function clearAllRecentTasks(phone, control, worker, directory, state, log = console) {
+  const logFn = typeof log?.console === 'function' ? log.console : console.log;
+  logFn('[清后台] 下发任务键打开多任务管理器...');
+  control.overview();
+  await control.flush();
+  await sleep(1500);
+
+  state.counter = (state.counter || 0) + 1;
+  let obs = await screenshotAndOcr(phone, worker, directory, 'recent-tasks-' + state.counter);
+
+  // 寻找“全部清除”或“清除”
+  let clearAllBox = obs.items.find(i => {
+    const t = normalizeText(i.text);
+    return t.includes('全部清除') || (t.includes('清除') && !t.includes('屏幕'));
+  });
+
+  if (clearAllBox) {
+    const pt = tapBox(control, clearAllBox, obs);
+    logFn('[清后台] 识别到「' + clearAllBox.text + '」按钮 (' + pt.x + ', ' + pt.y + ')，点击清空后台...');
+    await control.tap(pt.x, pt.y);
+  } else {
+    const scaleX = control.screenWidth / Math.max(1, obs.width);
+    const scaleY = control.screenHeight / Math.max(1, obs.height);
+    const fallbackPt = {
+      x: Math.round(270 * scaleX),
+      y: Math.round(550 * scaleY),
+    };
+    logFn('[清后台] 未明确识别到全部清除文字，使用兜底热区 (' + fallbackPt.x + ', ' + fallbackPt.y + ') 点击清空...');
+    await control.tap(fallbackPt.x, fallbackPt.y);
+  }
+  await control.flush();
+  await sleep(2000);
+
+  // 确保彻底返回桌面
+  state.counter += 1;
+  const homeObs = await confirmHome(phone, control, worker, directory, state, {
+    homeConfirmation: { firstAttemptTimeoutMs: 3000, retryTimeoutMs: 5000, pollMs: 800 }
+  }).catch(() => null);
+
+  logFn('[清后台] 【后验确认】后台任务已全部清除，安全返回桌面！');
+  return homeObs;
+}
+
 async function confirmHome(phone, control, worker, directory, state, options) {
   const confirmation = options.homeConfirmation || null;
   const startedAt = Date.now();
@@ -433,6 +476,7 @@ module.exports = {
   screenshotAndOcr,
   observeUntil: require('./timing').timed('screen.observeUntil', observeUntil),
   sendHome: require('./timing').timed('screen.sendHome', sendHome),
+  clearAllRecentTasks: require('./timing').timed('screen.clearAllRecentTasks', clearAllRecentTasks),
   confirmHome: require('./timing').timed('screen.confirmHome', confirmHome),
   swipeHomePage: require('./timing').timed('screen.swipeHomePage', swipeHomePage),
   findApp: require('./timing').timed('screen.findApp', findApp),
