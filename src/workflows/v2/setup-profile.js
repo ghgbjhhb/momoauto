@@ -1,22 +1,21 @@
 'use strict';
 
 /**
- * MOMO 资料完善工作流 (第二阶段：选择女生 -> 修改昵称为女名 -> 仿真滑动选择生日 -> 下一步)
+ * MOMO 资料完善工作流 (第二阶段：选择女生 -> 修改昵称为女名 -> 仿真滑动选择生日 -> 下一步 -> 点击头像/网速监控/授权允许)
  *
  * 业务流程规范（严格参照 GEMINI.md 核心守则）：
- * 1. 状态机识别：
- *    - 若处于“你的性别是？”界面：精确全等匹配“女生”卡片文本（避免被副标题“男生还是女生”子串干扰），点击进入资料页；
- *    - 若已处于“你的昵称和生日是？”界面：直接推进；
- * 2. 昵称处理：
- *    - 依副标题精准定位下方输入框，双向全范围清空残留字符；
- *    - 粘贴指定网名（默认内置“菲菲菲”，显式保留词库扩展 TODO 注释）；
- *    - 发送返回键收起输入法，杜绝遮挡下方生日项；
- * 3. 生日选择：
- *    - 通过 TAB + DPAD_CENTER 精准唤起生日滚轮选择弹窗，杜绝焦点误触输入法；
- *    - 自适应屏幕分辨率比例 (400x720 / 360x640)，仿真手势对“年、月、日”三列向上滑动滚动；
- *    - 通过 tapBox 动态计算“确定”按钮物理坐标点击保存，确保生日生效；
- * 4. 终态推进：
- *    - 通过 tapBox 动态计算高亮可用的“下一步”按钮坐标并点击，进入后续阶段（头像设置）。
+ * 1. 状态机识别与防卡死：
+ *    - 无论停留在 性别页、资料页、还是头像上传页，均可自愈（Reconciliation）自动断点续跑；
+ *    - 若界面出现「手机号相关参数错误」或风控异常，立即截图熔断报错，严禁盲目推进；
+ * 2. 昵称与生日：
+ *    - 女生全等精准匹配；双向彻底清空微信旧昵称；写入女网名（默认“菲菲菲”）；
+ *    - TAB 唤起生日滚轮，三列拟人仿真滑动，点击确定保存；
+ * 3. 头像与素材包网速检测：
+ *    - 点击头像上传圆形热区；
+ *    - 实时监听下载弹窗，解析下载速度（如 2.4M/s、320KB/s）；
+ *    - 若网速 < 500 KB/s：自动查询并记录当前代理配置，随后主动关闭代理，使网速恢复满速直连；
+ * 4. 权限确认：
+ *    - 出现系统权限弹窗「允许MOMO陌陌访问您设备上的照片和媒体吗？」，直接点击「允许」进入相册。
  */
 
 const fs = require('node:fs/promises');
@@ -107,6 +106,13 @@ function isNicknameAndBirthdayScreen(items) {
   });
 }
 
+function isAvatarScreen(items) {
+  return items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('最后上传一张头像') || t.includes('五官清晰的照片') || t.includes('进入陌陌');
+  });
+}
+
 function isKeyboardVisible(items) {
   return items.some(it => {
     const t = normalizeText(it.text);
@@ -118,6 +124,42 @@ function isBirthdayWheelDialog(items) {
   const hasWheelYear = items.some(it => /^(19\d{2}|20\d{2})$/.test(it.text.trim()));
   const hasOk = items.some(it => normalizeText(it.text).includes('确定'));
   return hasWheelYear && hasOk;
+}
+
+function isPermissionDialog(items) {
+  return items.some(it => {
+    const t = normalizeText(it.text);
+    return (t.includes('允许') && t.includes('不允许')) || t.includes('访问您设备上的照片') || t.includes('存储权限');
+  });
+}
+
+function detectPlatformError(items) {
+  for (const it of items) {
+    const t = normalizeText(it.text);
+    if (t.includes('手机号相关参数错误') || t.includes('参数错误') || t.includes('账号异常') || t.includes('限制登录')) {
+      return it.text.trim();
+    }
+  }
+  return null;
+}
+
+function parseDownloadSpeed(items) {
+  for (const item of items) {
+    const text = String(item.text || '').replace(/\s+/g, '');
+    const match = text.match(/速度[:：]?([0-9.]+)\s*([a-zA-Z]+\/[a-zA-Z]+|[a-zA-Z]+)?/i);
+    if (match) {
+      const val = parseFloat(match[1]);
+      const unit = (match[2] || 'KB/s').toUpperCase();
+      let kbps = val;
+      if (unit.startsWith('M')) {
+        kbps = val * 1024;
+      } else if (unit.startsWith('G')) {
+        kbps = val * 1024 * 1024;
+      }
+      return { raw: match[0], val, unit, kbps };
+    }
+  }
+  return null;
 }
 
 async function runSetupProfile(client, targetDeviceId, options = {}, logger = console) {
@@ -144,7 +186,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
   await log.file('Setup profile task initialized', { deviceName, resolvedDeviceId, nickname });
 
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  log.console(`[执行操作] 陌陌资料完善 (选择女生 -> 设置网名: "${nickname}" -> 仿真滑动生日 -> 下一步)`);
+  log.console(`[执行操作] 陌陌资料完善 (性别/网名/生日 -> 头像点击 -> 网速检测/代理控制 -> 允许权限)`);
 
   const phone = client.device(resolvedDeviceId);
   const control = await phone.openControl({ udid: target.udid });
@@ -160,14 +202,19 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     await log.file('Control connected successfully', { screen: `${control.screenWidth}x${control.screenHeight}` });
 
     // 1. 分析起始画面
-    log.console('[1/4] 分析当前屏幕状态...');
+    log.console('[1/5] 分析当前屏幕状态...');
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-state', '初始分析画面', log);
 
-    // 若在性别选择页，点击女生卡片
+    // 检查是否有系统报错/风控 Toast
+    const initialError = detectPlatformError(obs.items);
+    if (initialError) {
+      throw new Error(`[MOMO_PLATFORM_ERROR] 出现系统异常提示：${initialError}`);
+    }
+
+    // 分支 1：处于“你的性别是？”界面
     if (isGenderScreen(obs.items)) {
-      log.console('[1/4] 检测到性别选择页，选择“女生”...');
-      // 必须精准全等匹配“女生”，严禁使用 includes('女生') 误匹配副标题“让大家了解下你是男生还是女生”
+      log.console('[1/5] 检测到性别选择页，选择“女生”...');
       const femaleItem = obs.items.find(i => i.text.trim() === '女生');
       if (femaleItem) {
         const pt = tapBox(control, femaleItem, obs);
@@ -184,142 +231,216 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '02-gender-selected', '已选择女生', log);
     }
 
-    // 确认进入“你的昵称和生日是？”界面
-    const nickDeadline = Date.now() + 10000;
-    while (!isNicknameAndBirthdayScreen(obs.items) && Date.now() < nickDeadline) {
-      await sleep(DEFAULT_POLL_MS);
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step2-wait-nick-${state.counter++}`);
-    }
+    // 分支 2：处于“你的昵称和生日是？”界面
+    if (isNicknameAndBirthdayScreen(obs.items)) {
+      log.console(`[2/5] 设置女生网名: "${nickname}"...`);
+      const scaleX = control.screenWidth / Math.max(1, obs.width);
+      const scaleY = control.screenHeight / Math.max(1, obs.height);
 
-    if (!isNicknameAndBirthdayScreen(obs.items)) {
-      throw new Error('未进入“你的昵称和生日是？”界面，请确认当前前台状态');
-    }
-
-    // 2. 昵称清空并填入指定网名
-    log.console(`[2/4] 设置女生网名: "${nickname}"...`);
-    const scaleX = control.screenWidth / Math.max(1, obs.width);
-    const scaleY = control.screenHeight / Math.max(1, obs.height);
-
-    // 依据副标题文本动态定位输入框热区
-    const subtitleItem = obs.items.find(i => i.text.includes('如何称呼') || i.text.includes('了解你'));
-    const nickPt = subtitleItem ? tapBox(control, subtitleItem, obs, 45) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
-    await control.tap(nickPt.x, nickPt.y);
-    await control.flush();
-    await sleep(600);
-
-    // 双向清空残留旧字符（向右移光标退格 + 向左移光标前向删除）
-    for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_RIGHT);
-    for (let i = 0; i < 50; i++) control.key(protocol.KEY_CODES.DEL);
-    for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_LEFT);
-    for (let i = 0; i < 30; i++) control.key(112); // KEYCODE_FORWARD_DEL
-    await control.flush();
-    await sleep(400);
-
-    // 粘贴新昵称
-    await control.paste(nickname);
-    await control.flush();
-    await sleep(800);
-
-    // 收起软键盘
-    control.back();
-    await control.flush();
-    await sleep(800);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
-
-    // 3. 唤起生日滚轮弹窗
-    log.console('[3/4] 唤起生日滚轮选择框...');
-    // 使用 TAB + DPAD_CENTER 精准唤起生日选择器，杜绝点击再次拉起输入法
-    control.key(protocol.KEY_CODES.TAB);
-    await control.flush();
-    await sleep(300);
-    control.key(protocol.KEY_CODES.DPAD_CENTER);
-    await control.flush();
-    await sleep(1200);
-
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-open-wheel-${state.counter++}`);
-    if (!isBirthdayWheelDialog(obs.items)) {
-      // 备用策略：点击生日区域
-      const bdayItem = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
-      if (bdayItem) {
-        const bdayPt = tapBox(control, bdayItem, obs);
-        await control.tap(bdayPt.x, bdayPt.y);
-        await control.flush();
-        await sleep(1200);
-      }
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-retry-wheel-${state.counter++}`);
-    }
-
-    if (!isBirthdayWheelDialog(obs.items)) {
-      throw new Error('未能唤起生日滚轮选择弹窗');
-    }
-
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-wheel-opened', '生日滚轮弹窗已就绪', log);
-
-    // 4. 三列仿真滑动
-    log.console('[3/4] 执行生日三列仿真滑动 (年/月/日)...');
-    const columns = [
-      { label: '年份', x: Math.round(96 * scaleX) },
-      { label: '月份', x: Math.round(180 * scaleX) },
-      { label: '日期', x: Math.round(260 * scaleX) },
-    ];
-
-    for (const col of columns) {
-      // 仿真参数：轻微拟人化抖动 (±2px)，持续 380~460ms，18 步
-      const jitterFromX = col.x + Math.floor(Math.random() * 5 - 2);
-      const jitterToX = col.x + Math.floor(Math.random() * 5 - 2);
-      const startY = Math.round(395 * scaleY) + Math.floor(Math.random() * 6 - 3);
-      const endY = Math.round(280 * scaleY) + Math.floor(Math.random() * 6 - 3);
-      const durationMs = 380 + Math.floor(Math.random() * 80);
-
-      await control.swipe(
-        { x: jitterFromX, y: startY },
-        { x: jitterToX, y: endY },
-        { durationMs, steps: 18 }
-      );
+      const subtitleItem = obs.items.find(i => i.text.includes('如何称呼') || i.text.includes('了解你'));
+      const nickPt = subtitleItem ? tapBox(control, subtitleItem, obs, 45) : { x: Math.round(control.screenWidth / 2), y: Math.round(368 * scaleY) };
+      await control.tap(nickPt.x, nickPt.y);
       await control.flush();
-      await sleep(500);
+      await sleep(600);
+
+      // 双向清空旧昵称
+      for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_RIGHT);
+      for (let i = 0; i < 50; i++) control.key(protocol.KEY_CODES.DEL);
+      for (let i = 0; i < 30; i++) control.key(protocol.KEY_CODES.DPAD_LEFT);
+      for (let i = 0; i < 30; i++) control.key(112); // KEYCODE_FORWARD_DEL
+      await control.flush();
+      await sleep(400);
+
+      // 粘贴新昵称并收起键盘
+      await control.paste(nickname);
+      await control.flush();
+      await sleep(800);
+
+      control.back();
+      await control.flush();
+      await sleep(800);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
+
+      // 唤起生日滚轮弹窗
+      log.console('[3/5] 唤起生日滚轮选择框...');
+      control.key(protocol.KEY_CODES.TAB);
+      await control.flush();
+      await sleep(300);
+      control.key(protocol.KEY_CODES.DPAD_CENTER);
+      await control.flush();
+      await sleep(1200);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-open-wheel-${state.counter++}`);
+      if (!isBirthdayWheelDialog(obs.items)) {
+        const bdayItem = obs.items.find(i => /^(19\d{2}|20\d{2})/.test(i.text.trim()) || i.text.includes('-'));
+        if (bdayItem) {
+          const bdayPt = tapBox(control, bdayItem, obs);
+          await control.tap(bdayPt.x, bdayPt.y);
+          await control.flush();
+          await sleep(1200);
+        }
+        obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-retry-wheel-${state.counter++}`);
+      }
+
+      if (!isBirthdayWheelDialog(obs.items)) {
+        throw new Error('未能唤起生日滚轮选择弹窗');
+      }
+
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-wheel-opened', '生日滚轮弹窗已就绪', log);
+
+      // 三列仿真滑动
+      log.console('[3/5] 执行生日三列仿真滑动 (年/月/日)...');
+      const columns = [
+        { label: '年份', x: Math.round(96 * scaleX) },
+        { label: '月份', x: Math.round(180 * scaleX) },
+        { label: '日期', x: Math.round(260 * scaleX) },
+      ];
+
+      for (const col of columns) {
+        const jitterFromX = col.x + Math.floor(Math.random() * 5 - 2);
+        const jitterToX = col.x + Math.floor(Math.random() * 5 - 2);
+        const startY = Math.round(395 * scaleY) + Math.floor(Math.random() * 6 - 3);
+        const endY = Math.round(280 * scaleY) + Math.floor(Math.random() * 6 - 3);
+        const durationMs = 380 + Math.floor(Math.random() * 80);
+
+        await control.swipe(
+          { x: jitterFromX, y: startY },
+          { x: jitterToX, y: endY },
+          { durationMs, steps: 18 }
+        );
+        await control.flush();
+        await sleep(500);
+      }
+
+      await sleep(600);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-wheel-swiped', '三列滚轮滑动完成', log);
+
+      // 保存生日
+      log.console('[3/5] 点击确定保存所选生日...');
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wheel-confirm-${state.counter++}`);
+      const okItem = obs.items.find(i => i.text.trim() === '确定' || i.text.includes('确定'));
+      if (okItem) {
+        const okPt = tapBox(control, okItem, obs);
+        await control.tap(okPt.x, okPt.y);
+      } else {
+        await control.tap(Math.round(266 * scaleX), Math.round(452 * scaleY));
+      }
+      await control.flush();
+      await sleep(1500);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wheel-dismissed-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-birthday-confirmed', '生日选择确认完成', log);
+
+      // 点击下一步
+      log.console('[4/5] 点击“下一步”进入头像页面...');
+      const nextBtn = obs.items.find(i => i.text.trim() === '下一步' || i.text.includes('下一步'));
+      if (nextBtn) {
+        const nextPt = tapBox(control, nextBtn, obs);
+        await control.tap(nextPt.x, nextPt.y);
+      } else {
+        await control.tap(Math.round(180 * scaleX), Math.round(577 * scaleY));
+      }
+      await control.flush();
+      await sleep(2500);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-after-next-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-avatar-page', '到达头像设置界面', log);
     }
 
-    await sleep(600);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-wheel-swiped', '三列滚轮滑动完成', log);
+    // 分支 3：处于“最后上传一张头像吧”界面或权限弹窗
+    log.console('[5/5] 执行头像点击、素材包网速检测与授权...');
 
-    // 点击确定保存生日
-    log.console('[3/4] 点击确定保存所选生日...');
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wheel-confirm-${state.counter++}`);
-    const okItem = obs.items.find(i => i.text.trim() === '确定' || i.text.includes('确定'));
-    if (okItem) {
-      const okPt = tapBox(control, okItem, obs);
-      await control.tap(okPt.x, okPt.y);
+    // 若当前未弹权限框，则点击头像圆形热区唤起下载或相册
+    if (!isPermissionDialog(obs.items)) {
+      const avatarTitle = obs.items.find(i => i.text.includes('最后上传一张头像') || i.text.includes('五官清晰'));
+      const scaleY = control.screenHeight / Math.max(1, obs.height);
+      let avatarPt;
+      if (avatarTitle) {
+        avatarPt = tapBox(control, avatarTitle, obs, -125);
+      } else {
+        avatarPt = { x: Math.round(control.screenWidth / 2), y: Math.round(280 * scaleY) };
+      }
+      log.console(`[5/5] 点击头像热区 (${avatarPt.x}, ${avatarPt.y})...`);
+      await control.tap(avatarPt.x, avatarPt.y);
+      await control.flush();
+      await sleep(1500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-after-avatar-tap-${state.counter++}`);
+    }
+
+    // 检查是否有风控/系统报错
+    const errText = detectPlatformError(obs.items);
+    if (errText) {
+      throw new Error(`[MOMO_PLATFORM_ERROR] 出现系统异常提示：${errText}`);
+    }
+
+    // 监听是否弹出素材包下载弹窗并检测网速
+    const downloadDeadline = Date.now() + 8000;
+    let proxyRecorded = null;
+
+    while (Date.now() < downloadDeadline) {
+      const isDownloadModal = obs.items.some(i => i.text.includes('下载素材包') || i.text.includes('速度') || i.text.includes('请稍等'));
+      if (isDownloadModal) {
+        const speed = parseDownloadSpeed(obs.items);
+        if (speed) {
+          log.console(`[网速检测] 捕获当前素材包下载网速: ${speed.val} ${speed.unit} (${speed.kbps.toFixed(1)} KB/s)`);
+          if (speed.kbps < 500) {
+            log.console(`[网速过低] 下载速度低于 500 KB/s，执行当前代理获取与记录...`);
+            const [legacy, v1] = await Promise.all([
+              phone.getProxy('legacy').catch(() => null),
+              phone.getProxy('v1').catch(() => null)
+            ]);
+            proxyRecorded = legacy?.addr || v1?.address || '未配置代理或已停止';
+            log.console(`[代理记录] 当前生效代理: ${proxyRecorded}`);
+            await log.file('Recorded proxy before stop due to low speed', { speed, proxyRecorded, legacy, v1 });
+
+            log.console('[优化网速] 正在主动关闭当前代理以恢复满速直连...');
+            await Promise.allSettled([
+              phone.stopProxy('legacy'),
+              phone.stopProxy('v1')
+            ]);
+            log.console('[优化网速] 当前代理已关闭，网速切换为直连高速！');
+          } else {
+            log.console(`[网速正常] 当前下载速度 ${speed.kbps.toFixed(1)} KB/s (>= 500 KB/s)，网速良好。`);
+          }
+          break;
+        }
+      }
+
+      // 如果直接弹出了权限弹窗，说明素材包本地已就绪
+      if (isPermissionDialog(obs.items)) {
+        break;
+      }
+
+      await sleep(1000);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-wait-modal-${state.counter++}`);
+    }
+
+    // 处理系统权限弹窗（若出现则直接点击“允许”）
+    if (isPermissionDialog(obs.items)) {
+      log.console('[5/5] 检测到系统权限弹窗，点击“允许”...');
+      const allowBtn = obs.items.find(i => i.text.trim() === '允许');
+      if (allowBtn) {
+        const allowPt = tapBox(control, allowBtn, obs);
+        await control.tap(allowPt.x, allowPt.y);
+      } else {
+        await control.tap(Math.round(control.screenWidth / 2), Math.round(control.screenHeight * 0.58));
+      }
+      await control.flush();
+      await sleep(2000);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-after-allow-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-permission-allowed', '已点击允许进入相册', log);
+      log.console('[5/5] 已授权“允许”，成功唤起相册选择界面！');
     } else {
-      await control.tap(Math.round(266 * scaleX), Math.round(452 * scaleY));
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-avatar-step-finished', '头像与网速检测阶段现场', log);
     }
-    await control.flush();
-    await sleep(1500);
-
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wheel-dismissed-${state.counter++}`);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-birthday-confirmed', '生日选择确认完成', log);
-
-    // 5. 点击下一步
-    log.console('[4/4] 点击“下一步”提交资料...');
-    const nextBtn = obs.items.find(i => i.text.trim() === '下一步' || i.text.includes('下一步'));
-    if (nextBtn) {
-      const nextPt = tapBox(control, nextBtn, obs);
-      await control.tap(nextPt.x, nextPt.y);
-    } else {
-      await control.tap(Math.round(180 * scaleX), Math.round(577 * scaleY));
-    }
-    await control.flush();
-    await sleep(2500);
-
-    // 截取最终完成画面
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step4-final-${state.counter++}`);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-final-result', '资料完善后下一阶段画面', log);
 
     return {
       ok: true,
       state: 'completed',
       runId,
       nickname,
+      proxyRecorded,
       screenshotsDir,
       lastScreenshotPath,
     };
@@ -332,7 +453,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     await control.close().catch(() => {});
     await worker.close().catch(() => {});
     if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
-      await fs.rm(ocrDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(ocrDir, { recursive: true, force: true });
     }
   }
 }
@@ -360,13 +481,16 @@ function printSummary(result, duration, error = null) {
   console.log('\n' + '='.repeat(60));
   if (result?.ok) {
     console.log('【执行结果】：成功');
-    console.log('【任务名称】：陌陌资料完善 (性别/昵称/生日)');
+    console.log('【任务名称】：陌陌资料完善 (性别/网名/生日/头像授权)');
     console.log('【退出状态码】：0');
-    console.log(`【完成步骤】：选择女生 -> 设置网名[${result.nickname}] -> 仿真滑动生日 -> 下一步`);
+    console.log(`【完成步骤】：性别/网名/生日 -> 点击头像 -> 网速检测/代理控制 -> 点击允许授权`);
+    if (result.proxyRecorded) {
+      console.log(`【记录代理】：${result.proxyRecorded}`);
+    }
     console.log(`【执行耗时】：${duration} 秒`);
   } else {
     console.log('【执行结果】：失败');
-    console.log('【任务名称】：陌陌资料完善 (性别/昵称/生日)');
+    console.log('【任务名称】：陌陌资料完善 (性别/网名/生日/头像授权)');
     console.log('【退出状态码】：1');
     console.log(`【失败原因】：${error?.message || '未知错误'}`);
     const shotPath = error?.lastScreenshotPath || result?.lastScreenshotPath;
@@ -388,7 +512,7 @@ async function main() {
   const startMs = Date.now();
   try {
     if (!options.execute) {
-      logger.console('[提示] 本脚本将选择女生、设置网名“菲菲菲”、仿真滑动选择生日并点击下一步。如需执行，请传入 --execute 参数。');
+      logger.console('[提示] 本脚本执行资料完善全流程。如需执行，请传入 --execute 参数。');
       return;
     }
 
