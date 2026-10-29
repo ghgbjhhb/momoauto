@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * MOMO 资料完善工作流 (第二阶段：选择女生 -> 修改昵称为女名 -> 仿真滑动选择生日 -> 下一步 -> 点击头像/网速监控/等待下载完成/授权允许)
+ * MOMO 资料完善工作流 (第二阶段：选择女生 -> 修改昵称为女名 -> 仿真滑动选择生日 -> 下一步 -> 点击头像/网速监控 -> 网盘传2图 -> 授权允许 -> 点击第一张头像)
  *
  * 业务流程规范（严格参照 GEMINI.md 核心守则）：
  * 1. 状态机识别与防卡死：
@@ -15,8 +15,11 @@
  *    - 实时监听下载弹窗，解析下载速度（如 2.4M/s、320KB/s）；
  *    - 若网速 < 500 KB/s：自动查询并记录当前代理配置，随后主动关闭代理，使网速恢复满速直连；
  *    - 持续轮询等待下载完成（最长 45s），直到系统弹出授权申请；
- * 4. 权限确认：
- *    - 出现系统权限弹窗「允许MOMO陌陌访问您设备上的照片和媒体吗？」，直接点击「允许」进入相册。
+ * 4. 允许前网盘传图与授权允许：
+ *    - 在点击“允许”前，从私有云盘中随机挑选 2 张图片传输至手机相册；
+ *    - 随后点击系统权限弹窗「允许」；
+ * 5. 相册选图：
+ *    - 自动定位相册网格第一张图片（第一行第二列）区域并随机点击，点完后在此处完成停下。
  */
 
 const fs = require('node:fs/promises');
@@ -194,7 +197,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
   await log.file('Setup profile task initialized', { deviceName, resolvedDeviceId, nickname });
 
   log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  log.console(`[执行操作] 陌陌资料完善 (性别/网名/生日 -> 头像点击 -> 网速检测/代理控制 -> 允许权限)`);
+  log.console(`[执行操作] 陌陌资料完善 (性别/网名/生日 -> 头像/网速 -> 云盘传图 -> 允许权限 -> 选取第一张头像)`);
 
   const phone = client.device(resolvedDeviceId);
   const control = await phone.openControl({ udid: target.udid });
@@ -210,7 +213,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     await log.file('Control connected successfully', { screen: `${control.screenWidth}x${control.screenHeight}` });
 
     // 1. 分析起始画面
-    log.console('[1/5] 分析当前屏幕状态...');
+    log.console('[1/6] 分析当前屏幕状态...');
     let obs = await screenshotAndOcr(phone, worker, ocrDir, `step1-inspect-${state.counter++}`);
     lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '01-initial-state', '初始分析画面', log);
 
@@ -222,7 +225,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
     // 分支 1：处于“你的性别是？”界面
     if (isGenderScreen(obs.items)) {
-      log.console('[1/5] 检测到性别选择页，选择“女生”...');
+      log.console('[1/6] 检测到性别选择页，选择“女生”...');
       const femaleItem = obs.items.find(i => i.text.trim() === '女生');
       if (femaleItem) {
         const pt = tapBox(control, femaleItem, obs);
@@ -241,7 +244,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
     // 分支 2：处于“你的昵称和生日是？”界面
     if (isNicknameAndBirthdayScreen(obs.items)) {
-      log.console(`[2/5] 设置女生网名: "${nickname}"...`);
+      log.console(`[2/6] 设置女生网名: "${nickname}"...`);
       const scaleX = control.screenWidth / Math.max(1, obs.width);
       const scaleY = control.screenHeight / Math.max(1, obs.height);
 
@@ -270,7 +273,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '03-nickname-set', '网名填写完成', log);
 
       // 唤起生日滚轮弹窗
-      log.console('[3/5] 唤起生日滚轮选择框...');
+      log.console('[3/6] 唤起生日滚轮选择框...');
       control.key(protocol.KEY_CODES.TAB);
       await control.flush();
       await sleep(300);
@@ -297,7 +300,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '04-wheel-opened', '生日滚轮弹窗已就绪', log);
 
       // 三列仿真滑动
-      log.console('[3/5] 执行生日三列仿真滑动 (年/月/日)...');
+      log.console('[3/6] 执行生日三列仿真滑动 (年/月/日)...');
       const columns = [
         { label: '年份', x: Math.round(96 * scaleX) },
         { label: '月份', x: Math.round(180 * scaleX) },
@@ -324,7 +327,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-wheel-swiped', '三列滚轮滑动完成', log);
 
       // 保存生日
-      log.console('[3/5] 点击确定保存所选生日...');
+      log.console('[3/6] 点击确定保存所选生日...');
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step3-wheel-confirm-${state.counter++}`);
       const okItem = obs.items.find(i => i.text.trim() === '确定' || i.text.includes('确定'));
       if (okItem) {
@@ -340,7 +343,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-birthday-confirmed', '生日选择确认完成', log);
 
       // 点击下一步
-      log.console('[4/5] 点击“下一步”进入头像页面...');
+      log.console('[4/6] 点击“下一步”进入头像页面...');
       const nextBtn = obs.items.find(i => i.text.trim() === '下一步' || i.text.includes('下一步'));
       if (nextBtn) {
         const nextPt = tapBox(control, nextBtn, obs);
@@ -356,20 +359,14 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     }
 
     // 分支 3：处于“最后上传一张头像吧”界面、素材包下载中或权限弹窗
-    log.console('[5/5] 执行头像点击、素材包网速检测与授权...');
+    log.console('[5/6] 执行头像点击、素材包网速检测与授权...');
 
-    // 若当前未在下载也未弹权限框，则点击头像圆形热区唤起下载或相册
+    // 若当前未在下载、未弹权限框、也未展开相册，则点击头像圆形热区唤起下载或相册
     const isDownloadingNow = obs.items.some(i => i.text.includes('下载素材包') || i.text.includes('速度'));
     if (!isPermissionDialog(obs.items) && !isDownloadingNow && !isPhotoPickerScreen(obs.items)) {
-      const avatarTitle = obs.items.find(i => i.text.includes('最后上传一张头像') || i.text.includes('五官清晰'));
       const scaleY = control.screenHeight / Math.max(1, obs.height);
-      let avatarPt;
-      if (avatarTitle) {
-        avatarPt = tapBox(control, avatarTitle, obs, -125);
-      } else {
-        avatarPt = { x: Math.round(control.screenWidth / 2), y: Math.round(280 * scaleY) };
-      }
-      log.console(`[5/5] 点击头像热区 (${avatarPt.x}, ${avatarPt.y})...`);
+      const avatarPt = { x: Math.round(control.screenWidth / 2), y: Math.round(290 * scaleY) };
+      log.console(`[5/6] 点击头像热区 (${avatarPt.x}, ${avatarPt.y})...`);
       await control.tap(avatarPt.x, avatarPt.y);
       await control.flush();
       await sleep(1500);
@@ -388,15 +385,15 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
     let speedChecked = false;
 
     while (Date.now() < downloadDeadline) {
-      // 1. 若跳出系统存储权限弹窗，直接跳出循环进行授权
+      // 1. 若跳出系统存储权限弹窗，直接跳出循环进行传图与授权
       if (isPermissionDialog(obs.items)) {
-        log.console('[5/5] 素材包下载完成或已就绪，检测到系统权限弹窗！');
+        log.console('[5/6] 素材包下载完成或已就绪，检测到系统权限弹窗！');
         break;
       }
 
       // 2. 若直接进入了相册选择页，说明已授权就绪
       if (isPhotoPickerScreen(obs.items)) {
-        log.console('[5/5] 已直接进入相册图片选择界面！');
+        log.console('[5/6] 已直接进入相册图片选择界面！');
         break;
       }
 
@@ -429,7 +426,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
             }
           }
         }
-        log.console('[5/5] 素材包正在下载中，等待下载完毕跳出授权...');
+        log.console('[5/6] 素材包正在下载中，等待下载完毕跳出授权...');
       }
 
       // 4. 检查是否有异常
@@ -442,9 +439,29 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-wait-download-${state.counter++}`);
     }
 
-    // 处理系统权限弹窗（直接点击“允许”）
+    // 在点击允许前，从私有云盘中随机挑选 2 张图片传输至手机
     if (isPermissionDialog(obs.items)) {
-      log.console('[5/5] 点击系统权限弹窗中的“允许”...');
+      log.console('[5/6] 准备在授权前向云机传输 2 张云盘图片...');
+      try {
+        const disk = client.cloudDisk();
+        const list = await disk.list({ channel: '1', size: 100 });
+        const imageRecords = (list.records || []).filter(r => /\.(jpg|jpeg|png|webp)$/i.test(r.name));
+        if (imageRecords.length > 0) {
+          const shuffled = [...imageRecords].sort(() => Math.random() - 0.5);
+          const selected = shuffled.slice(0, 2);
+          log.console(`[云盘传图] 从私有云盘随机挑选 2 张图片传输至手机: ${selected.map(s => s.name).join('、')}...`);
+          await disk.sendToDevices([resolvedDeviceId], selected, { fileType: 'auto' });
+          await sleep(2500);
+          log.console('[云盘传图] 2 张云盘图片已下发至手机相册！');
+        } else {
+          log.console('[云盘传图] 私有云盘未找到可用图片文件，跳过云盘传图');
+        }
+      } catch (err) {
+        log.console(`[云盘传图] 传图提示 (不阻断主流程): ${err.message}`);
+      }
+
+      // 处理系统权限弹窗（直接点击“允许”）
+      log.console('[5/6] 点击系统权限弹窗中的“允许”...');
       const allowBtn = obs.items.find(i => i.text.trim() === '允许');
       if (allowBtn) {
         const allowPt = tapBox(control, allowBtn, obs);
@@ -457,9 +474,46 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-after-allow-${state.counter++}`);
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-permission-allowed', '已点击允许进入相册', log);
-      log.console('[5/5] 已成功点击“允许”，授权完成并进入相册！');
-    } else {
-      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-avatar-step-finished', '头像与网速检测阶段现场', log);
+      log.console('[5/6] 已成功点击“允许”，授权完成并唤起相册！');
+    }
+
+    // 6. 相册内点击第一张头像图片
+    let pickerReady = isPhotoPickerScreen(obs.items);
+    const pickerDeadline = Date.now() + 8000;
+    while (!pickerReady && Date.now() < pickerDeadline) {
+      await sleep(800);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step6-wait-picker-${state.counter++}`);
+      pickerReady = isPhotoPickerScreen(obs.items);
+    }
+
+    if (pickerReady) {
+      log.console('[6/6] 相册已展开，正在选择第一张图片作为头像...');
+      const paiItem = obs.items.find(i => i.text.includes('拍摄'));
+      const scaleX = control.screenWidth / Math.max(1, obs.width);
+      const scaleY = control.screenHeight / Math.max(1, obs.height);
+
+      let targetX, targetY;
+      if (paiItem) {
+        // 第一张图片固定位于“拍摄”右侧第一格 (横向偏移 120 像素)
+        const baseX = (paiItem.centerX + 120) * scaleX;
+        const baseY = (paiItem.centerY - 10) * scaleY;
+        const jitterX = Math.floor(Math.random() * 20 - 10);
+        const jitterY = Math.floor(Math.random() * 20 - 10);
+        targetX = Math.round(baseX + jitterX);
+        targetY = Math.round(baseY + jitterY);
+      } else {
+        targetX = 200 + Math.floor(Math.random() * 20 - 10);
+        targetY = 215 + Math.floor(Math.random() * 20 - 10);
+      }
+
+      log.console(`[6/6] 点击相册第一张头像图片 (坐标: ${targetX}, ${targetY})...`);
+      await control.tap(targetX, targetY);
+      await control.flush();
+      await sleep(2500);
+
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step6-after-photo-${state.counter++}`);
+      lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '09-first-photo-selected', '已点击第一张头像', log);
+      log.console('[6/6] 【完成】已成功点击第一张头像图片，任务保留当前现场等待下一步！');
     }
 
     return {
@@ -508,16 +562,16 @@ function printSummary(result, duration, error = null) {
   console.log('\n' + '='.repeat(60));
   if (result?.ok) {
     console.log('【执行结果】：成功');
-    console.log('【任务名称】：陌陌资料完善 (性别/网名/生日/头像授权)');
+    console.log('【任务名称】：陌陌资料完善 (性别/网名/生日/头像授权/选第一张头像)');
     console.log('【退出状态码】：0');
-    console.log(`【完成步骤】：性别/网名/生日 -> 点击头像 -> 网速检测/代理控制 -> 点击允许授权`);
+    console.log(`【完成步骤】：性别/网名/生日 -> 点击头像 -> 网速检测 -> 云盘传图 -> 允许授权 -> 点击第一张头像`);
     if (result.proxyRecorded) {
       console.log(`【记录代理】：${result.proxyRecorded}`);
     }
     console.log(`【执行耗时】：${duration} 秒`);
   } else {
     console.log('【执行结果】：失败');
-    console.log('【任务名称】：陌陌资料完善 (性别/网名/生日/头像授权)');
+    console.log('【任务名称】：陌陌资料完善 (性别/网名/生日/头像授权/选第一张头像)');
     console.log('【退出状态码】：1');
     console.log(`【失败原因】：${error?.message || '未知错误'}`);
     const shotPath = error?.lastScreenshotPath || result?.lastScreenshotPath;
