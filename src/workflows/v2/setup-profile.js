@@ -1,19 +1,20 @@
 'use strict';
 
 /**
- * MOMO 资料完善工作流 (第二阶段：选择女生 -> 修改昵称为女名 -> 仿真滑动选择生日 -> 下一步 -> 点击头像/网速监控/授权允许)
+ * MOMO 资料完善工作流 (第二阶段：选择女生 -> 修改昵称为女名 -> 仿真滑动选择生日 -> 下一步 -> 点击头像/网速监控/等待下载完成/授权允许)
  *
  * 业务流程规范（严格参照 GEMINI.md 核心守则）：
  * 1. 状态机识别与防卡死：
- *    - 无论停留在 性别页、资料页、还是头像上传页，均可自愈（Reconciliation）自动断点续跑；
+ *    - 无论停留在 性别页、资料页、头像上传页、下载弹窗、还是权限弹窗，均可自愈断点续跑；
  *    - 若界面出现「手机号相关参数错误」或风控异常，立即截图熔断报错，严禁盲目推进；
  * 2. 昵称与生日：
  *    - 女生全等精准匹配；双向彻底清空微信旧昵称；写入女网名（默认“菲菲菲”）；
  *    - TAB 唤起生日滚轮，三列拟人仿真滑动，点击确定保存；
- * 3. 头像与素材包网速检测：
+ * 3. 头像与素材包网速检测与持续等待：
  *    - 点击头像上传圆形热区；
  *    - 实时监听下载弹窗，解析下载速度（如 2.4M/s、320KB/s）；
  *    - 若网速 < 500 KB/s：自动查询并记录当前代理配置，随后主动关闭代理，使网速恢复满速直连；
+ *    - 持续轮询等待下载完成（最长 45s），直到系统弹出授权申请；
  * 4. 权限确认：
  *    - 出现系统权限弹窗「允许MOMO陌陌访问您设备上的照片和媒体吗？」，直接点击「允许」进入相册。
  */
@@ -130,6 +131,13 @@ function isPermissionDialog(items) {
   return items.some(it => {
     const t = normalizeText(it.text);
     return (t.includes('允许') && t.includes('不允许')) || t.includes('访问您设备上的照片') || t.includes('存储权限');
+  });
+}
+
+function isPhotoPickerScreen(items) {
+  return items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('相册') || t.includes('拍摄') || t.includes('所有图片');
   });
 }
 
@@ -347,11 +355,12 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '07-avatar-page', '到达头像设置界面', log);
     }
 
-    // 分支 3：处于“最后上传一张头像吧”界面或权限弹窗
+    // 分支 3：处于“最后上传一张头像吧”界面、素材包下载中或权限弹窗
     log.console('[5/5] 执行头像点击、素材包网速检测与授权...');
 
-    // 若当前未弹权限框，则点击头像圆形热区唤起下载或相册
-    if (!isPermissionDialog(obs.items)) {
+    // 若当前未在下载也未弹权限框，则点击头像圆形热区唤起下载或相册
+    const isDownloadingNow = obs.items.some(i => i.text.includes('下载素材包') || i.text.includes('速度'));
+    if (!isPermissionDialog(obs.items) && !isDownloadingNow && !isPhotoPickerScreen(obs.items)) {
       const avatarTitle = obs.items.find(i => i.text.includes('最后上传一张头像') || i.text.includes('五官清晰'));
       const scaleY = control.screenHeight / Math.max(1, obs.height);
       let avatarPt;
@@ -373,51 +382,69 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
       throw new Error(`[MOMO_PLATFORM_ERROR] 出现系统异常提示：${errText}`);
     }
 
-    // 监听是否弹出素材包下载弹窗并检测网速
-    const downloadDeadline = Date.now() + 8000;
+    // 持续监听素材包下载过程与网速检测，直到下载完成并跳出系统权限弹窗（最长 45 秒）
+    const downloadDeadline = Date.now() + 45000;
     let proxyRecorded = null;
+    let speedChecked = false;
 
     while (Date.now() < downloadDeadline) {
-      const isDownloadModal = obs.items.some(i => i.text.includes('下载素材包') || i.text.includes('速度') || i.text.includes('请稍等'));
-      if (isDownloadModal) {
-        const speed = parseDownloadSpeed(obs.items);
-        if (speed) {
-          log.console(`[网速检测] 捕获当前素材包下载网速: ${speed.val} ${speed.unit} (${speed.kbps.toFixed(1)} KB/s)`);
-          if (speed.kbps < 500) {
-            log.console(`[网速过低] 下载速度低于 500 KB/s，执行当前代理获取与记录...`);
-            const [legacy, v1] = await Promise.all([
-              phone.getProxy('legacy').catch(() => null),
-              phone.getProxy('v1').catch(() => null)
-            ]);
-            proxyRecorded = legacy?.addr || v1?.address || '未配置代理或已停止';
-            log.console(`[代理记录] 当前生效代理: ${proxyRecorded}`);
-            await log.file('Recorded proxy before stop due to low speed', { speed, proxyRecorded, legacy, v1 });
-
-            log.console('[优化网速] 正在主动关闭当前代理以恢复满速直连...');
-            await Promise.allSettled([
-              phone.stopProxy('legacy'),
-              phone.stopProxy('v1')
-            ]);
-            log.console('[优化网速] 当前代理已关闭，网速切换为直连高速！');
-          } else {
-            log.console(`[网速正常] 当前下载速度 ${speed.kbps.toFixed(1)} KB/s (>= 500 KB/s)，网速良好。`);
-          }
-          break;
-        }
-      }
-
-      // 如果直接弹出了权限弹窗，说明素材包本地已就绪
+      // 1. 若跳出系统存储权限弹窗，直接跳出循环进行授权
       if (isPermissionDialog(obs.items)) {
+        log.console('[5/5] 素材包下载完成或已就绪，检测到系统权限弹窗！');
         break;
       }
 
-      await sleep(1000);
-      obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-wait-modal-${state.counter++}`);
+      // 2. 若直接进入了相册选择页，说明已授权就绪
+      if (isPhotoPickerScreen(obs.items)) {
+        log.console('[5/5] 已直接进入相册图片选择界面！');
+        break;
+      }
+
+      // 3. 实时检测素材包下载弹窗与网速
+      const isDownloadModal = obs.items.some(i => i.text.includes('下载素材包') || i.text.includes('速度') || i.text.includes('请稍等'));
+      if (isDownloadModal) {
+        if (!speedChecked) {
+          const speed = parseDownloadSpeed(obs.items);
+          if (speed) {
+            speedChecked = true;
+            log.console(`[网速检测] 捕获当前素材包下载网速: ${speed.val} ${speed.unit} (${speed.kbps.toFixed(1)} KB/s)`);
+            if (speed.kbps < 500) {
+              log.console(`[网速过低] 下载速度低于 500 KB/s，执行当前代理获取与记录...`);
+              const [legacy, v1] = await Promise.all([
+                phone.getProxy('legacy').catch(() => null),
+                phone.getProxy('v1').catch(() => null)
+              ]);
+              proxyRecorded = legacy?.addr || v1?.address || '未配置代理或已停止';
+              log.console(`[代理记录] 当前生效代理: ${proxyRecorded}`);
+              await log.file('Recorded proxy before stop due to low speed', { speed, proxyRecorded, legacy, v1 });
+
+              log.console('[优化网速] 正在主动关闭当前代理以恢复满速直连...');
+              await Promise.allSettled([
+                phone.stopProxy('legacy'),
+                phone.stopProxy('v1')
+              ]);
+              log.console('[优化网速] 当前代理已关闭，网速切换为直连高速！');
+            } else {
+              log.console(`[网速正常] 当前下载速度 ${speed.kbps.toFixed(1)} KB/s (>= 500 KB/s)，网速良好。`);
+            }
+          }
+        }
+        log.console('[5/5] 素材包正在下载中，等待下载完毕跳出授权...');
+      }
+
+      // 4. 检查是否有异常
+      const loopErr = detectPlatformError(obs.items);
+      if (loopErr) {
+        throw new Error(`[MOMO_PLATFORM_ERROR] 出现系统异常提示：${loopErr}`);
+      }
+
+      await sleep(1500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-wait-download-${state.counter++}`);
     }
 
-    // 处理系统权限弹窗（若出现则直接点击“允许”）
+    // 处理系统权限弹窗（直接点击“允许”）
     if (isPermissionDialog(obs.items)) {
-      log.console('[5/5] 检测到系统权限弹窗，点击“允许”...');
+      log.console('[5/5] 点击系统权限弹窗中的“允许”...');
       const allowBtn = obs.items.find(i => i.text.trim() === '允许');
       if (allowBtn) {
         const allowPt = tapBox(control, allowBtn, obs);
@@ -430,7 +457,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
       obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-after-allow-${state.counter++}`);
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-permission-allowed', '已点击允许进入相册', log);
-      log.console('[5/5] 已授权“允许”，成功唤起相册选择界面！');
+      log.console('[5/5] 已成功点击“允许”，授权完成并进入相册！');
     } else {
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '08-avatar-step-finished', '头像与网速检测阶段现场', log);
     }
