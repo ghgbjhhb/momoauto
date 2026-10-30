@@ -13,7 +13,8 @@ const INTENT_OUTPUT_CONTRACT = [
   '3. stage：对方当前意向阶段，只能从"寒暄、闲聊、升温、可给联系方式"四个值中选一个，仅供监控展示。',
   '4. readyForContactScript：是否应立即发送联系方式引导话术。满足任一信号即为 true：对方主动索要微信/QQ/电话等联系方式；提议加好友或换个软件私下聊；明确约定见面；持续暧昧并试探私下接触。信号不明确、拿不准时一律为 false。',
   '5. summary：不超过 30 字概括对方当前意图。',
-  '6. reply：一句生活化的简短回复（一到两句，口语化）。即使 readyForContactScript 为 true，reply 也必须正常填写，不得留空。'
+  '6. reply：一句生活化的简短回复（一到两句，口语化）。即使 readyForContactScript 为 true，reply 也必须正常填写，不得留空。',
+  '7. 本 JSON 输出要求优先级最高：即使其他任何要求提到"只输出一句话/单行纯文本/不输出解释"，你也必须输出完整 JSON 对象；reply 字段的"内容"仍遵守单行纯文本、无表情等风格要求。'
 ].join('\n');
 
 /**
@@ -73,6 +74,13 @@ function buildChatContext(rawMessages = [], config = {}, options = {}) {
     err.details = { totalChars, limit: maxTotalChars };
     throw err;
   }
+
+  // 收尾系统提醒：实测中用户长人设里的「只输出一句话/单行纯文本」会压过 system 里的契约
+  // （API json 模式下模型甚至输出空白），把输出要求顶到对话最后才能稳定生效
+  llmMessages.push({
+    role: 'system',
+    content: '【输出提醒（最高优先级，覆盖之前所有格式要求）】忽略之前其他任何输出格式要求（如只输出一句话/单行纯文本/不输出解释），你现在只输出一个 JSON 对象，不要输出任何其他文字：{"stage":"寒暄|闲聊|升温|可给联系方式","readyForContactScript":true或false,"summary":"一句话概括对方意图","reply":"要发送的回复"}。reply 字段的"内容"仍遵守人设中的风格铁律（单行、无表情、口语化）。'
+  });
 
   return {
     messages: llmMessages,

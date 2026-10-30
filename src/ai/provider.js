@@ -29,13 +29,26 @@ class DeepSeekProvider {
         allowLoopback: true,
         allowPrivate: String(process.env.YUNMOMO_AI_ALLOW_PRIVATE || '').trim() === '1'
       });
-      const response = await bounded((options.fetchFn || globalThis.fetch)(
-        targetUrl, {
-          method: 'POST', signal: controller.signal,
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey, Accept: 'application/json' },
-          body: JSON.stringify({ model: config.model || 'deepseek-chat', messages,
-            temperature: Number(config.temperature ?? .7), max_tokens: Number(config.maxTokens ?? 150), stream: false })
-        }));
+      // JSON 结构化输出：API 层强制返回合法 JSON（契约靠提示词会被用户人设指令压过）。
+      // 部分第三方 OpenAI 兼容网关不支持 response_format，收到 400 时降级为纯提示词约束重试一次。
+      let attemptJsonMode = config.responseFormat === 'json_object';
+      let response;
+      for (;;) {
+        const requestBody = { model: config.model || 'deepseek-chat', messages,
+          temperature: Number(config.temperature ?? .7), max_tokens: Number(config.maxTokens ?? 150), stream: false };
+        if (attemptJsonMode) requestBody.response_format = { type: 'json_object' };
+        response = await bounded((options.fetchFn || globalThis.fetch)(
+          targetUrl, {
+            method: 'POST', signal: controller.signal,
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey, Accept: 'application/json' },
+            body: JSON.stringify(requestBody)
+          }));
+        if (response.status === 400 && attemptJsonMode) {
+          attemptJsonMode = false;
+          continue;
+        }
+        break;
+      }
       if (!response.ok) {
         let serverErrorMsg = '';
         try {

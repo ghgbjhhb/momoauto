@@ -56,10 +56,11 @@ async function generateReply(rawMessages = [], config = null, options = {}) {
     maxTotalChars: options.maxTotalChars
   });
 
-  // 2. 调用模型生成（JSON 契约下抬高 max_tokens 下限，避免输出被截断）
+  // 2. 调用模型生成（JSON 契约下抬高 max_tokens 下限避免截断；responseFormat 让 API 层强制 JSON 输出）
   const callConfig = {
     ...effectiveConfig,
-    maxTokens: Math.max(Number(effectiveConfig.maxTokens ?? 0) || 0, MIN_INTENT_MAX_TOKENS)
+    maxTokens: Math.max(Number(effectiveConfig.maxTokens ?? 0) || 0, MIN_INTENT_MAX_TOKENS),
+    responseFormat: 'json_object'
   };
   const result = await DeepSeekProvider.chat(context.messages, callConfig, {
     signal: options.signal,
