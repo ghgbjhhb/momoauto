@@ -13,6 +13,8 @@ __pycache__/
 .venv-zhtyping/
 .runtime/
 midscene_run/
+.analysis/
+.serena/
 scratch/
 *.zip
 sdk-xuanwu/
