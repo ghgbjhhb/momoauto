@@ -172,6 +172,9 @@ class MomoDatabase {
         lastMessage TEXT,
         lastMessageTime TEXT,
         syncedAt TEXT,
+        lastIntent TEXT,
+        lastIntentStage TEXT,
+        handoffState TEXT,
         createdAt TEXT DEFAULT (datetime('now', 'localtime')),
         updatedAt TEXT DEFAULT (datetime('now', 'localtime'))
       );
@@ -189,6 +192,18 @@ class MomoDatabase {
       CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
       CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contactId);
     `);
+
+    // 旧库迁移：真实设备库已存在时 CREATE TABLE IF NOT EXISTS 不会补列，这里逐列检测补齐
+    const existingColumns = this.db.prepare('PRAGMA table_info(contacts)').all().map(c => c.name);
+    for (const [column, type] of [
+      ['lastIntent', 'TEXT'],
+      ['lastIntentStage', 'TEXT'],
+      ['handoffState', 'TEXT']
+    ]) {
+      if (!existingColumns.includes(column)) {
+        this.db.exec(`ALTER TABLE contacts ADD COLUMN ${column} ${type};`);
+      }
+    }
   }
 
   getContactByName(name) {
@@ -216,6 +231,9 @@ class MomoDatabase {
             lastMessage = COALESCE(?, lastMessage),
             lastMessageTime = COALESCE(?, lastMessageTime),
             syncedAt = COALESCE(?, syncedAt),
+            lastIntent = COALESCE(?, lastIntent),
+            lastIntentStage = COALESCE(?, lastIntentStage),
+            handoffState = COALESCE(?, handoffState),
             updatedAt = ?
         WHERE id = ?
       `);
@@ -224,6 +242,9 @@ class MomoDatabase {
         contact.lastMessage ?? null,
         contact.lastMessageTime ?? null,
         contact.syncedAt ?? null,
+        contact.lastIntent ?? null,
+        contact.lastIntentStage ?? null,
+        contact.handoffState ?? null,
         now,
         existing.id
       );
@@ -231,8 +252,8 @@ class MomoDatabase {
     }
 
     const stmt = this.db.prepare(`
-      INSERT INTO contacts (name, deviceId, lastMessage, lastMessageTime, syncedAt, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO contacts (name, deviceId, lastMessage, lastMessageTime, syncedAt, lastIntent, lastIntentStage, handoffState, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       name,
@@ -240,10 +261,33 @@ class MomoDatabase {
       contact.lastMessage ?? null,
       contact.lastMessageTime ?? null,
       contact.syncedAt ?? null,
+      contact.lastIntent ?? null,
+      contact.lastIntentStage ?? null,
+      contact.handoffState ?? null,
       now,
       now
     );
     return this.getContactByName(name);
+  }
+
+  /**
+   * 记录一次意图分析结果（lastIntent/lastIntentStage，只做展示与审计）
+   */
+  updateContactIntent(name, { lastIntent, lastIntentStage } = {}) {
+    if (!name) return null;
+    return this.upsertContact({
+      name,
+      lastIntent: lastIntent || null,
+      lastIntentStage: lastIntentStage || null
+    });
+  }
+
+  /**
+   * 更新联系方式话术状态机：'' -> sent/blocked/uncertain（uncertain 后绝不自动重发）
+   */
+  updateHandoffState(name, state) {
+    if (!name) return null;
+    return this.upsertContact({ name, handoffState: state || null });
   }
 
   saveMessages(contactId, contactName, messageList = []) {

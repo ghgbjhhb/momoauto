@@ -9,6 +9,8 @@
   const els = {
     mode: document.getElementById('aiMode'),
     systemPrompt: document.getElementById('aiSystemPrompt'),
+    handoffEnabled: document.getElementById('aiHandoffEnabled'),
+    handoffSegments: document.getElementById('aiHandoffSegments'),
     contactName: document.getElementById('aiContactName'),
     maxContacts: document.getElementById('aiMaxContacts'),
     btnSave: document.getElementById('btnSaveAiConfig'),
@@ -43,6 +45,8 @@
         const s = data.settings;
         currentRevision = s.revision || 1;
         if (els.systemPrompt) els.systemPrompt.value = s.systemPrompt || '';
+        if (els.handoffEnabled) els.handoffEnabled.value = s.handoffEnabled === true ? 'on' : 'off';
+        if (els.handoffSegments) els.handoffSegments.value = Array.isArray(s.handoffSegments) ? s.handoffSegments.join('\n\n') : '';
         showStatus(s.ready ? 'AI已就绪' : '后台未配Key', s.ready ? 'success' : 'normal');
       }
     } catch {}
@@ -53,7 +57,9 @@
       showStatus('正在保存…', 'running');
       const payload = {
         expectedRevision: currentRevision,
-        systemPrompt: els.systemPrompt?.value?.trim() || ''
+        systemPrompt: els.systemPrompt?.value?.trim() || '',
+        handoffEnabled: els.handoffEnabled ? els.handoffEnabled.value === 'on' : false,
+        handoffSegments: els.handoffSegments?.value || ''
       };
 
       const res = await fetch('/api/ai-reply/settings', {

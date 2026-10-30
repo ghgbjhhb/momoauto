@@ -125,6 +125,17 @@
                     <label for="aiSystemPrompt">系统提示词</label>
                     <textarea id="aiSystemPrompt" rows="6" placeholder="设置 AI 回复人设、回复口吻、业务引导话术…"></textarea>
                   </div>
+                  <div class="form-item">
+                    <label for="aiHandoffEnabled">联系方式话术连发（AI 判定意向到达后自动执行，发完自动拉黑对方）</label>
+                    <select id="aiHandoffEnabled">
+                      <option value="off" selected>关闭</option>
+                      <option value="on">开启</option>
+                    </select>
+                  </div>
+                  <div class="form-item">
+                    <label for="aiHandoffSegments">话术段落（每段之间空一行，按顺序连发，段间随机间隔 1.5~3 秒）</label>
+                    <textarea id="aiHandoffSegments" rows="6" placeholder="第一段话术&#10;&#10;第二段话术&#10;&#10;第三段话术"></textarea>
+                  </div>
                   <div class="form-row">
                     <div class="form-item">
                       <label for="aiMode">运行模式</label>

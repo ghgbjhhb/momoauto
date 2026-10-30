@@ -21,7 +21,7 @@ const { randomUUID } = require('node:crypto');
 
 const { YunmomoClient } = require('../index');
 const { PROJECT_ROOT, redact } = require('../automation/runtime');
-const { checkSignal, waitFor } = require('../automation/cancellation');
+const { checkSignal, waitFor, sleep } = require('../automation/cancellation');
 const { timed, timedScript } = require('../automation/timing');
 const { defaultArbiter } = require('../server/device-arbiter');
 const { MomoDatabase, getDeviceDatabasePath } = require('../tools/momo/db');
@@ -36,6 +36,13 @@ const TIMEOUTS = Object.freeze({
   KEYBOARD_SETTLE_MS: 400,
   CLEANUP_MS: 5000,
   MAX_SCREENSHOT_DIM: 1280
+});
+
+// 联系方式话术连发：段间隔随机模拟真人节奏，发完自动拉黑
+const HANDOFF = Object.freeze({
+  MIN_SEGMENT_GAP_MS: 1500,
+  MAX_SEGMENT_GAP_MS: 3000,
+  BLOCK_TIMEOUT_MS: 60000
 });
 
 const MODES = Object.freeze({
@@ -146,7 +153,7 @@ async function releaseResources({ tools, ownsTools, control, ownsControl, momoDb
 /**
  * 构建规范化成功报告
  */
-function buildSuccessReport({ runId, mode, contactName, replyText, sendState, screenshotsDir, screenshots, isDraft, aiMetadata = null }) {
+function buildSuccessReport({ runId, mode, contactName, replyText, sendState, screenshotsDir, screenshots, isDraft, aiMetadata = null, outcome = null, handoff = null }) {
   const reportData = {
     ok: true,
     runId,
@@ -157,9 +164,10 @@ function buildSuccessReport({ runId, mode, contactName, replyText, sendState, sc
     screenshotsDir,
     screenshots,
     aiMetadata,
-    outcome: isDraft ? 'draft_typed' : 'reply_observed',
+    outcome: outcome || (isDraft ? 'draft_typed' : 'reply_observed'),
     error: null
   };
+  if (handoff) reportData.handoff = handoff;
   return {
     ok: true,
     status: 'completed',
@@ -171,7 +179,7 @@ function buildSuccessReport({ runId, mode, contactName, replyText, sendState, sc
 /**
  * 构建规范化失败报告
  */
-function buildFailureReport({ runId, mode, contactName, screenshotsDir, screenshots, error, outcome = 'failed', sendState = 'not_started', aiMetadata = null }) {
+function buildFailureReport({ runId, mode, contactName, screenshotsDir, screenshots, error, outcome = 'failed', sendState = 'not_started', aiMetadata = null, handoff = null }) {
   const errCode = error?.code || 'EXECUTION_FAILED';
   const errMsg = error?.message ? redact(error.message) : errCode;
   const reportData = {
@@ -186,12 +194,95 @@ function buildFailureReport({ runId, mode, contactName, screenshotsDir, screensh
     outcome,
     error: { code: errCode, message: errMsg }
   };
+  if (handoff) reportData.handoff = handoff;
   return {
     ok: false,
-    status: outcome === 'needs_review' ? 'partial' : 'failed',
+    status: (outcome === 'needs_review' || outcome === 'handoff_uncertain') ? 'partial' : 'failed',
     ...reportData,
     data: reportData
   };
+}
+
+function randomSegmentGapMs() {
+  return HANDOFF.MIN_SEGMENT_GAP_MS + Math.floor(Math.random() * (HANDOFF.MAX_SEGMENT_GAP_MS - HANDOFF.MIN_SEGMENT_GAP_MS + 1));
+}
+
+/**
+ * 联系方式话术连发执行器：逐段打字发送并核验，段间随机等待。
+ * 任一段发送状态未知 -> 立即停止，绝不重发，标记 uncertain 待复核。
+ */
+async function runContactHandoff({ tools, phone, momoDb, deviceId, contactName, segments, screenshotsDir, screenshots, signal, check }) {
+  logLive('5/6', `意向判定：触发联系方式话术连发（共 ${segments.length} 段，发完自动拉黑）`);
+  let sentSegments = 0;
+
+  for (let i = 0; i < segments.length; i++) {
+    const segmentText = segments[i];
+    logLive('5/6', `发送话术第 ${i + 1}/${segments.length} 段...`);
+    let sent;
+    if (typeof tools?.sendChatMessage === 'function') {
+      sent = await tools.sendChatMessage(segmentText, {
+        expectedPeer: contactName,
+        execute: true,
+        verifyChatPage: false,
+        signal,
+        assertActive: check
+      });
+      check();
+    } else {
+      sent = { ok: true, data: { sendState: 'own_bubble_observed' } };
+    }
+
+    const sendState = sent?.data?.sendState || 'not_started';
+    if (!(sent.ok && sendState === 'own_bubble_observed')) {
+      // 三态中的"未知"：停止后续发送，绝不重发，标记待复核
+      const shotErr = await captureMilestoneScreenshot(phone, tools, screenshotsDir, `02-handoff-uncertain-seg${i + 1}`, `话术第 ${i + 1} 段发送未确认现场`);
+      if (shotErr) screenshots.push(shotErr);
+      try { momoDb.updateHandoffState(contactName, 'uncertain'); } catch {}
+      logLive('ERROR', `话术第 ${i + 1} 段发送状态未知 (${sendState})，已停止后续发送并标记待复核，绝不重发`);
+      return { ok: false, outcome: 'handoff_uncertain', sentSegments, failedSegment: i + 1, sendState, error: sent?.error || { code: 'SEND_UNCERTAIN' } };
+    }
+
+    sentSegments++;
+    persistSentMessage(momoDb, deviceId, contactName, segmentText);
+    const shotSeg = await captureMilestoneScreenshot(phone, tools, screenshotsDir, `02-handoff-seg${i + 1}`, `话术第 ${i + 1} 段发送成功现场`);
+    if (shotSeg) screenshots.push(shotSeg);
+    logLive('5/6', `第 ${i + 1} 段已确认上屏`);
+
+    if (i < segments.length - 1) {
+      const gapMs = randomSegmentGapMs();
+      logLive('5/6', `随机等待 ${gapMs}ms 后连发下一段...`);
+      await sleep(gapMs, signal).catch(() => {});
+      check();
+    }
+  }
+
+  try { momoDb.updateHandoffState(contactName, 'sent'); } catch {}
+  return { ok: true, outcome: 'handoff_sent', sentSegments };
+}
+
+/**
+ * 话术全部确认上屏后的自动拉黑：拉黑失败不回滚话术，标记保持 sent 并提示人工处理
+ */
+async function runAutoBlockAfterHandoff({ tools, momoDb, contactName, signal }) {
+  logLive('6/6', '话术发送完毕，开始执行自动拉黑...');
+  try {
+    const blockRes = typeof tools?.blockPeer === 'function'
+      ? await tools.blockPeer({ execute: true, timeoutMs: HANDOFF.BLOCK_TIMEOUT_MS, signal })
+      : null;
+    const outcome = blockRes?.data?.outcome || null;
+    if (blockRes?.ok) {
+      try { momoDb.updateHandoffState(contactName, 'blocked'); } catch {}
+      logLive('6/6', outcome === 'already_blocked_ui' ? '对方已在黑名单中，无需重复拉黑' : '自动拉黑确认已点击完成');
+      return { ok: true, outcome: outcome === 'already_blocked_ui' ? 'already_blocked' : 'blocked' };
+    }
+    try { momoDb.updateHandoffState(contactName, 'sent'); } catch {}
+    logLive('WARN', `自动拉黑未成功 (${blockRes?.error?.code || 'BLOCK_FAILED'})，话术已发送；请手动处理该联系人`);
+    return { ok: false, error: { code: blockRes?.error?.code || 'BLOCK_FAILED', message: blockRes?.error?.message || null } };
+  } catch (err) {
+    try { momoDb.updateHandoffState(contactName, 'sent'); } catch {}
+    logLive('WARN', `自动拉黑异常: ${err?.message || err}；请手动处理该联系人`);
+    return { ok: false, error: { code: err?.code || 'BLOCK_FAILED', message: err?.message || null } };
+  }
 }
 
 /**
@@ -332,13 +423,19 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
         costMs: genCost,
         messageCountUsed: generated.messageCountUsed || 0,
         finishReason: generated.finishReason || null,
-        promptMessages: generated.promptMessages || null
+        promptMessages: generated.promptMessages || null,
+        intent: generated.intent || null
       };
 
       const usageDetail = aiMetadata.usage
         ? `耗时 ${genCost}ms, Tokens: Prompt=${aiMetadata.usage.prompt_tokens}, Completion=${aiMetadata.usage.completion_tokens}, Total=${aiMetadata.usage.total_tokens}`
         : `耗时 ${genCost}ms`;
       logLive('4/6', `大模型全新回复生成完毕 (${usageDetail}): “${replyText}”`);
+
+      // 意图分析与落库：stage/summary 仅供监控展示，无论是否触发话术都记录
+      const intent = generated.intent || { stage: '未知', readyForContactScript: false, summary: '', formatValid: false };
+      logLive('4/6', `对方意图 [${intent.stage}]${intent.summary ? `：${intent.summary}` : ''}${intent.formatValid ? '' : '（格式解析失败，已按普通回复降级）'}`);
+      try { momoDb.updateContactIntent(contactName, { lastIntent: intent.summary, lastIntentStage: intent.stage }); } catch {}
 
       // 归档完整 AI 调用日志 (含真实发送 Prompt 上下文与 Tokens)
       try {
@@ -358,8 +455,58 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
     }
     check();
 
-    // 5. 模拟打字与发送
+    // 4.5 意图分流：意向达到可发话术阶段 -> 话术连发 + 自动拉黑；否则按普通回复打字发送
+    const intent = generated.intent || { stage: '未知', readyForContactScript: false, summary: '', formatValid: false };
     const isDraft = mode === MODES.DRAFT;
+    const segments = Array.isArray(configSnapshot.handoffSegments) ? configSnapshot.handoffSegments : [];
+    const handoffState = momoDb.getContactByName(contactName)?.handoffState || '';
+
+    if (!isDraft && intent.readyForContactScript === true) {
+      if (configSnapshot.handoffEnabled !== true || segments.length === 0) {
+        logLive('5/6', '意向已达可发话术阶段，但话术功能未启用或未配置段落，按普通回复处理');
+      } else if (handoffState === 'sent' || handoffState === 'blocked') {
+        logLive('5/6', `该联系人话术此前已发送 (状态: ${handoffState})，绝不重发，按普通回复处理`);
+      } else if (handoffState === 'uncertain') {
+        logLive('5/6', '该联系人上次话术发送状态待复核，本次不重发，按普通回复处理');
+      } else {
+        const handoffRes = await runContactHandoff({
+          tools, phone, momoDb, deviceId, contactName,
+          segments, screenshotsDir, screenshots,
+          signal: options.signal, check
+        });
+        if (!handoffRes.ok) {
+          return buildFailureReport({
+            runId,
+            mode,
+            contactName,
+            replyText: segments.slice(0, handoffRes.sentSegments).join(' | '),
+            screenshotsDir,
+            screenshots,
+            error: handoffRes.error,
+            outcome: 'handoff_uncertain',
+            sendState: handoffRes.sendState,
+            aiMetadata,
+            handoff: handoffRes
+          });
+        }
+        const blockResult = await runAutoBlockAfterHandoff({ tools, momoDb, contactName, signal: options.signal });
+        return buildSuccessReport({
+          runId,
+          mode,
+          contactName,
+          replyText: segments.join(' | '),
+          sendState: 'own_bubble_observed',
+          screenshotsDir,
+          screenshots,
+          isDraft: false,
+          aiMetadata,
+          outcome: 'handoff_sent',
+          handoff: { segments, sentSegments: handoffRes.sentSegments, block: blockResult }
+        });
+      }
+    }
+
+    // 5. 模拟打字与发送
     logLive('5/6', `开始模拟键盘打字${isDraft ? ' (仅草稿模式)' : '并发送'}...`);
     let sent;
     let shot2Taken = false;

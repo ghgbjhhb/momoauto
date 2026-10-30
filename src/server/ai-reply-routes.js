@@ -33,7 +33,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
   const pathname = urlObj.pathname;
   const method = req.method.toUpperCase();
 
-  // 1. GET /api/ai-reply/settings (用户侧读取：仅暴露系统提示词及可用状态，不暴露密钥与后端配置)
+  // 1. GET /api/ai-reply/settings (用户侧读取：仅暴露系统提示词、话术配置及可用状态，不暴露密钥与后端配置)
   if (pathname === '/api/ai-reply/settings' && method === 'GET') {
     const deviceId = urlObj.searchParams.get('deviceId');
     const settings = getSanitizedSettings(deviceId);
@@ -43,19 +43,28 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
         systemPrompt: settings.systemPrompt,
         revision: settings.revision,
         ready: Boolean(settings.hasApiKey),
-        model: settings.model
+        model: settings.model,
+        handoffEnabled: settings.handoffEnabled === true,
+        handoffSegments: Array.isArray(settings.handoffSegments) ? settings.handoffSegments : []
       }
     });
     return true;
   }
 
-  // 2. POST /api/ai-reply/settings (用户侧保存：严格仅允许设置系统提示词，禁止修改全局 API Key 与接口)
+  // 2. POST /api/ai-reply/settings (用户侧保存：允许系统提示词与联系方式话术配置，禁止修改全局 API Key 与接口)
   if (pathname === '/api/ai-reply/settings' && method === 'POST') {
-    const { expectedRevision, systemPrompt } = bodyJson || {};
+    const { expectedRevision, systemPrompt, handoffEnabled, handoffSegments } = bodyJson || {};
     try {
       const updates = {};
       if (typeof systemPrompt === 'string') {
         updates.systemPrompt = systemPrompt.trim();
+      }
+      if (handoffEnabled !== undefined) {
+        updates.handoffEnabled = handoffEnabled === true || handoffEnabled === 'true' || handoffEnabled === 'on';
+      }
+      if (handoffSegments !== undefined) {
+        // 接受数组或空行分段文本，归一化由 saveSettings/normalizeSettings 统一处理
+        updates.handoffSegments = handoffSegments;
       }
       const saved = saveSettings(updates, expectedRevision);
       sendJson(res, 200, {
@@ -63,7 +72,9 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
         settings: {
           systemPrompt: saved.systemPrompt,
           revision: saved.revision,
-          ready: Boolean(saved.apiKey && saved.apiKey.trim())
+          ready: Boolean(saved.apiKey && saved.apiKey.trim()),
+          handoffEnabled: saved.handoffEnabled === true,
+          handoffSegments: Array.isArray(saved.handoffSegments) ? saved.handoffSegments : []
         }
       });
     } catch (err) {

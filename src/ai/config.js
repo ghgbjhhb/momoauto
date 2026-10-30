@@ -30,6 +30,9 @@ const DEFAULT_SETTINGS = {
   maxTokens: 150,
   timeoutMs: 15000,
   contextMaxMessages: 60,
+  // 联系方式话术连发：AI 意图判定达到可发阶段时，按顺序连发以下段落并发完成后自动拉黑
+  handoffEnabled: false,
+  handoffSegments: [],
   deviceOverrides: {}
 };
 
@@ -84,6 +87,16 @@ function normalizeSettings(parsed) {
   const hasActive = settings.providers.some(p => p.id === settings.activeProviderId);
   if (!hasActive && settings.providers.length > 0) {
     settings.activeProviderId = settings.providers[0].id;
+  }
+
+  // 话术配置归一化：handoffEnabled 布尔化；handoffSegments 接受数组或空行分段文本，统一存为去空后的字符串数组
+  settings.handoffEnabled = settings.handoffEnabled === true || settings.handoffEnabled === 'true' || settings.handoffEnabled === 'on';
+  if (Array.isArray(settings.handoffSegments)) {
+    settings.handoffSegments = settings.handoffSegments.map(s => String(s ?? '').trim()).filter(Boolean);
+  } else if (typeof settings.handoffSegments === 'string') {
+    settings.handoffSegments = settings.handoffSegments.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+  } else {
+    settings.handoffSegments = [];
   }
 
   const active = settings.providers.find(p => p.id === settings.activeProviderId) || settings.providers[0];
@@ -151,6 +164,8 @@ function getSanitizedSettings(deviceId = null) {
     maxTokens: effective.maxTokens,
     timeoutMs: effective.timeoutMs,
     contextMaxMessages: effective.contextMaxMessages,
+    handoffEnabled: effective.handoffEnabled === true,
+    handoffSegments: Array.isArray(effective.handoffSegments) ? effective.handoffSegments : [],
     hasApiKey: Boolean(effective.apiKey && effective.apiKey.trim()),
     apiKeyMasked: maskApiKey(effective.apiKey),
     updatedAt: settings.updatedAt
