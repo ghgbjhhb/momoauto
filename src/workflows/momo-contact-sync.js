@@ -60,27 +60,32 @@ const STEP_NAMES = {
   momo_recognition: '视觉与OCR识别服务',
 };
 
+/**
+ * 读取调用方注入的本次运行唯一日志 ID（logs/runs/<runId>.log），便于用户直接定位原始日志
+ */
+function scriptRunId() {
+  const runId = String(process.env.YUNMOMO_SCRIPT_RUN_ID ?? '').trim();
+  return runId && !/[\r\n\0]/.test(runId) ? runId : '';
+}
+
 function printContactSyncSummary(result) {
+  const runId = scriptRunId();
   console.log('\n' + '='.repeat(60));
+  console.log(`【执行结果】：${result.ok ? '成功' : '失败'}`);
+  console.log('【任务名称】：MOMO联系人及消息自动入库');
+  if (result.operationId) console.log(`【任务ID】：${result.operationId}`);
+  if (runId) {
+    console.log(`【日志ID】：${runId}`);
+    console.log(`【原始日志】：logs/runs/${runId}.log`);
+  }
   if (result.ok) {
-    console.log('【执行结果】：成功');
-    console.log('【任务名称】：MOMO联系人及消息自动入库');
     const inDb = result.data?.totalMessagesInDatabase ?? ((result.data?.totalMessagesAlreadyStored || 0) + (result.data?.totalMessagesIngested || 0));
     console.log(`【处理统计】：处理 ${result.data?.contactsProcessed || 0} 个联系人，本次视口采集 ${result.data?.totalMessagesCollected || 0} 条，本次新增入库 ${result.data?.totalMessagesIngested || 0} 条，库内已有历史 ${result.data?.totalMessagesAlreadyStored || 0} 条（库内当前总计 ${inDb} 条）`);
     if (result.data?.newContactsAdded) console.log(`【新增联系人】：${result.data.newContactsAdded} 人`);
-    const skipped = result.data?.details?.filter(d => d.skipped) || [];
-    if (skipped.length) {
-      console.log(`【跳过非联系人】：已自动识别并跳过 ${skipped.length} 个非联系人页面（${skipped.map(s => s.contactName).join('、')}）`);
-    }
-    if (result.data?.skippedSnapshots?.length) {
-      console.log('【跳过页面截图】：' + result.data.skippedSnapshots.map(s => s.imagePath).filter(Boolean).join(' , '));
-    }
     if (result.data?.screenshotsDirectory) {
-      console.log(`【全部截图】：共保存 ${result.data.savedScreenshots?.length || 0} 张，目录：${result.data.screenshotsDirectory}`);
+      console.log(`【截图归档】：共 ${result.data.savedScreenshots?.length || 0} 张，目录：${result.data.screenshotsDirectory}`);
     }
   } else {
-    console.log('【执行结果】：失败');
-    console.log('【任务名称】：MOMO联系人及消息自动入库');
     const failureStage = result.error?.stage || result.data?.history?.slice(-1)[0]?.failureStage || '未知步骤';
     const stepDesc = STEP_NAMES[failureStage] || failureStage;
     console.log(`【失败步骤】：${stepDesc}`);
@@ -221,7 +226,7 @@ async function main(argv = process.argv.slice(2)) {
     await fs.writeFile(output.reportPath, serialized, 'utf8');
     await fs.writeFile(output.latestPath, serialized, 'utf8');
 
-    console.log(JSON.stringify(output, null, 2));
+    // 全量 frames/history/截图清单只落盘 report.json，不再打印到用户侧
     printContactSyncSummary(output);
     if (!result.ok) process.exitCode = 1;
   } finally {
@@ -235,6 +240,8 @@ main = require('../automation/timing').timedScript('script.src.workflows.momo-co
 
 if (require.main === module) {
   main().catch(err => {
+    const runId = scriptRunId();
+    if (runId) console.error(`[日志ID: ${runId}] 原始日志: logs/runs/${runId}.log`);
     console.error(JSON.stringify({ ok: false, error: { code: err.code ?? 'ERROR', message: redact(err.message) } }));
     process.exitCode = 1;
   });
@@ -243,4 +250,5 @@ if (require.main === module) {
 module.exports = {
   runMomoContactSync,
   main,
+  scriptRunId,
 };

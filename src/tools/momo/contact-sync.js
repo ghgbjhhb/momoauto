@@ -9,7 +9,7 @@ const { swipePlan, regionClickPlan } = require('../touch-gestures');
 const { SharedRecognitionClient } = require('../../automation/recognition-service');
 const { MomoDatabase, getDeviceDatabasePath } = require('./db');
 const { recognitionData, isChatPage } = require('./recognition-check');
-const { assessAssistantOverlay } = require('./chat-detail-parser');
+const { chatLayout, assessAssistantOverlay } = require('./chat-detail-parser');
 const {
   parseFrame,
   readFrame,
@@ -146,6 +146,17 @@ function originBridge(previous, current) {
 }
 
 /**
+ * 宽松读取键盘开合状态：锚点缺失或布局校验失败时返回 null，不阻断主流程识别
+ */
+function keyboardStateOf(detail) {
+  try {
+    return chatLayout(detail);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 校验当前抓取序列是否已完整衔接数据库中的尾部锚点记录（拓扑子序列匹配，容忍单条历史遗漏）
  */
 function matchesTailAnchor(msgs, anchors) {
@@ -245,6 +256,7 @@ async function syncMomoContacts(host, options, ctx) {
   let control = null;
   let session = null;
   let database = null;
+  let keyboardCollapseBudget = 3;
   const collected = [];
 
   function assertConnected() {
@@ -357,6 +369,25 @@ async function syncMomoContacts(host, options, ctx) {
         } else {
           if (overlay.candidate) {
             log('assistant_overlay_rejected', { reason: isCard ? 'system_card' : overlay.reason });
+          }
+
+          // 软键盘升起会挤占聊天下半屏，底部气泡可能被遮挡或误裁；确认键盘开启时先按返回键收起再读帧
+          const layout = keyboardStateOf(obs.detail);
+          if (layout?.keyboard === 'open') {
+            if (keyboardCollapseBudget > 0) {
+              keyboardCollapseBudget -= 1;
+              assertConnected();
+              ctx.stage = 'dispatch';
+              log('keyboard_collapse_dispatched', { inputCenterRatio: Number(layout.inputCenterRatio.toFixed(3)) });
+              if (typeof control.back === 'function') {
+                await control.back();
+                if (typeof control.flush === 'function') await control.flush();
+              }
+              await ctx.sleep(settings.settleMs);
+              lastReason = '软键盘已收起，重新确认画面';
+              continue;
+            }
+            log('keyboard_collapse_skipped', { reason: 'budget_exhausted', inputCenterRatio: Number(layout.inputCenterRatio.toFixed(3)) });
           }
 
           const frame = await readFrame(pool, obs, obs.request, promise => ctx.wait(promise));
