@@ -23,6 +23,7 @@
 ## 开发维护
 
 - [项目目录与维护约定](PROJECT-STRUCTURE.md)
+- [控制台框架重构安排](APP-FRAMEWORK-REFACTOR-PLAN.md)
 - [运行依赖](../requirements/README.md)
 - [网页侧栏映射](TOOLBAR.md)
 - [协议说明](PROTOCOL.md)
