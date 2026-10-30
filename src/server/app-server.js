@@ -1067,7 +1067,7 @@ function json(response, status, value, headers = {}) {
 async function staticFile(response, pathname) {
   let requested = pathname === '/' ? 'index.html' : pathname.slice(1);
   if (pathname === '/login' || pathname === '/login/') requested = 'login.html';
-  if (pathname === '/admin' || pathname === '/admin/' || pathname.startsWith('/admin/')) requested = 'admin.html';
+  if (pathname === '/admin' || pathname === '/admin/' || (pathname.startsWith('/admin/') && !path.extname(pathname))) requested = 'admin.html';
   if (!requested || requested.includes('..') || requested.includes('\\')) {
     json(response, 404, { ok: false, error: '页面不存在' });
     return;

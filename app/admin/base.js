@@ -1,0 +1,372 @@
+'use strict';
+
+'use strict';
+
+// 全局防御：彻底封杀浏览器原生的 alert, confirm, prompt，无缝重定向到优雅的 Toast 与自研模态框
+window.alert = function (message) {
+  if (typeof showToast === 'function') {
+    showToast(String(message), 'info');
+  } else {
+    console.warn('[Alert Blocked]:', message);
+  }
+};
+window.confirm = function (message) {
+  console.warn('[Confirm Blocked - please use showConfirm]:', message);
+  return false;
+};
+window.prompt = function (message, defaultValue) {
+  console.warn('[Prompt Blocked]:', message);
+  return defaultValue || '';
+};
+
+let currentUser = null;
+let currentTab = 'cluster';
+
+// Tab Configuration & Subpage Routing
+const TAB_CONFIG = {
+  cluster: { title: '设备集群与控制台', path: '/admin/cluster' },
+  disk: { title: '资源云盘 (真参/头像)', path: '/admin/disk' },
+  users: { title: '用户管理', path: '/admin/users' },
+  cards: { title: '卡密生成与分发', path: '/admin/cards' },
+  pool: { title: '设备池调度映射', path: '/admin/pool' },
+  ai: { title: 'AI全局设置', path: '/admin/ai' },
+  logs: { title: '系统运行日志', path: '/admin/logs' },
+  sms: { title: '接码平台管理 (玄武API)', path: '/admin/sms' },
+};
+
+// DOM Elements
+const adminUserEmail = document.getElementById('adminUserEmail');
+const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+const navItems = document.querySelectorAll('.nav-item');
+const tabContents = document.querySelectorAll('.tab-content');
+const navErrorBadge = document.getElementById('navErrorBadge');
+
+// Users DOM
+const statUsersCount = document.getElementById('statUsersCount');
+const statActiveUsersCount = document.getElementById('statActiveUsersCount');
+const statBannedUsersCount = document.getElementById('statBannedUsersCount');
+const usersTableBody = document.getElementById('usersTableBody');
+const refreshUsersBtn = document.getElementById('refreshUsersBtn');
+
+// Cards DOM
+const generateCardsForm = document.getElementById('generateCardsForm');
+const benefitCheckCloud = document.getElementById('benefitCheckCloud');
+const benefitCheckZhencan = document.getElementById('benefitCheckZhencan');
+const benefitCheckIp = document.getElementById('benefitCheckIp');
+const cardDurationDays = document.getElementById('cardDurationDays');
+const cardZhencanCount = document.getElementById('cardZhencanCount');
+const cardIpDays = document.getElementById('cardIpDays');
+const cardCount = document.getElementById('cardCount');
+const cardBatchTag = document.getElementById('cardBatchTag');
+const cardFilterType = document.getElementById('cardFilterType');
+const cardFilterStatus = document.getElementById('cardFilterStatus');
+const refreshCardsBtn = document.getElementById('refreshCardsBtn');
+const cardsTableBody = document.getElementById('cardsTableBody');
+const cardsResultModal = document.getElementById('cardsResultModal');
+const closeCardsModalBtn = document.getElementById('closeCardsModalBtn');
+const batchCardsOutput = document.getElementById('batchCardsOutput');
+const copyAllCardsBtn = document.getElementById('copyAllCardsBtn');
+const downloadCardsTxtBtn = document.getElementById('downloadCardsTxtBtn');
+
+// Pool DOM
+const statPoolTotal = document.getElementById('statPoolTotal');
+const statPoolAllocated = document.getElementById('statPoolAllocated');
+const statPoolIdle = document.getElementById('statPoolIdle');
+const poolTableBody = document.getElementById('poolTableBody');
+const refreshPoolBtn = document.getElementById('refreshPoolBtn');
+
+// Logs DOM
+const adminTerminalOutput = document.getElementById('adminTerminalOutput');
+const adminLogViewport = document.getElementById('adminLogViewport');
+const adminLogSearch = document.getElementById('adminLogSearch');
+const clearAdminLogSearchBtn = document.getElementById('clearAdminLogSearchBtn');
+const adminLogAutoScroll = document.getElementById('adminLogAutoScroll');
+const adminLogCopyBtn = document.getElementById('adminLogCopyBtn');
+const adminLogClearBtn = document.getElementById('adminLogClearBtn');
+const adminLogRefreshBtn = document.getElementById('adminLogRefreshBtn');
+const logLevelButtons = document.querySelectorAll('.log-level-btn');
+
+let activeLogLevel = 'ALL';
+let allSystemLogs = [];
+let logPollTimer = null;
+
+function formatDate(ts) {
+  if (!ts) return '--';
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function formatRemaining(ms) {
+  if (!ms || ms <= 0) return '<span style="color:#ff4d4f; font-weight:600;">已到期</span>';
+  const totalSec = Math.floor(ms / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  if (days > 0) return `${days} 天 ${hours} 小时`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
+  return `${minutes} 分钟`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// --- 全局通用 Toast 浮动提示条 (轻量无感，不阻断操作，Ant Design 现代微型浮条) ---
+let toastTimer = null;
+function showToast(message, type = 'info', duration = 2200) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+
+  toast.className = 'toast visible';
+  if (type === 'success') {
+    toast.classList.add('success');
+    toast.innerHTML = `<span style="color:#52c41a; font-size:15px; font-weight:700; line-height:1; display:inline-flex;">✓</span> <span>${escapeHtml(message)}</span>`;
+  } else if (type === 'error') {
+    toast.classList.add('error');
+    toast.innerHTML = `<span style="color:#ff4d4f; font-size:15px; font-weight:700; line-height:1; display:inline-flex;">✕</span> <span>${escapeHtml(message)}</span>`;
+  } else {
+    toast.innerHTML = `<span style="color:#1677ff; font-size:15px; line-height:1; display:inline-flex;">ℹ</span> <span>${escapeHtml(message)}</span>`;
+  }
+
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('visible');
+  }, duration);
+}
+
+// --- 全局风格一致的模态确认窗口 (替换丑陋且不搭调的原生 confirm) ---
+function showConfirm({ title = '确认操作', desc = '', okText = '确定', cancelText = '取消', isDanger = true, icon = '⚠️' } = {}) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('adminConfirmModal');
+    const titleEl = document.getElementById('confirmModalTitle');
+    const descEl = document.getElementById('confirmModalDesc');
+    const okBtn = document.getElementById('confirmModalOkBtn');
+    const cancelBtn = document.getElementById('confirmModalCancelBtn');
+    const iconEl = document.getElementById('confirmModalIcon');
+
+    if (!modal) return resolve(false);
+
+    if (titleEl) titleEl.textContent = title;
+    if (descEl) descEl.innerHTML = desc;
+    if (okBtn) {
+      okBtn.textContent = okText;
+      okBtn.className = `btn-action-sm ${isDanger ? 'danger' : ''}`;
+      if (isDanger) {
+        okBtn.style.background = '#ff4d4f';
+        okBtn.style.color = '#ffffff';
+        okBtn.style.borderColor = '#ff4d4f';
+      } else {
+        okBtn.style.background = '#1677ff';
+        okBtn.style.color = '#ffffff';
+        okBtn.style.borderColor = '#1677ff';
+      }
+    }
+    if (cancelBtn) cancelBtn.textContent = cancelText;
+    if (iconEl) {
+      iconEl.textContent = icon;
+      iconEl.style.background = isDanger ? '#fff2f0' : '#e6f4ff';
+      iconEl.style.borderColor = isDanger ? '#ffccc7' : '#91caff';
+      iconEl.style.color = isDanger ? '#ff4d4f' : '#1677ff';
+    }
+
+    modal.style.display = 'flex';
+
+    const cleanup = () => {
+      modal.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onBackdrop);
+    };
+
+    const onOk = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+
+    const onBackdrop = (e) => {
+      if (e.target === modal) {
+        cleanup();
+        resolve(false);
+      }
+    };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onBackdrop);
+  });
+}
+
+// 1. Auth check
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+    if (!data.ok || !data.user || data.user.role !== 'admin') {
+      location.href = '/login.html';
+      return;
+    }
+    currentUser = data.user;
+    if (adminUserEmail) {
+      adminUserEmail.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>管理员: ${escapeHtml(currentUser.email)}</span>
+      `;
+    }
+  } catch {
+    location.href = '/login.html';
+  }
+}
+
+// 2. Subpage URL Router
+function getTabFromUrl() {
+  const pathname = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  for (const key of Object.keys(TAB_CONFIG)) {
+    if (pathname.endsWith('/' + key) || pathname === '/admin/' + key) return key;
+  }
+  const hash = (window.location.hash || '').replace('#', '').toLowerCase();
+  if (TAB_CONFIG[hash]) return hash;
+  return 'cluster';
+}
+
+function switchTab(targetTab, { updateHistory = true } = {}) {
+  if (!TAB_CONFIG[targetTab]) targetTab = 'cluster';
+  currentTab = targetTab;
+
+  // Update Sidebar
+  navItems.forEach(item => {
+    const tabKey = item.getAttribute('data-tab');
+    item.classList.toggle('active', tabKey === targetTab);
+  });
+
+  // Update Tab Content Sections
+  tabContents.forEach(section => {
+    const tabKey = section.id.replace('tab-', '');
+    section.classList.toggle('active', tabKey === targetTab);
+  });
+
+  // Update Browser Address & Title
+  const config = TAB_CONFIG[targetTab];
+  document.title = `${config.title} - momo全托管后台`;
+  if (updateHistory && window.location.pathname !== config.path) {
+    history.pushState({ tab: targetTab }, '', config.path);
+  }
+
+  // Trigger Data Loaders
+  if (targetTab === 'disk') loadAdminDisk();
+  else if (targetTab === 'ai') loadAdminAiSettings();
+  else if (targetTab === 'sms') loadSmsManagement();
+  else if (targetTab === 'users') loadUsers();
+  else if (targetTab === 'cards') loadCards();
+  else if (targetTab === 'pool') loadPool();
+  else if (targetTab === 'logs') {
+    getSanitizedLogSearch();
+    syncAdminLogSearchClearBtn();
+    renderSystemLogs();
+    fetchServerLogs();
+  }
+}
+
+// Navigation Click Handling
+navItems.forEach(item => {
+  item.addEventListener('click', event => {
+    event.preventDefault();
+    const targetTab = item.getAttribute('data-tab');
+    switchTab(targetTab, { updateHistory: true });
+  });
+});
+
+// Popstate (Browser Back / Forward)
+window.addEventListener('popstate', () => {
+  switchTab(getTabFromUrl(), { updateHistory: false });
+});
+
+// Logout
+if (adminLogoutBtn) {
+  adminLogoutBtn.addEventListener('click', async () => {
+    const confirmed = await showConfirm({
+      title: '确认退出登录？',
+      desc: '退出后需要重新输入管理员账号与密码方可访问后台。',
+      okText: '退出登录',
+      isDanger: false,
+      icon: '🚪'
+    });
+    if (!confirmed) return;
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login.html';
+  });
+}
+
+// 修改当前账号密码
+const adminPasswordBtn = document.getElementById('adminPasswordBtn');
+const adminPasswordModal = document.getElementById('adminPasswordModal');
+if (adminPasswordBtn && adminPasswordModal) {
+  const currentInput = document.getElementById('pwdCurrentInput');
+  const newInput = document.getElementById('pwdNewInput');
+  const confirmInput = document.getElementById('pwdConfirmInput');
+  const errorBox = document.getElementById('pwdModalError');
+  const okBtn = document.getElementById('pwdModalOkBtn');
+  const cancelBtn = document.getElementById('pwdModalCancelBtn');
+
+  const closePasswordModal = () => {
+    adminPasswordModal.style.display = 'none';
+    [currentInput, newInput, confirmInput].forEach(input => { if (input) input.value = ''; });
+    if (errorBox) errorBox.textContent = '';
+  };
+
+  adminPasswordBtn.addEventListener('click', () => {
+    adminPasswordModal.style.display = 'flex';
+    if (currentInput) currentInput.focus();
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', closePasswordModal);
+
+  if (okBtn) {
+    okBtn.addEventListener('click', async () => {
+      const currentPassword = currentInput?.value || '';
+      const newPassword = newInput?.value || '';
+      if (newPassword.length < 8) {
+        if (errorBox) errorBox.textContent = '新密码长度至少需要 8 位';
+        return;
+      }
+      if (newPassword !== confirmInput?.value) {
+        if (errorBox) errorBox.textContent = '两次输入的新密码不一致';
+        return;
+      }
+      okBtn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, newPassword })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '密码修改失败');
+        showToast('密码已更新，即将跳转到登录页…', 'success');
+        setTimeout(() => { location.href = '/login.html'; }, 1200);
+      } catch (err) {
+        if (errorBox) errorBox.textContent = err.message;
+        okBtn.disabled = false;
+      }
+    });
+  }
+}
+
+
+function debounce(fn, delay = 300) {
+  let timer = null;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
