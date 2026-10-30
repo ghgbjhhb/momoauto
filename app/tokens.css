@@ -108,12 +108,12 @@
   --bg-overlay: rgba(16, 24, 40, 0.4);
 
   --text-1: #171a20;
-  --text-2: #5b6472;
-  --text-3: #6b7484;
+  --text-2: #4f5866;
+  --text-3: #626b7b;
   --text-on-accent: #ffffff;
 
-  --border: #e2e5ea;
-  --border-strong: #c9cfd9;
+  --border: #d8dde5;
+  --border-strong: #b4bcc8;
 
   --accent: var(--blue-8);
   --accent-hover: var(--blue-9);
@@ -154,8 +154,8 @@
   --text-3: #8b8b94;
   --text-on-accent: #0b0b0d;
 
-  --border: #2e2e34;
-  --border-strong: #414148;
+  --border: #34343c;
+  --border-strong: #4d4d56;
 
   --accent: var(--blue-4);
   --accent-hover: var(--blue-3);

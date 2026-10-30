@@ -908,8 +908,8 @@ body {
 }
 
 .step-node {
-  background: var(--bg-subtle);
-  border: 1px solid transparent;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-6);
   height: var(--h-control);
   padding: 0 var(--sp-8);
@@ -923,8 +923,8 @@ body {
 }
 
 .step-node:hover {
-  background: var(--bg-surface);
-  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  border-color: var(--text-3);
 }
 
 .step-node:active {
