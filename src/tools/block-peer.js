@@ -13,7 +13,6 @@ const { performance } = require('node:perf_hooks');
 const { boolean, number, fail } = require('./runtime');
 const { screenshot } = require('./screenshot');
 const { clickPlan } = require('./touch-gestures');
-const { chatLayout } = require('./momo/chat-detail-parser');
 const { RapidOcrWorker } = require('../automation/ocr');
 
 // ====================================================
@@ -42,33 +41,38 @@ class ScreenText {
 }
 
 // ====================================================
-// 2. 页面与菜单布局分析 (Block Layout & Avatar)
+// 2. 顶栏头像定位 (Header Avatar)
+//
+// 拉黑流只点右上角头像，不做整页锚点校验，也不受聊天助手面板遮挡影响；
+// 点错页面的风险由后续 OCR 确认「聊天设置页 + 拉黑行」兜底。
 // ====================================================
 
 function topChatAvatar(view) {
-  const layout = chatLayout(view);
+  const { width: w, height: h } = view ?? {};
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 100 || h < 200) {
+    fail('VISION_PROTOCOL_ERROR', 'Model 2 returned invalid dimensions');
+  }
   if (!Array.isArray(view.avatars)) fail('VISION_PROTOCOL_ERROR', 'Model 2 avatar list is missing');
-  const { width: w, height: h } = layout;
-  const avatars = view.avatars.map(item => {
+  const back = view.elements?.back_btn?.box;
+  const backY = Array.isArray(back) && back.length === 4 && back.every(Number.isFinite)
+    ? (back[1] + back[3]) / 2 : null;
+  if (backY === null) fail('TOP_AVATAR_NOT_FOUND', 'Chat header back button is unavailable for avatar row alignment');
+  const inHeader = item => {
     const b = item?.box;
     if (item?.class !== 'avatar' || !Array.isArray(b) || b.length !== 4 || !b.every(Number.isFinite) ||
-        b[0] < 0 || b[1] < 0 || b[2] > w || b[3] > h || b[0] >= b[2] || b[1] >= b[3] ||
-        !Number.isFinite(item.confidence)) fail('VISION_PROTOCOL_ERROR', 'Model 2 returned an invalid avatar');
-    return { box: b, x: (b[0] + b[2]) / 2, y: (b[1] + b[3]) / 2, confidence: item.confidence };
-  }).sort((a, b) => a.y - b.y);
-  const first = avatars[0];
-  if (!first) fail('TOP_AVATAR_NOT_FOUND', 'No model 2 avatar was found in the chat header');
-  const [x1, y1, x2, y2] = first.box;
-  const back = view.elements.back_btn.box;
-  if (first.confidence < .28 || first.x < w * .70 || y1 < h * .025 || y2 > h * .16 ||
-      x2 - x1 < w * .04 || x2 - x1 > w * .18 ||
-      Math.abs(first.y - (back[1] + back[3]) / 2) > h * .04) {
-    fail('TOP_AVATAR_NOT_FOUND', 'The topmost detected avatar is not the top-right chat header avatar');
+        !Number.isFinite(item.confidence)) return null;
+    const [x1, y1, x2, y2] = b;
+    if (x1 < 0 || y1 < 0 || x2 > w || y2 > h || x1 >= x2 || y1 >= y2) return null;
+    const x = (x1 + x2) / 2, y = (y1 + y2) / 2;
+    // 顶栏头像 = 右上区域 + 与返回键同一行；消息气泡头像天然落在区域外
+    return x >= w * .70 && y >= h * .025 && y <= h * .16 && Math.abs(y - backY) <= h * .04
+      ? { box: b, x, y, confidence: item.confidence } : null;
+  };
+  const best = view.avatars.map(inHeader).filter(Boolean).sort((a, b) => b.confidence - a.confidence)[0];
+  if (!best || best.confidence < .28) {
+    fail('TOP_AVATAR_NOT_FOUND', 'No top-right chat header avatar aligned with the back button');
   }
-  if (avatars.slice(1).some(item => Math.abs(item.y - first.y) < h * .025)) {
-    fail('TOP_AVATAR_AMBIGUOUS', 'More than one avatar occupies the top chat header row');
-  }
-  return first;
+  return best;
 }
 
 const normalized = value => (value || '').replace(/\s+/g, '');
@@ -121,7 +125,7 @@ function blockPage(ocr, minimumScore = .55) {
 // ====================================================
 
 const BLOCK_OPTIONS = ['timeoutMs', 'signal', 'execute', 'dryRun', 'confidence', 'minimumScore',
-  'pollMs', 'stepTimeoutMs', 'stableObservations'];
+  'pollMs', 'stepTimeoutMs'];
 
 async function blockPeer(host, options, ctx) {
   const settings = { execute: boolean(options.execute ?? false, 'execute'),
@@ -129,8 +133,7 @@ async function blockPeer(host, options, ctx) {
     confidence: number(options.confidence ?? .35, 'confidence', .28, .95, false),
     minimumScore: number(options.minimumScore ?? .55, 'minimumScore', .5, 1, false),
     pollMs: number(options.pollMs ?? 250, 'pollMs', 100, 2000),
-    stepTimeoutMs: number(options.stepTimeoutMs ?? 15000, 'stepTimeoutMs', 1000, 30000),
-    stableObservations: number(options.stableObservations ?? 2, 'stableObservations', 2, 4) };
+    stepTimeoutMs: number(options.stepTimeoutMs ?? 15000, 'stepTimeoutMs', 1000, 30000) };
   if (!settings.execute || settings.dryRun) return { status: 'planned', data: { app: 'momo', execute: false,
     avatarSelection: 'model2_topmost_header_avatar_only', steps: ['click_topmost_header_avatar', 'click_block_text_in_chat_settings',
       'click_block_in_confirmation_dialog'], note: 'No screenshots, model startup or phone input in preview' } };
@@ -167,7 +170,7 @@ async function blockPeer(host, options, ctx) {
       await host._executeGesture(control, screen => {
         checkControl(); fresh();
         return clickPlan(target.x, target.y, { coordinateSpace: { width: frame.shot.width, height: frame.shot.height },
-          holdMs: { min: 65, max: 105 }, jitterPx: 1 }, screen);
+          holdMs: 80, jitterPx: 1 }, screen);
       }, ctx, 'click');
       report[role + 'ClickSent'] = true; record(role + '_clicked');
     } finally { ctx.data = report; }
@@ -192,33 +195,22 @@ async function blockPeer(host, options, ctx) {
           ((!current && !previous.target) || (current && previous.target &&
             Math.hypot(current.x - previous.target.x, current.y - previous.target.y) < frame.shot.height * .015));
         stable = same ? stable + 1 : 1; previous = frame.page;
-        if (stable >= settings.stableObservations) return frame;
+        if (stable >= 2) return frame; // 连续两次同景观测才算稳定，避免点进过渡动画
       } else { stable = 0; previous = null; }
       await ctx.sleep(settings.pollMs);
     }
     fail(code, message);
   }
   try {
-    let frame, previous, header;
-    for (let index = 0; index < settings.stableObservations; index++) {
-      frame = await capture(); ctx.stage = 'top_avatar_detect';
-      const view = await vision.inspect(frame.shot.image, settings, ctx);
-      if (view.width !== frame.shot.width || view.height !== frame.shot.height) fail('VISION_PROTOCOL_ERROR', 'Avatar coordinates do not match the screenshot');
-      report.lastObservation = { source: 'model2', scene: 'chat_detail', avatars: view.avatars };
-      const avatar = topChatAvatar(view);
-      if (!Array.isArray(view.headerSignature) || view.headerSignature.length !== 384 || !view.headerSignature.every(Number.isFinite)) {
-        fail('VISION_PROTOCOL_ERROR', 'Chat header signature is invalid');
-      }
-      if (header && view.headerSignature.reduce((sum, value, i) => sum + Math.abs(value - header[i]), 0) / header.length > 18) {
-        fail('CHAT_CHANGED', 'Chat header changed before clicking the avatar');
-      }
-      header = view.headerSignature;
-      if (previous && Math.hypot(avatar.x - previous.x, avatar.y - previous.y) > frame.shot.height * .015) {
-        fail('TOP_AVATAR_UNSTABLE', 'Top header avatar moved between observations');
-      }
-      report.avatar = avatar; previous = avatar;
-      if (index + 1 < settings.stableObservations) await ctx.sleep(settings.pollMs);
+    // 单次观测即点头像：点击后由 waitPage 用 OCR 确认落在聊天设置页，页面过渡导致的误点会安全失败
+    let frame = await capture();
+    ctx.stage = 'top_avatar_detect';
+    const view = await vision.inspect(frame.shot.image, settings, ctx);
+    if (view.width !== frame.shot.width || view.height !== frame.shot.height) {
+      fail('VISION_PROTOCOL_ERROR', 'Avatar coordinates do not match the screenshot');
     }
+    report.lastObservation = { source: 'model2', scene: 'chat_detail', avatars: view.avatars };
+    report.avatar = topChatAvatar(view);
     await tap(frame, report.avatar, 'avatar');
     frame = await waitPage(page => page.scene === 'chat_settings' && (page.target || page.alreadyBlocked),
       'BLOCK_MENU_NOT_FOUND', 'Chat settings and its exact block row were not confirmed');
@@ -231,6 +223,21 @@ async function blockPeer(host, options, ctx) {
       'Block dialog with its explanation, Cancel and Block buttons was not confirmed');
     await tap(frame, frame.page.target, 'confirmation');
     report.outcome = 'confirmation_clicked';
+    // 拉黑是否生效的权威凭证是 MOMO 自己弹出的「拉黑成功」toast；
+    // 读到即确证，读不到（竞态/时机）保持 confirmation_clicked 未知态，不判失败。
+    try {
+      await ctx.sleep(900);
+      const confirmedFrame = await capture();
+      const confirmedOcr = await text.read(confirmedFrame.shot, ctx);
+      checkControl();
+      if (confirmedOcr.items.some(item => item.text === '拉黑成功')) {
+        report.blockedUiConfirmed = true;
+        report.outcome = 'blocked_confirmed';
+        record('block_toast_confirmed');
+      }
+    } catch (error) {
+      if (ctx.signal?.aborted || error?.code === 'CANCELLED') throw error;
+    }
     return { status: 'sent', data: report };
   } finally {
     ctx.data = report;

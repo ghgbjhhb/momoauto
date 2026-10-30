@@ -136,18 +136,21 @@ async function runMomoBlockPeerOnce(client, deviceId, options = {}) {
 
     const outcome = result.data?.outcome || 'confirmation_clicked';
     const alreadyBlocked = outcome === 'already_blocked_ui';
+    const confirmed = outcome === 'blocked_confirmed';
     logLive('4/4', alreadyBlocked
       ? '对方已在黑名单中 (聊天设置里已是解除拉黑入口)，无需重复拉黑'
-      : '拉黑确认已点击完成，对方已被加入黑名单');
+      : confirmed
+        ? '拉黑成功 toast 已确认，对方已被加入黑名单'
+        : '拉黑确认已点击完成 (toast 未捕获，结果待核验)');
 
     return {
       ok: true,
       status: 'completed',
       contactName,
-      outcome: alreadyBlocked ? 'already_blocked' : 'blocked',
+      outcome: alreadyBlocked ? 'already_blocked' : confirmed ? 'blocked_confirmed' : 'blocked',
       screenshotsDir,
       screenshots,
-      data: { ok: true, contactName, outcome: alreadyBlocked ? 'already_blocked' : 'blocked', blockPeerReport: result.data || null }
+      data: { ok: true, contactName, outcome: alreadyBlocked ? 'already_blocked' : confirmed ? 'blocked_confirmed' : 'blocked', blockPeerReport: result.data || null }
     };
   } catch (error) {
     logLive('ERROR', `拉黑工作流异常: [${error?.code || 'ERROR'}] ${error?.message || error}`);
@@ -199,7 +202,8 @@ function printExecutionSummary(result, { contactName }) {
   console.log(`【目标联系人】：${contactName || '未指定'}`);
   console.log(`【执行结果】：${result.ok ? '成功' : '失败'}`);
   if (result.ok) {
-    console.log(`【拉黑状态】：${result.outcome === 'already_blocked' ? '对方已在黑名单中' : '拉黑确认已点击完成'}`);
+    console.log(`【拉黑状态】：${result.outcome === 'already_blocked' ? '对方已在黑名单中'
+      : result.outcome === 'blocked_confirmed' ? '拉黑成功 (toast 已确认)' : '拉黑确认已点击完成'}`);
   }
   if (result.screenshots?.length) {
     console.log(`【截图目录】：${result.screenshotsDir}`);
