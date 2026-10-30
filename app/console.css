@@ -829,36 +829,38 @@ body {
 .reset-button:active {
 }
 
-/* 9个步骤节点横排 (字体放大、无多余小字) */
+/* 步骤节点横排：单行紧凑 chip，序号 + 名称 + 状态符；
+   详细状态由列表行承载，这里只做进度一览，点击仍可单独执行 */
 .pipeline-stepper {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: var(--sp-8);
 }
 
 @media (max-width: 1200px) {
   .pipeline-stepper {
-    grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   }
 }
 
 .step-node {
   background: var(--bg-subtle);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--r-6);
-  padding: var(--sp-8) var(--sp-8);
+  height: var(--h-control);
+  padding: 0 var(--sp-8);
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
+  align-items: center;
+  gap: var(--sp-6);
+  min-width: 0;
   cursor: pointer;
   position: relative;
+  transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
 }
 
 .step-node:hover {
   background: var(--bg-surface);
-  border-color: var(--accent);
-  transform: translateY(-1px);
-  box-shadow: none;
+  border-color: var(--border-strong);
 }
 
 .step-node:active {
@@ -866,25 +868,23 @@ body {
 
 .step-node.completed {
   background: var(--ok-soft);
-  border-color: var(--border);
 }
 
 .step-node.running {
   background: var(--accent-soft);
   border-color: var(--accent);
-  box-shadow: none;
 }
 
 .step-node.failed {
   background: var(--danger-soft);
-  border-color: var(--border-strong);
 }
 
 .step-node-num {
   font-family: var(--font-mono);
-  font-size: var(--fs-13);
+  font-size: var(--fs-11);
   font-weight: var(--fw-500);
-  color: var(--text-1);
+  color: var(--text-3);
+  flex: none;
 }
 
 .step-node.completed .step-node-num {
@@ -900,12 +900,14 @@ body {
 }
 
 .step-node-title {
-  font-size: var(--fs-13);
-  font-weight: var(--fw-500);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-400);
   color: var(--text-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 .step-node-status {
@@ -913,10 +915,9 @@ body {
 }
 
 .step-node-indicator {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: var(--fs-13);
+  display: inline-flex;
+  align-items: center;
+  flex: none;
 }
 
 .status-icon-check {
@@ -955,14 +956,9 @@ body {
 
 .scripts-columns-container {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* 空列不占位：V3 或 MOMO 列缺失时，剩余列自动占满整行 */
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: var(--sp-12);
-}
-
-@media (max-width: 1100px) {
-  .scripts-columns-container {
-    grid-template-columns: 1fr;
-  }
 }
 
 .scripts-version-column,
@@ -1356,30 +1352,39 @@ body {
 }
 
 .terminal-tab-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--sp-6);
-  height: var(--h-control);
-  padding: 0 var(--sp-8);
+  height: 100%;
+  padding: 0 var(--sp-12);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-6);
+  border: 0;
+  border-radius: 0;
   color: var(--text-2);
   font-size: var(--fs-13);
   font-weight: var(--fw-500);
   cursor: pointer;
+  transition: color var(--dur-1) var(--ease);
 }
 
 .terminal-tab-btn:hover {
   color: var(--text-1);
-  background: var(--bg-hover);
 }
 
 .terminal-tab-btn.active {
-  color: var(--accent);
-  background: var(--bg-surface);
-  border-color: var(--border);
-  box-shadow: none;
+  color: var(--text-1);
+}
+
+.terminal-tab-btn.active::after {
+  content: "";
+  position: absolute;
+  left: var(--sp-12);
+  right: var(--sp-12);
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: var(--r-pill);
 }
 
 .terminal-badge {
