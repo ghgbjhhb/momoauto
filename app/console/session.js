@@ -367,7 +367,7 @@ if (elements.resetStepperBtn) {
 // 卡密兑换与用户状态事件绑定
 if (elements.openRedeemModalBtn) {
   elements.openRedeemModalBtn.addEventListener('click', () => {
-    if (elements.redeemAlert) elements.redeemAlert.style.display = 'none';
+    if (elements.redeemAlert) elements.redeemAlert.hidden = true;
     if (elements.redeemCardInput) elements.redeemCardInput.value = '';
     elements.redeemDialog?.showModal();
   });
@@ -384,14 +384,13 @@ if (elements.cancelRedeemBtn) {
 function showPasswordAlert(text, tone) {
   if (!elements.passwordAlert) return;
   elements.passwordAlert.textContent = text;
-  elements.passwordAlert.style.cssText = tone === 'success'
-    ? 'display:block; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px; background:rgba(46,160,67,0.15); border:1px solid rgba(46,160,67,0.35); color:#3fb950;'
-    : 'display:block; padding:8px 10px; border-radius:4px; font-size:12px; margin-bottom:14px; background:#fff2f0; border:1px solid #ffccc7; color:#cf1322;';
+  elements.passwordAlert.className = `ui-alert ui-alert--${tone === 'success' ? 'ok' : 'danger'}`;
+  elements.passwordAlert.hidden = false;
 }
 
 if (elements.openPasswordModalBtn) {
   elements.openPasswordModalBtn.addEventListener('click', () => {
-    if (elements.passwordAlert) elements.passwordAlert.style.display = 'none';
+    if (elements.passwordAlert) elements.passwordAlert.hidden = true;
     [elements.pwdCurrentInput, elements.pwdNewInput, elements.pwdConfirmInput].forEach(input => { if (input) input.value = ''; });
     elements.passwordDialog?.showModal();
     elements.pwdCurrentInput?.focus();
@@ -448,7 +447,8 @@ if (elements.submitRedeemBtn) {
     const cardCode = elements.redeemCardInput.value.trim();
     if (!cardCode) {
       elements.redeemAlert.textContent = '请输入卡密代码';
-      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:#fff2f0; border:1px solid #ffccc7; color:#cf1322;';
+      elements.redeemAlert.className = 'ui-alert ui-alert--danger';
+      elements.redeemAlert.hidden = false;
       return;
     }
     elements.submitRedeemBtn.disabled = true;
@@ -463,8 +463,9 @@ if (elements.submitRedeemBtn) {
       if (!data.ok) throw new Error(data.error || '兑换失败，请联系客服');
 
       const summary = data.result.summary || (data.result.deviceName ? `已为您分配新云手机 [${data.result.deviceName}]，有效期至 ${new Date(data.result.expireAt).toLocaleString()}` : '权益已成功充值到账！');
-      elements.redeemAlert.innerHTML = `🎉 <strong>兑换成功！</strong><div style="margin-top:4px; line-height:1.4;">${escapeHtml(summary)}</div>`;
-      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:rgba(46,160,67,0.15); border:1px solid rgba(46,160,67,0.35); color:#3fb950;';
+      elements.redeemAlert.textContent = summary;
+      elements.redeemAlert.className = 'ui-alert ui-alert--ok';
+      elements.redeemAlert.hidden = false;
       setTimeout(async () => {
         elements.redeemDialog?.close();
         await checkAuth();
@@ -476,7 +477,8 @@ if (elements.submitRedeemBtn) {
     } catch (err) {
       console.warn('[Redeem] Failed:', err.message);
       elements.redeemAlert.textContent = '兑换失败，请联系客服';
-      elements.redeemAlert.style.cssText = 'display:block; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:16px; background:#fff2f0; border:1px solid #ffccc7; color:#cf1322;';
+      elements.redeemAlert.className = 'ui-alert ui-alert--danger';
+      elements.redeemAlert.hidden = false;
     } finally {
       elements.submitRedeemBtn.disabled = false;
       elements.submitRedeemBtn.textContent = '立即兑换';
@@ -520,23 +522,17 @@ async function checkAuth() {
     const zhencanQuotaEl = document.getElementById('topbarZhencanQuota');
     const zhencanCountEl = document.getElementById('topbarZhencanCount');
     if (zhencanQuotaEl && !isEmbed) {
-      zhencanQuotaEl.style.display = 'inline-flex';
+      zhencanQuotaEl.hidden = false;
       if (isAdmin) {
-        zhencanQuotaEl.innerHTML = '🧬 真参: <strong>管理员无限</strong>';
+        zhencanQuotaEl.className = 'ui-badge';
+        zhencanQuotaEl.textContent = '真参: 管理员无限';
         zhencanQuotaEl.title = '管理员特权免扣真参配额';
       } else {
         const count = parseInt(data.user.zhencanBalance, 10) || 0;
         if (zhencanCountEl) zhencanCountEl.textContent = String(count);
+        zhencanQuotaEl.className = 'ui-badge' + (count <= 0 ? ' ui-badge--danger' : '');
+        zhencanQuotaEl.textContent = `真参配额: ${count} 套`;
         zhencanQuotaEl.title = `当前可用真参配额: ${count} 套，导入真参自动核销 1 套，可通过卡密兑换充值`;
-        if (count <= 0) {
-          zhencanQuotaEl.style.background = '#fff2f0';
-          zhencanQuotaEl.style.borderColor = '#ffccc7';
-          zhencanQuotaEl.style.color = '#cf1322';
-        } else {
-          zhencanQuotaEl.style.background = '#f6ffed';
-          zhencanQuotaEl.style.borderColor = '#b7eb8f';
-          zhencanQuotaEl.style.color = '#237804';
-        }
       }
     }
     if (elements.openPasswordModalBtn && !isEmbed) {

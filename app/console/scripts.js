@@ -125,7 +125,7 @@ function renderPipelineStepper() {
     indicator.className = 'step-node-indicator';
     if (status === 'completed') indicator.innerHTML = '<span class="status-icon-check">✓</span>';
     else if (status === 'running') indicator.innerHTML = '<span class="status-icon-pulse"></span>';
-    else if (status === 'failed') indicator.innerHTML = '<span class="status-icon-fail">✕</span>';
+    else if (status === 'failed') indicator.innerHTML = '<span class="status-icon-fail">✗</span>';
 
     node.append(num, info, indicator);
 
@@ -250,7 +250,7 @@ function createScriptCard(script) {
   if (script.destructive) {
     const dangerTag = document.createElement('span');
     dangerTag.className = 'script-danger-badge';
-    dangerTag.textContent = '⚠️ 清数据';
+    dangerTag.textContent = '清数据';
     head.append(dangerTag);
   }
 
@@ -427,7 +427,7 @@ async function stopRunningScript() {
   }
 }
 
-function showInPageConfirm({ title, message, okText = '确定', cancelText = '取消', isDanger = true, icon = '⚠️' } = {}) {
+function showInPageConfirm({ title, message, okText = '确定', cancelText = '取消', isDanger = true, icon = '!' } = {}) {
   return new Promise(resolve => {
     const dialog = document.getElementById('userConfirmDialog');
     if (!dialog) return resolve(false);
@@ -613,11 +613,11 @@ function createBundleCard(bundle) {
   head.className = 'script-card-head';
   head.style.flexDirection = 'column';
   head.style.alignItems = 'stretch';
-  head.style.gap = '4px';
+  head.style.gap = 'var(--sp-4)';
 
   // 标题行与管理操作
   const titleRow = document.createElement('div');
-  titleRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;';
+  titleRow.className = 'ui-row-between';
 
   const titleGroup = document.createElement('div');
   titleGroup.className = 'script-title-group';
@@ -628,7 +628,6 @@ function createBundleCard(bundle) {
 
   const title = document.createElement('div');
   title.className = 'script-title';
-  title.style.fontWeight = '700';
   title.textContent = bundle.name;
 
   titleGroup.append(badge, title);
@@ -714,7 +713,7 @@ function createBundleCard(bundle) {
       if (idx > 0) {
         const arrow = document.createElement('span');
         arrow.className = 'bundle-step-arrow';
-        arrow.textContent = '➔';
+        arrow.textContent = '→';
         flow.append(arrow);
       }
       const tag = document.createElement('span');
@@ -934,7 +933,7 @@ function renderScripts() {
     const bundleStack = bundleSection.querySelector('.bundle-cards-stack');
     if (displayBundles.length === 0) {
       const emptyTip = document.createElement('div');
-      emptyTip.style.cssText = 'padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;';
+      emptyTip.className = 'ui-empty';
       emptyTip.textContent = isManageMode
         ? '暂无自定义组合脚本，点击右上角【+ 新建组合脚本】可以将多个脚本按序串联为一个组合供用户使用。'
         : '暂无可用组合脚本';
@@ -1069,7 +1068,7 @@ async function executeScript(script, button, card) {
     const message = isV2
       ? `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“重置数据”？</div>
          <div class="confirm-danger-card">
-           <div class="confirm-danger-card-icon">⚠️</div>
+           <div class="confirm-danger-card-icon">!</div>
            <div class="confirm-danger-card-body">
              <div class="confirm-danger-card-title">警告：即将重置该设备，此操作不可恢复！</div>
              <div class="confirm-danger-card-desc">清空该设备所有数据并恢复出厂设置。</div>
@@ -1078,7 +1077,7 @@ async function executeScript(script, button, card) {
       : `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“改机重置”？</div>
          <div class="confirm-sub-text" style="margin-bottom:8px;">机型范围：Android ${escapeHtml(options.androidVersion || '16')}；国家：${escapeHtml(options.countryCode || 'CN')}。</div>
          <div class="confirm-danger-card">
-           <div class="confirm-danger-card-icon">⚠️</div>
+           <div class="confirm-danger-card-icon">!</div>
            <div class="confirm-danger-card-body">
              <div class="confirm-danger-card-title">警告：此操作会清除该设备所有数据且不可撤销！</div>
              <div class="confirm-danger-card-desc">重置后云机将自动重启并应用新机型参数。</div>
@@ -1090,7 +1089,7 @@ async function executeScript(script, button, card) {
       message,
       okText: isV2 ? '确认重置' : '确认改机重置',
       isDanger: true,
-      icon: '⚠️'
+      icon: '!'
     });
     if (!resetConfirmed) return;
   }
@@ -1457,10 +1456,10 @@ async function executeScriptBundle(bundle, button, card) {
       ]);
 
       if (i === total - 1) {
-        writeOutput(`\n🎉【组合脚本全部执行成功】: ${bundle.name}`, [
+        writeOutput(`\n【组合脚本全部执行成功】${bundle.name}`, [
           `共 ${total} 个步骤全部依次顺利执行达成！`
         ]);
-        showToast(`🎉 组合脚本【${bundle.name}】全部执行完成！`);
+        showToast(`组合脚本【${bundle.name}】全部执行完成`);
       } else {
         await new Promise(r => setTimeout(r, 500));
       }
@@ -1553,7 +1552,8 @@ function renderModalSelectedSteps() {
 
   if (editingBundleSteps.length === 0) {
     const tip = document.createElement('div');
-    tip.style.cssText = 'color:#8c8c8c; font-size:12.5px; padding:10px; text-align:center;';
+    tip.className = 'ui-hint';
+    tip.style.textAlign = 'center';
     tip.textContent = '暂未添加步骤，请在下方选择脚本并点击【+ 添加步骤】';
     container.append(tip);
     return;
@@ -1565,10 +1565,10 @@ function renderModalSelectedSteps() {
     row.className = 'bundle-step-row';
 
     const info = document.createElement('div');
-    info.style.cssText = 'display:flex; align-items:center; gap:8px;';
+    info.className = 'ui-row';
     info.innerHTML = `
-      <span style="font-weight:700; color:#1677ff; width:20px;">${index + 1}.</span>
-      <span style="font-weight:500; color:#262626;">${escapeHtml(script ? script.title : stepId)}</span>
+      <span class="ui-mono" style="color:var(--accent); min-width:20px;">${index + 1}.</span>
+      <span style="font-weight:var(--fw-500);">${escapeHtml(script ? script.title : stepId)}</span>
     `;
 
     const actions = document.createElement('div');
@@ -1607,7 +1607,7 @@ function renderModalSelectedSteps() {
     const rmBtn = document.createElement('button');
     rmBtn.className = 'btn-icon danger';
     rmBtn.type = 'button';
-    rmBtn.innerHTML = '✕';
+    rmBtn.innerHTML = '✗';
     rmBtn.title = '移除此步骤';
     rmBtn.addEventListener('click', () => {
       editingBundleSteps.splice(index, 1);

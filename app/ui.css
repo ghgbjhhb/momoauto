@@ -1,7 +1,7 @@
 /* ==========================================================================
    ui.css —— 组件层
    规则：只消费 tokens.css 的角色令牌，不出现任何字面量颜色。
-   结构：布局 → 排版 → 按钮 → 表单 → 卡片 → 表格 → 徽章 → 标签页
+   结构：布局 → 排版 → 按钮 → 表单 → 卡片 → 表格 → 徽章 → 提示条 → 标签页
         → 工具条 → 日志 → 空态 → 步骤条 → 模态 → 加载
    ========================================================================== */
 
@@ -596,6 +596,46 @@ table th {
   border-radius: var(--r-pill);
   background: currentColor;
   flex: none;
+}
+
+/* ---------- 提示条 ---------- */
+
+/* 软底语义色块，用于表单反馈、租期说明等行内提示；与徽章同语言，无彩色阴影 */
+.ui-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  padding: var(--sp-6) var(--sp-12);
+  border-radius: var(--r-6);
+  background: var(--bg-subtle);
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: var(--lh-relaxed);
+}
+
+.ui-alert--ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.ui-alert--warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.ui-alert--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ui-alert--info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+/* 动态显隐由 hidden 属性驱动；作者层 display 会覆盖 UA 的 [hidden]，需显式兜底 */
+.ui-alert[hidden] {
+  display: none;
 }
 
 /* ---------- 标签页 ---------- */

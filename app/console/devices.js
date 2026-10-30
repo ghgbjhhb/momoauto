@@ -125,7 +125,7 @@ function createDeviceCard(device) {
   const ipBadge = document.createElement('span');
   ipBadge.className = 'device-ip-badge' + (device.currentIp ? ' configured' : ' unconfigured');
   if (device.currentIp) {
-    ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text"></span>`;
+    ipBadge.innerHTML = `<span class="ip-text"></span>`;
     ipBadge.querySelector('.ip-text').textContent = device.currentIp;
     ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
     ipBadge.addEventListener('click', event => {
@@ -139,7 +139,7 @@ function createDeviceCard(device) {
       }
     });
   } else {
-    ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
+    ipBadge.innerHTML = `<span class="ip-text">未配置</span>`;
     ipBadge.title = '当前云机未配置代理 IP 或域名';
   }
   titleWrap.append(ipBadge);
@@ -163,13 +163,13 @@ function createDeviceCard(device) {
   let expireBar = null;
   if (device.expireAt) {
     expireBar = document.createElement('div');
-    expireBar.className = 'device-expire-bar';
-    expireBar.style.cssText = 'padding: 6px 12px; font-size: 12.5px; background: #e6f4ff; border: 1px solid #91caff; display: flex; align-items: center; justify-content: space-between; border-radius: 4px; margin: 6px 10px;';
+    expireBar.className = 'device-expire-bar ui-row-between ui-alert ui-alert--info';
+    expireBar.style.margin = 'var(--sp-6) var(--sp-12)';
     const remainingText = device.remainingText || '计算中…';
     const expireDateStr = new Date(device.expireAt).toLocaleDateString();
     expireBar.innerHTML = `
-      <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:var(--text-title);">${expireDateStr}</strong></span>
-      <span style="color:#0958d9; font-weight:600;">剩余 ${escapeHtml(remainingText)}</span>
+      <span>到期: <strong>${expireDateStr}</strong></span>
+      <strong>剩余 ${escapeHtml(remainingText)}</strong>
     `;
     expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
   }
@@ -240,7 +240,7 @@ function createDeviceCard(device) {
   const operateBtn = document.createElement('button');
   operateBtn.className = 'device-operate-btn';
   operateBtn.type = 'button';
-  operateBtn.textContent = '📱 放大操作云机';
+  operateBtn.textContent = '放大操作云机';
   operateBtn.title = '放大并进入全屏控制台操作';
   operateBtn.addEventListener('click', event => {
     event.stopPropagation();
@@ -330,11 +330,11 @@ function updateDeviceCard(card, device, index) {
     if (wasConfigured !== configured || currentIpText !== (device.currentIp || '未配置')) {
       ipBadge.className = 'device-ip-badge' + (configured ? ' configured' : ' unconfigured');
       if (configured) {
-        ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">🌐</span><span class="ip-text"></span>`;
+        ipBadge.innerHTML = `<span class="ip-text"></span>`;
         ipBadge.querySelector('.ip-text').textContent = device.currentIp;
         ipBadge.title = `当前正在使用的 IP / 域名: ${device.currentIp}${device.proxyAddress ? ` (完整代理: ${device.proxyAddress})` : ''} - 点击复制`;
       } else {
-        ipBadge.innerHTML = `<span class="ip-icon" aria-hidden="true">⚠️</span><span class="ip-text">未配置</span>`;
+        ipBadge.innerHTML = `<span class="ip-text">未配置</span>`;
         ipBadge.title = '当前云机未配置代理 IP 或域名';
       }
     }
@@ -361,15 +361,15 @@ function updateDeviceCard(card, device, index) {
     const expireDateStr = new Date(device.expireAt).toLocaleDateString();
     if (!expireBar) {
       expireBar = document.createElement('div');
-      expireBar.className = 'device-expire-bar';
-      expireBar.style.cssText = 'padding: 6px 12px; font-size: 12.5px; background: #e6f4ff; border: 1px solid #91caff; display: flex; align-items: center; justify-content: space-between; border-radius: 4px; margin: 6px 10px;';
+      expireBar.className = 'device-expire-bar ui-row-between ui-alert ui-alert--info';
+      expireBar.style.margin = 'var(--sp-6) var(--sp-12)';
       const head = card.querySelector('.device-card-head');
       if (head && head.nextSibling) card.insertBefore(expireBar, head.nextSibling);
       else card.prepend(expireBar);
     }
     expireBar.innerHTML = `
-      <span style="color:var(--text-muted);">⏱️ 到期: <strong style="color:var(--text-title);">${expireDateStr}</strong></span>
-      <span style="color:#0958d9; font-weight:600;">剩余 ${escapeHtml(remainingText)}</span>
+      <span>到期: <strong>${expireDateStr}</strong></span>
+      <strong>剩余 ${escapeHtml(remainingText)}</strong>
     `;
     expireBar.title = `到期具体物理时间: ${new Date(device.expireAt).toLocaleString()}`;
   } else if (expireBar) {
@@ -387,13 +387,11 @@ function renderDeviceGrid() {
     stopPreview();
     grid.replaceChildren();
     const empty = document.createElement('div');
-    empty.className = 'loading-card empty-user-devices';
-    empty.style.cssText = 'padding: 40px 20px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; margin: 20px; background: #ffffff;';
+    empty.className = 'ui-empty empty-user-devices';
     empty.innerHTML = `
-      <div style="font-size: 36px; margin-bottom: 12px;">📱</div>
-      <div style="font-size: 16px; font-weight: 600; color: var(--text-title); margin-bottom: 8px;">您名下暂无已分配的云手机</div>
-      <div style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 18px;">请点击顶部的【兑换卡密】输入管理员提供的卡密，立即激活分配专属云机！</div>
-      <button class="run-button" id="emptyRedeemBtn" type="button" style="margin: 0 auto; display: inline-flex;">立即兑换卡密</button>
+      <div class="ui-empty-title">您名下暂无已分配的云手机</div>
+      <div class="ui-empty-desc">在顶部点击「兑换卡密」输入管理员提供的卡密，即可激活并分配专属云机；多台设备可并行执行。</div>
+      <button class="run-button" id="emptyRedeemBtn" type="button">兑换卡密</button>
     `;
     const btn = empty.querySelector('#emptyRedeemBtn');
     if (btn) btn.onclick = () => elements.openRedeemModalBtn?.click();

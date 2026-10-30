@@ -482,12 +482,6 @@ body {
   flex-shrink: 0;
 }
 
-.device-ip-badge .ip-icon {
-  font-size: var(--fs-11);
-  line-height: var(--lh-none);
-  flex-shrink: 0;
-}
-
 .device-ip-badge .ip-text {
   overflow: hidden;
   text-overflow: ellipsis;
