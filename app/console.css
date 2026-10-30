@@ -56,14 +56,14 @@ body {
 }
 
 /* ==========================================================================
-   1. 顶部主导航栏 (纯白标准工控顶栏，高度 50px)
+   1. 顶部主导航栏 (深墨骨架顶栏，与左侧设备导轨连成 L 型机身)
    ========================================================================== */
 .topbar {
   height: var(--h-device-row);
   min-height: var(--h-device-row);
   padding: 0 var(--sp-20);
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--chrome-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -81,8 +81,8 @@ body {
 
 .brand-title {
   font-size: var(--fs-16);
-  font-weight: var(--fw-500);
-  color: var(--text-1);
+  font-weight: var(--fw-600);
+  color: var(--chrome-text);
   letter-spacing: -0.01em;
 }
 
@@ -91,37 +91,37 @@ body {
   display: flex;
   align-items: center;
   gap: var(--sp-12);
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
+  background: var(--chrome-bg-2);
+  border: 1px solid var(--chrome-border);
   padding: var(--sp-4) var(--sp-12);
   border-radius: var(--r-6);
   font-size: var(--fs-13);
 }
 
 .stat-item {
-  color: var(--text-2);
+  color: var(--chrome-text-2);
 }
 
 .stat-item strong {
   font-weight: var(--fw-500);
-  color: var(--text-1);
+  color: var(--chrome-text);
   font-size: var(--fs-14);
 }
 
 .stat-item strong.text-green {
-  color: var(--ok);
+  color: var(--chrome-ok);
 }
 
 .stat-item strong.text-blue {
-  color: var(--accent);
+  color: var(--chrome-accent);
 }
 
 .stat-sep {
-  color: var(--border);
+  color: var(--chrome-border);
 }
 
 /* 顶栏右侧工具按钮群：改密 / 退出 / 刷新等次要操作走 ghost，
-   主操作（兑换卡密）单独用 run-button 承担视觉锚点 */
+   主操作（兑换卡密）单独用亮蓝 chip 承担视觉锚点 */
 .topbar-tools {
   display: flex;
   align-items: center;
@@ -131,24 +131,49 @@ body {
 .topbar-tools .action-btn {
   background: transparent;
   border-color: transparent;
-  color: var(--text-2);
+  color: var(--chrome-text-2);
 }
 
 .topbar-tools .action-btn:hover {
-  color: var(--text-1);
-  background: var(--bg-hover);
+  color: var(--chrome-text);
+  background: var(--chrome-bg-2);
   border-color: transparent;
 }
 
 .topbar-tools .action-btn:active {
-  color: var(--text-1);
+  color: var(--chrome-text);
+}
+
+.topbar .run-button {
+  background: var(--chrome-accent);
+  border-color: var(--chrome-accent);
+  color: var(--chrome-bg);
+  font-weight: var(--fw-500);
+}
+
+.topbar .run-button:hover {
+  background: var(--chrome-accent-hover);
+  border-color: var(--chrome-accent-hover);
+  color: var(--chrome-bg);
+}
+
+.topbar .ui-badge {
+  background: var(--chrome-bg-2);
+  border-color: var(--chrome-border);
+  color: var(--chrome-text);
+}
+
+.topbar .ui-badge--danger {
+  background: var(--chrome-bg-2);
+  border-color: var(--chrome-border);
+  color: var(--chrome-danger);
 }
 
 .user-pill {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-2);
+  color: var(--chrome-text-2);
   font-weight: var(--fw-400);
   font-size: var(--fs-12);
 }
@@ -338,11 +363,11 @@ body {
 }
 
 /* ==========================================================================
-   3. 左侧：真机大屏操作专区 (Preview Panel)
+   3. 左侧：真机大屏操作专区 (深墨设备导轨，白色设备卡浮起)
    ========================================================================== */
 .preview-panel {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
   border-radius: var(--r-8);
   box-shadow: none;
   display: flex;
@@ -355,8 +380,8 @@ body {
   height: var(--h-header);
   min-height: var(--h-header);
   padding: 0 var(--sp-16);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
+  border-bottom: 1px solid var(--chrome-border);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -364,8 +389,8 @@ body {
 
 .panel-header h2 {
   font-size: var(--fs-14);
-  font-weight: var(--fw-500);
-  color: var(--text-1);
+  font-weight: var(--fw-600);
+  color: var(--chrome-text);
   display: flex;
   align-items: center;
   gap: var(--sp-6);
@@ -377,12 +402,24 @@ body {
   gap: var(--sp-8);
 }
 
+.preview-header-tools .action-btn {
+  background: transparent;
+  border-color: var(--chrome-border);
+  color: var(--chrome-text-2);
+}
+
+.preview-header-tools .action-btn:hover {
+  background: var(--chrome-bg-2);
+  border-color: var(--chrome-strong);
+  color: var(--chrome-text);
+}
+
 .preview-zoom-ctrl {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-6);
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
+  background: var(--chrome-bg-2);
+  border: 1px solid var(--chrome-border);
   border-radius: var(--r-6);
   padding: var(--sp-2) var(--sp-8);
   height: var(--h-control);
@@ -397,7 +434,7 @@ body {
 .zoom-slider {
   width: 76px;
   height: 4px;
-  accent-color: var(--accent);
+  accent-color: var(--chrome-accent);
   cursor: pointer;
   vertical-align: middle;
 }
@@ -406,13 +443,13 @@ body {
   font-family: var(--font-mono);
   font-size: var(--fs-11);
   font-weight: var(--fw-500);
-  color: var(--text-2);
+  color: var(--chrome-text-2);
   min-width: 38px;
   text-align: right;
   user-select: none;
 }
 
-/* 舞台容器 */
+/* 舞台容器：透明，让导轨底色贯穿 */
 .preview-stage {
   flex: 1;
   overflow-y: auto;
@@ -421,7 +458,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: var(--bg-subtle);
+  background: transparent;
 }
 
 .device-grid {
@@ -430,6 +467,44 @@ body {
   flex-direction: column;
   gap: var(--sp-8);
   align-items: center;
+}
+
+/* 深色导轨内的文字型子元素：空态、加载态、滚动条改用骨架色
+   （与文件尾部的 :root[data-ui] 兼容层同特异性，且声明在其后，故能覆盖） */
+:root[data-ui="v2"] .preview-stage .loading-card {
+  background: transparent;
+  color: var(--chrome-text-2);
+}
+
+:root[data-ui="v2"] .preview-stage .loading-card::before {
+  border-color: var(--chrome-strong);
+  border-top-color: var(--chrome-accent);
+}
+
+.preview-stage .ui-empty-title {
+  color: var(--chrome-text);
+}
+
+.preview-stage .ui-empty-desc {
+  color: var(--chrome-text-2);
+}
+
+.preview-panel .run-button {
+  background: var(--chrome-accent);
+  border-color: var(--chrome-accent);
+  color: var(--chrome-bg);
+  font-weight: var(--fw-500);
+}
+
+.preview-panel .run-button:hover {
+  background: var(--chrome-accent-hover);
+  border-color: var(--chrome-accent-hover);
+  color: var(--chrome-bg);
+}
+
+.preview-stage::-webkit-scrollbar-thumb,
+.terminal-box::-webkit-scrollbar-thumb {
+  background: var(--chrome-strong);
 }
 
 /* --------------------------------------------------------------------------
@@ -863,7 +938,7 @@ body {
 
 .pipeline-title {
   font-size: var(--fs-14);
-  font-weight: var(--fw-500);
+  font-weight: var(--fw-600);
   color: var(--text-1);
 }
 
@@ -1383,14 +1458,14 @@ body {
 }
 
 /* ==========================================================================
-   8. 底部：纯白清爽工控日志 (Terminal Container)
-   彻底告别纯黑终端，采用纯白背景、高对比墨色字
+   8. 底部：深墨日志工作台 (Terminal Container)
+   与顶栏/设备导轨同骨架语言：深底 + mono 日志，让右侧浅色内容区上下都有锚点
    ========================================================================== */
 .terminal-container {
   height: var(--h-terminal);
   min-height: var(--h-terminal);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
   border-radius: var(--r-8);
   box-shadow: none;
   display: flex;
@@ -1402,8 +1477,8 @@ body {
 .terminal-bar {
   height: var(--h-row-comfortable);
   padding: 0 var(--sp-12) 0 var(--sp-16);
-  background: var(--bg-subtle);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
+  border-bottom: 1px solid var(--chrome-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1425,7 +1500,7 @@ body {
   background: transparent;
   border: 0;
   border-radius: 0;
-  color: var(--text-2);
+  color: var(--chrome-text-2);
   font-size: var(--fs-13);
   font-weight: var(--fw-500);
   cursor: pointer;
@@ -1433,11 +1508,11 @@ body {
 }
 
 .terminal-tab-btn:hover {
-  color: var(--text-1);
+  color: var(--chrome-text);
 }
 
 .terminal-tab-btn.active {
-  color: var(--text-1);
+  color: var(--chrome-text);
 }
 
 .terminal-tab-btn.active::after {
@@ -1447,7 +1522,7 @@ body {
   right: var(--sp-12);
   bottom: -1px;
   height: 2px;
-  background: var(--accent);
+  background: var(--chrome-accent);
   border-radius: var(--r-pill);
 }
 
@@ -1461,15 +1536,15 @@ body {
   font-size: var(--fs-12);
   font-weight: var(--fw-500);
   border-radius: var(--r-8);
-  background: var(--danger-soft);
-  color: var(--danger);
-  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--chrome-danger);
+  border: 1px solid var(--chrome-danger);
 }
 
 .terminal-label {
   font-size: var(--fs-13);
   font-weight: var(--fw-500);
-  color: var(--text-1);
+  color: var(--chrome-text);
   letter-spacing: 0.02em;
 }
 
@@ -1483,22 +1558,39 @@ body {
   height: var(--h-control-sm);
   padding: 0 var(--sp-8);
   font-size: var(--fs-12);
-  background: var(--bg-surface);
-  border-color: var(--border);
-  color: var(--text-1);
+  background: transparent;
+  border-color: var(--chrome-border);
+  color: var(--chrome-text-2);
 }
 
 .terminal-actions .action-btn:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
+  border-color: var(--chrome-strong);
+  background: var(--chrome-bg-2);
+  color: var(--chrome-text);
+}
+
+/* 深色终端内的停止按钮：透明红描边，与骨架按钮同语言 */
+.terminal-bar .danger-button {
+  height: var(--h-control-sm);
+  padding: 0 var(--sp-8);
+  font-size: var(--fs-12);
+  background: transparent;
+  border-color: var(--chrome-danger);
+  color: var(--chrome-danger);
+}
+
+.terminal-bar .danger-button:hover {
+  background: var(--chrome-bg-2);
+  border-color: var(--chrome-danger);
+  color: var(--chrome-danger);
 }
 
 .terminal-box {
   flex: 1;
   margin: 0;
   padding: var(--sp-8) var(--sp-16);
-  background: var(--bg-surface);
-  color: var(--text-1);
+  background: transparent;
+  color: var(--chrome-text);
   font-family: var(--font-mono);
   font-size: var(--fs-13);
   line-height: var(--lh-relaxed);
@@ -3085,7 +3177,7 @@ body {
   box-shadow: var(--elev-1);
 }
 
-:root[data-ui="v2"] .panel-header h2,
+/* 面板标题已归属深墨骨架层（见 .panel-header h2），此处只收敛浅色区标题 */
 :root[data-ui="v2"] .pipeline-title,
 :root[data-ui="v2"] .card-header h3 {
   font-size: var(--fs-14);

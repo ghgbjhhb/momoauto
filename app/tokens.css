@@ -90,6 +90,20 @@
   --z-toast: 2000;
   --device-width: 340px;
 
+  /* ---------- 骨架色（顶栏 / 设备导轨 / 终端） ----------
+     深墨边框层与主题解耦：无论明暗主题，页面四周的"机身"都是同一种深墨，
+     中间工作区随主题切换。这样第一眼永远有重锚点，不会整页发飘。 */
+  --chrome-bg: #161a22;
+  --chrome-bg-2: #1f2532;
+  --chrome-text: #e8ebf2;
+  --chrome-text-2: #9aa4b8;
+  --chrome-border: #2a3140;
+  --chrome-strong: #3d4558;
+  --chrome-accent: #6ea8ff;
+  --chrome-accent-hover: #8cbaff;
+  --chrome-ok: #34d399;
+  --chrome-danger: #ff8080;
+
   color-scheme: light;
 }
 
