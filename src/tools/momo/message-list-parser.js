@@ -37,6 +37,14 @@ const SYSTEM_CARD_NAMES = new Set([
 const MATCH_PROMOTION_MARKERS = /语音聊天|视频匹配|立即匹配|碰个球友|蛇蛇大作战|他在等你|配对聊天|配对玩游戏|为你找到.*合拍|合拍[男女]生|买辆专属跑车/;
 const CONTACT_TIME_MARKERS = /^(?:昨天|前天|刚刚|\d+分钟前|\d+小时前|\d{1,2}:\d{2}|\d{1,2}-\d{1,2})$/;
 
+// 纯 emoji/符号名判定：名字中不含任何可读字符（中文/假名/谚文/字母/数字）时，
+// OCR 无法稳定识别且每次识别结果可能不同，按业务规则跳过自动处理，仅登记供调用方记录日志
+const READABLE_NAME_RE = /[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7afA-Za-z0-9]/;
+
+function hasReadableName(name) {
+  return READABLE_NAME_RE.test(String(name ?? ''));
+}
+
 function isConfirmedMessageList(pageData) {
   return pageData?.is_momo === true && pageData.page_level === '1级页面' && pageData.sub_page === '消息列表';
 }
@@ -159,6 +167,7 @@ function parseMessageListContacts(ocrData, listData, pageData) {
       systemEntries: [],
       totalCards: 0,
       rejectedReason: isOnMatchTab ? 'match_tab' : 'page_not_confirmed',
+      unreadableNames: [],
       matchOverlay,
       matchOverlayCloseBox,
     };
@@ -171,6 +180,7 @@ function parseMessageListContacts(ocrData, listData, pageData) {
     .filter(box => area(box) > 0);
 
   const validCards = [];
+  const unreadableCards = [];
 
   for (const card of rawCards) {
     const [x1, y1, x2, y2] = card.box;
@@ -224,6 +234,12 @@ function parseMessageListContacts(ocrData, listData, pageData) {
     const unreadState = unreadEvidence ? (ocrUnreadBadge ? 'known' : 'unknown') : 'none';
     if (modelBadge && !ocrUnreadBadge) unreadCount = null;
 
+    // 纯 emoji/符号名联系人：名字不可读，跳过自动处理，仅登记（含未读状态供日志提示）
+    if (!hasReadableName(peerName)) {
+      unreadableCards.push({ peerName, unread: unreadState !== 'none' });
+      continue;
+    }
+
     const previewItem = cardItems.find(it => {
       const t = it.text.trim();
       return (
@@ -265,6 +281,7 @@ function parseMessageListContacts(ocrData, listData, pageData) {
     contacts: validCards.filter(c => !c.isSystem),
     systemEntries: validCards.filter(c => c.isSystem),
     totalCards: validCards.length,
+    unreadableNames: unreadableCards,
     matchOverlay,
     matchOverlayCloseBox,
   };
@@ -340,4 +357,5 @@ module.exports = {
   parseMessageListContacts,
   isEdgeCard,
   scanMessageListCandidates,
+  hasReadableName,
 };

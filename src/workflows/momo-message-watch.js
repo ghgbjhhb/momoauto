@@ -557,6 +557,13 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
     });
 
     const candidates = scan.candidates || [];
+
+    // 纯 emoji/符号名联系人已由扫描层过滤：仅在带未读红点被跳过时提示一次，避免巡查刷屏
+    const unreadableUnread = (scan.unreadableNames || []).filter(c => c.unread);
+    if (unreadableUnread.length) {
+      await log('INFO', `跳过 ${unreadableUnread.length} 个纯emoji/符号名联系人（名字OCR不可读，按规则不自动处理）`);
+    }
+
     const unreadCandidate = candidates.find(c => c.hasUnread);
 
     // 5. 发现未读联系人 -> 执行对话流程
