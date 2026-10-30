@@ -135,6 +135,15 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
+    id: 'flow-18', order: 18, title: 'MOMO拉黑当前联系人',
+    file: 'flows/momo/18-momo拉黑当前联系人.js', args: [], requiresDevice: true,
+    category: 'momo',
+    destructive: true,
+    parameters: [
+      { name: 'contactName', label: '当前聊天联系人姓名（必填，防止误拉黑）', required: true, maxLength: 120 }
+    ]
+  },
+  {
     id: 'flow-all', title: '执行全流程 (V3)', file: 'flows/v3/执行全部.js', args: ['--execute'],
     requiresDevice: true, requiresCertificate: true, batch: true, category: 'all', version: 'v3'
   }

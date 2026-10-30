@@ -543,6 +543,9 @@ function configureScript(script, body, env) {
     if (options.warmupInterval?.trim()) env.YUNMOMO_MOMO_WARMUP_INTERVAL = options.warmupInterval.trim();
     if (options.greetingsInterval?.trim()) env.YUNMOMO_MOMO_GREETINGS_INTERVAL = options.greetingsInterval.trim();
   }
+  if (script.id === 'flow-18') {
+    env.YUNMOMO_MOMO_CONTACT_NAME = options.contactName.trim();
+  }
 }
 
 module.exports = {

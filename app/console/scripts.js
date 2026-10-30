@@ -1064,30 +1064,47 @@ async function executeScript(script, button, card) {
   let resetConfirmed = false;
   if (script.destructive) {
     const isV2 = script.id === 'flow-09-v2';
+    const isBlock = script.id === 'flow-18';
     const targetLabel = escapeHtml(deviceLabel(currentDevice()));
-    const message = isV2
-      ? `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“重置数据”？</div>
+    let message, title, okText;
+    if (isBlock) {
+      const peerLabel = escapeHtml(options.contactName || '未指定联系人');
+      title = '确认执行【拉黑联系人】？';
+      okText = '确认拉黑';
+      message = `<div class="confirm-target-lead">确认拉黑联系人 <strong>${peerLabel}</strong>？</div>
          <div class="confirm-danger-card">
            <div class="confirm-danger-card-icon">!</div>
            <div class="confirm-danger-card-body">
-             <div class="confirm-danger-card-title">警告：即将重置该设备，此操作不可恢复！</div>
-             <div class="confirm-danger-card-desc">清空该设备所有数据并恢复出厂设置。</div>
-           </div>
-         </div>`
-      : `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“改机重置”？</div>
-         <div class="confirm-sub-text" style="margin-bottom:8px;">机型范围：Android ${escapeHtml(options.androidVersion || '16')}；国家：${escapeHtml(options.countryCode || 'CN')}。</div>
-         <div class="confirm-danger-card">
-           <div class="confirm-danger-card-icon">!</div>
-           <div class="confirm-danger-card-body">
-             <div class="confirm-danger-card-title">警告：此操作会清除该设备所有数据且不可撤销！</div>
-             <div class="confirm-danger-card-desc">重置后云机将自动重启并应用新机型参数。</div>
+             <div class="confirm-danger-card-title">拉黑后对方将无法再联系此账号！</div>
+             <div class="confirm-danger-card-desc">执行前请确认云机已停留在该联系人的聊天页，脚本会先核验顶栏姓名再操作。</div>
            </div>
          </div>`;
-
+    } else {
+      message = isV2
+        ? `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“重置数据”？</div>
+           <div class="confirm-danger-card">
+             <div class="confirm-danger-card-icon">!</div>
+             <div class="confirm-danger-card-body">
+               <div class="confirm-danger-card-title">警告：即将重置该设备，此操作不可恢复！</div>
+               <div class="confirm-danger-card-desc">清空该设备所有数据并恢复出厂设置。</div>
+             </div>
+           </div>`
+        : `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“改机重置”？</div>
+           <div class="confirm-sub-text" style="margin-bottom:8px;">机型范围：Android ${escapeHtml(options.androidVersion || '16')}；国家：${escapeHtml(options.countryCode || 'CN')}。</div>
+           <div class="confirm-danger-card">
+             <div class="confirm-danger-card-icon">!</div>
+             <div class="confirm-danger-card-body">
+               <div class="confirm-danger-card-title">警告：此操作会清除该设备所有数据且不可撤销！</div>
+               <div class="confirm-danger-card-desc">重置后云机将自动重启并应用新机型参数。</div>
+             </div>
+           </div>`;
+      title = isV2 ? '确认执行【重置数据】？' : '确认执行【改机重置】？';
+      okText = isV2 ? '确认重置' : '确认改机重置';
+    }
     resetConfirmed = await showInPageConfirm({
-      title: isV2 ? '确认执行【重置数据】？' : '确认执行【改机重置】？',
+      title,
       message,
-      okText: isV2 ? '确认重置' : '确认改机重置',
+      okText,
       isDanger: true,
       icon: '!'
     });
