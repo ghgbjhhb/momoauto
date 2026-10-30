@@ -1387,8 +1387,8 @@ body {
    彻底告别纯黑终端，采用纯白背景、高对比墨色字
    ========================================================================== */
 .terminal-container {
-  height: var(--h-textarea);
-  min-height: var(--h-textarea);
+  height: var(--h-terminal);
+  min-height: var(--h-terminal);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--r-8);
