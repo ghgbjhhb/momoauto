@@ -171,6 +171,73 @@ function findSubmitBtn(items) {
 }
 
 /**
+ * 判定是否已进入陌陌主界面
+ * 特征：用户明确指定的“开启附近功能”引导页，或底部标准导航栏（首页/消息/小宇宙/更多），或顶部动态/附近导航
+ */
+function isMomoHomeScreen(items, screenHeight = 640) {
+  // 排除冷启动未登录时的动态页（必须无“注册/登录”浮动按钮）
+  const hasFeedLogin = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('注册/登录') || t.includes('注册登录');
+  });
+  if (hasFeedLogin) return false;
+
+  // 特征1：用户明确指定的画面 —— “开启附近功能”引导页
+  const hasNearbyGuide = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('开启附近功能') ||
+           t.includes('启用位置权限和定位服务') ||
+           t.includes('才可以看到附近的动态') ||
+           (t.includes('一键开启') && it.top > screenHeight * 0.45);
+  });
+
+  // 特征2：底部标准导航栏 (首页, 直播/动态, 消息, 小宇宙/小宇宜/小宇霜, 更多)
+  const bottomItems = items.filter(it => it.top > screenHeight * 0.78);
+  const hasHomeTab = bottomItems.some(it => {
+    const t = normalizeText(it.text);
+    return t === '首页' || t.includes('首页');
+  });
+  const hasOtherTabs = bottomItems.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('消息') || t.includes('小宇宙') || t.includes('小宇宜') || t.includes('小宇霜') || t.includes('更多') || t.includes('直播');
+  });
+  const hasBottomNav = hasHomeTab && hasOtherTabs;
+
+  // 特征3：顶部动态/附近导航
+  const topItems = items.filter(it => it.top < screenHeight * 0.2);
+  const hasTopNav = topItems.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('动态') || t.includes('附近') || t.includes('发动态');
+  });
+
+  // 特征4：动态信息流交互（如打招呼、评论）
+  const hasFeedInteraction = items.some(it => {
+    const t = normalizeText(it.text);
+    return t.includes('打招呼') || t.includes('抢首赞');
+  });
+
+  return hasNearbyGuide || (hasBottomNav && hasTopNav) || (hasBottomNav && hasFeedInteraction) || (hasNearbyGuide && hasBottomNav);
+}
+
+function findContactsDismissButton(items) {
+  // 通讯录授权弹窗：“陌陌想访问你的通讯录，用以屏蔽你身边的熟人... 跳过 / 屏蔽”
+  const skipBtn = items.find(it => {
+    const t = normalizeText(it.text);
+    return (t === '跳过' || t.includes('跳过')) && it.top > 200 && it.top < 500;
+  });
+  return skipBtn || null;
+}
+
+function findGeneralDismissAction(items) {
+  // 通用关闭/跳过/我知道了弹窗
+  const dismissBtn = items.find(it => {
+    const t = normalizeText(it.text);
+    return (t === '跳过' || t === '取消' || t === '我知道了' || t === '下次再说' || t === '关闭') && it.top > 200 && it.top < 600;
+  });
+  return dismissBtn || null;
+}
+
+/**
  * 点选/行为验证码自动处理过盾模块
  */
 async function handleCaptchaChallenge(phone, control, worker, ocrDir, screenshotsDir, log, maxRounds = 3) {
@@ -331,6 +398,21 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     // 校验必须处于手机绑定页面或验证码校验页面
     if (!isBindPhoneScreen(obs.items) && !isCaptchaVerifyScreen(obs.items)) {
+      if (isMomoHomeScreen(obs.items, obs.height)) {
+        log.console('[1/5] 🎉 检测到当前设备已处于陌陌主界面（识别到“开启附近功能”或底栏导航），上号已处于成功状态！');
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-momo-home-success', '陌陌主页上号成功现场', log);
+        return {
+          ok: true,
+          state: 'login_success',
+          loginSuccess: true,
+          homeConfirmed: true,
+          runId,
+          phoneNumber: phoneNumber || '17306728814',
+          screenshotsDir,
+          lastScreenshotPath,
+          message: '当前设备已处于陌陌主界面，上号成功！',
+        };
+      }
       throw new Error('未处于“手机绑定”相关界面，当前屏幕不匹配，请确认前台状态！');
     }
 
@@ -591,53 +673,106 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     await control.tap(sPt.x, sPt.y);
     await control.flush();
-    await sleep(2500);
 
-    // 8. 终态现场确认与结果捕获
-    obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-final-submitted-${state.counter++}`);
-    lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-final-submitted', '点击提交后终态现场', log);
+    // 8. 终态现场确认与结果捕获（后验密集监听是否出现“请重新授权”或成功进入“开启附近功能”主页）
+    log.console('[5/5] 点击提交后，正在进行终态密集后验监听...');
+    const submitDeadline = Date.now() + 20000;
+    let homeConfirmed = false;
+    let finalObs = null;
 
-    // 核心检测：是否弹出“请重新授权”Toast或提示
-    const reauthItem = obs.items.find(it => {
-      const t = normalizeText(it.text);
-      return t.includes('请重新授权') || t.includes('重新授权');
-    });
+    while (Date.now() <= submitDeadline) {
+      await sleep(1500);
+      obs = await screenshotAndOcr(phone, worker, ocrDir, `step5-verify-home-${state.counter++}`);
+      finalObs = obs;
 
-    if (reauthItem) {
-      const sessionAfter = await logAuthBudget(log, resolvedDeviceId, '提交后出现重新授权提示');
-      const elapsedStr = sessionAfter ? sessionAfter.elapsedFormatted : '未知';
-      log.console(`[5/5] ⚠️ 【服务端风控拦截】检测到界面弹出提示: "${reauthItem.text}"！`);
-      log.console(`[5/5] ⚠️ 【超时诊断根因】：从微信授权开始计时至今耗时 ${elapsedStr}（陌陌临时授权凭证生命周期仅 8 分钟，超出该时间提交必被阻断）！`);
-      return {
-        ok: false,
-        state: 'reauth_required',
-        toastText: reauthItem.text,
-        message: `陌陌提示“请重新授权” (从微信授权到提交耗时 ${elapsedStr}，超出8分钟上限)`,
-        elapsedMs: sessionAfter?.elapsedMs,
-        elapsedFormatted: elapsedStr,
-        runId,
-        projectCode,
-        phoneNumber,
-        verifyCode: cleanTargetCode,
-        sessionId,
-        screenshotsDir,
-        lastScreenshotPath,
-      };
+      // 核心检测 1：是否弹出“请重新授权”Toast或提示
+      const reauthItem = obs.items.find(it => {
+        const t = normalizeText(it.text);
+        return t.includes('请重新授权') || t.includes('重新授权');
+      });
+
+      if (reauthItem) {
+        const sessionAfter = await logAuthBudget(log, resolvedDeviceId, '提交后出现重新授权提示');
+        const elapsedStr = sessionAfter ? sessionAfter.elapsedFormatted : '未知';
+        log.console(`[5/5] ⚠️ 【服务端风控拦截】检测到界面弹出提示: "${reauthItem.text}"！`);
+        log.console(`[5/5] ⚠️ 【超时诊断根因】：从微信授权到提交耗时 ${elapsedStr}（陌陌临时授权凭证生命周期仅 8 分钟，超出该时间提交必被阻断）！`);
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-reauth-required', '重新授权拦截现场', log);
+        return {
+          ok: false,
+          state: 'reauth_required',
+          toastText: reauthItem.text,
+          message: `陌陌提示“请重新授权” (从微信授权到提交耗时 ${elapsedStr}，超出8分钟上限)`,
+          elapsedMs: sessionAfter?.elapsedMs,
+          elapsedFormatted: elapsedStr,
+          runId,
+          projectCode,
+          phoneNumber,
+          verifyCode: cleanTargetCode,
+          sessionId,
+          screenshotsDir,
+          lastScreenshotPath,
+        };
+      }
+
+      // 核心检测 2：是否弹出通讯录或系统权限弹窗，自动点击“跳过”
+      const dismissBtn = findContactsDismissButton(obs.items) || findGeneralDismissAction(obs.items);
+      if (dismissBtn) {
+        const pt = tapBox(control, dismissBtn, obs);
+        log.console(`[5/5] 检测到前置权限/通讯录弹窗 [${dismissBtn.text}]，自动点击跳过 (${pt.x}, ${pt.y})...`);
+        await control.tap(pt.x, pt.y);
+        await control.flush();
+        await sleep(1500);
+        continue;
+      }
+
+      // 核心检测 3：是否已达成成功终态 —— 陌陌主页（开启附近功能页或动态信息流页）
+      if (isMomoHomeScreen(obs.items, obs.height)) {
+        homeConfirmed = true;
+        log.console('[5/5] 🎉【陌陌上号成功】后验确认已成功进入陌陌主界面（识别到“开启附近功能”或主页导航栏）！');
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-momo-home-success', '陌陌主页上号成功现场', log);
+        break;
+      }
+
+      // 如果仍在手机绑定页面，且存在错误提示（例如“验证码错误”、“网络异常”）
+      const errorItem = obs.items.find(it => {
+        const t = normalizeText(it.text);
+        return (t.includes('验证码错误') || t.includes('验证码失效') || t.includes('验证码已过期') || t.includes('过于频繁')) && it.top > 200 && it.top < 500;
+      });
+      if (errorItem) {
+        throw new Error(`手机绑定提交失败，提示: ${errorItem.text}`);
+      }
     }
 
-    log.console('[5/5] 【终态完成】已完成点击提交，终态现场截图已保存！');
+    if (!homeConfirmed) {
+      if (finalObs && isMomoHomeScreen(finalObs.items, finalObs.height)) {
+        homeConfirmed = true;
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '06-momo-home-success', '陌陌主页上号成功现场', log);
+      } else {
+        lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '05-final-submitted', '点击提交后终态现场', log);
+        log.console('[5/5] ⚠️ 提交后未在时限内确认进入主页，已保存当前现场截图。');
+      }
+    }
+
+    log.console('[5/5] 【终态完成】陌陌一键上号全流程达成！');
     await logAuthBudget(log, resolvedDeviceId, '手机绑定全流程达成');
+    const completedAt = Date.now();
+    const completedTimeFormatted = new Date(completedAt).toLocaleString('zh-CN', { hour12: false });
 
     return {
       ok: true,
-      state: 'submitted',
+      state: 'login_success',
+      loginSuccess: true,
+      homeConfirmed,
       runId,
       projectCode,
       phoneNumber,
-      verifyCode,
+      verifyCode: cleanTargetCode,
       sessionId,
+      completedAt,
+      completedTimeFormatted,
       screenshotsDir,
       lastScreenshotPath,
+      message: '陌陌一键上号成功，已成功进入主页！',
     };
   } catch (error) {
     if (phone) {
@@ -705,11 +840,27 @@ function printSummary(result, duration, error = null) {
     console.log('【下一步】：请将收到的 6 位短信验证码提供给脚本继续提交。');
     console.log(`【执行耗时】：${duration} 秒`);
   } else if (result?.ok) {
-    console.log('【执行结果】：成功');
-    console.log('【任务名称】：陌陌手机绑定');
+    console.log('【执行结果】：🎉 陌陌一键上号成功！');
+    console.log('【任务名称】：陌陌手机绑定与上号终态确认');
     console.log('【退出状态码】：0');
-    console.log(`【完成步骤】：手机号打字 [${result.phoneNumber}] -> 获取验证码 -> 验证码打字 [${result.verifyCode || '已输入'}] -> 提交绑定`);
+    console.log('【主页终态】：已成功进入陌陌主界面（识别到“开启附近功能”或底栏导航）');
+    if (result.phoneNumber) console.log(`【绑定手机】：${result.phoneNumber}`);
+    if (result.completedTimeFormatted) console.log(`【完成时间】：${result.completedTimeFormatted}`);
+    const shotPath = result?.lastScreenshotPath;
+    if (shotPath) {
+      console.log(`【现场截图】：${path.relative(PROJECT_ROOT, shotPath)}`);
+    }
     console.log(`【执行耗时】：${duration} 秒`);
+    console.log('='.repeat(60) + '\n');
+    console.log(`[RESULT_JSON] ${JSON.stringify({
+      success: true,
+      message: '陌陌一键上号成功',
+      state: 'login_success',
+      phoneNumber: result.phoneNumber,
+      screenshot: shotPath ? path.relative(PROJECT_ROOT, shotPath) : null,
+      completedTime: result.completedTimeFormatted || new Date().toLocaleString('zh-CN', { hour12: false }),
+      durationSeconds: Number(duration),
+    })}`);
   } else {
     console.log('【执行结果】：失败');
     console.log('【任务名称】：陌陌手机绑定');

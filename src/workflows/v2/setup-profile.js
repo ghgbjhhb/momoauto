@@ -189,7 +189,12 @@ function isEnterMomoButton(items) {
 function isBindPhoneOrHomeScreen(items) {
   return items.some(it => {
     const t = normalizeText(it.text);
-    return t.includes('手机绑定') || t.includes('绑定手机号') || t.includes('输入手机号码') || t.includes('附近的人') || t.includes('切换登录账号');
+    return t.includes('手机绑定') ||
+           t.includes('绑定手机号') ||
+           t.includes('输入手机号码') ||
+           t.includes('附近的人') ||
+           t.includes('切换登录账号') ||
+           t.includes('开启附近功能');
   });
 }
 
