@@ -1,793 +1,16 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui="v2">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>momo全托管 - 后台管理系统</title>
-  <link rel="stylesheet" href="/theme-b.css">
-  <style>
-    body {
-      margin: 0;
-      background: var(--bg-page, #f0f2f5);
-      color: var(--text-body, #262626);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      overflow: hidden;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Admin Topbar */
-    .admin-topbar {
-      height: 52px;
-      background: #ffffff;
-      border-bottom: 1px solid #e8e8e8;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 20px;
-      z-index: 100;
-      flex-shrink: 0;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-    }
-
-    .admin-brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-decoration: none;
-    }
-
-    .admin-brand-icon {
-      width: 30px;
-      height: 30px;
-      border-radius: 6px;
-      background: linear-gradient(135deg, #1677ff, #06b6d4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-    }
-    .admin-brand-icon svg {
-      width: 17px;
-      height: 17px;
-    }
-
-    .admin-brand-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: #1f1f1f;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      letter-spacing: -0.2px;
-    }
-
-    .admin-tag {
-      font-size: 11px;
-      padding: 1px 7px;
-      background: #e6f4ff;
-      border: 1px solid #91caff;
-      color: #1677ff;
-      border-radius: 4px;
-      font-weight: 600;
-    }
-
-    .admin-topbar-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .admin-user-pill {
-      font-size: 12.5px;
-      color: #595959;
-      background: #f5f5f5;
-      border: 1px solid #d9d9d9;
-      padding: 4px 10px;
-      border-radius: 5px;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .admin-top-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12.5px;
-      font-weight: 500;
-      padding: 5px 12px;
-      border-radius: 5px;
-      text-decoration: none;
-      cursor: pointer;
-      border: 1px solid #d9d9d9;
-      background: #ffffff;
-      color: #262626;
-      transition: all 0.15s ease;
-    }
-    .admin-top-btn:hover {
-      background: #f5f5f5;
-      border-color: #1677ff;
-      color: #1677ff;
-    }
-    .admin-top-btn.danger:hover {
-      background: #fff1f0;
-      border-color: #ffa39e;
-      color: #ff4d4f;
-    }
-
-    /* Admin Shell Layout */
-    .admin-shell {
-      display: flex;
-      flex: 1;
-      height: calc(100vh - 52px);
-      overflow: hidden;
-    }
-
-    /* Sidebar */
-    .admin-sidebar {
-      width: 216px;
-      background: #ffffff;
-      border-right: 1px solid #e8e8e8;
-      display: flex;
-      flex-direction: column;
-      padding: 14px 10px;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      color: #595959;
-      text-decoration: none;
-      border-radius: 6px;
-      font-size: 13.5px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      position: relative;
-    }
-
-    .nav-item:hover {
-      background: #f5f5f5;
-      color: #1f1f1f;
-    }
-
-    .nav-item.active {
-      background: #e6f4ff;
-      color: #1677ff;
-      font-weight: 600;
-    }
-
-    .nav-item.active::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 6px;
-      bottom: 6px;
-      width: 3px;
-      background: #1677ff;
-      border-radius: 0 2px 2px 0;
-    }
-
-    .nav-item svg {
-      width: 17px;
-      height: 17px;
-      flex-shrink: 0;
-    }
-
-    .nav-badge {
-      margin-left: auto;
-      font-size: 11px;
-      padding: 1px 6px;
-      background: #ff4d4f;
-      color: #fff;
-      border-radius: 10px;
-      font-weight: 700;
-      line-height: 14px;
-    }
-
-    /* Main Content Area */
-    .admin-main {
-      flex: 1;
-      height: 100%;
-      overflow-y: auto;
-      background: #f0f2f5;
-      position: relative;
-    }
-
-    @keyframes tabFadeIn {
-      0% {
-        opacity: 0;
-        transform: translateY(6px);
-      }
-      100% {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .tab-content {
-      display: none;
-      height: 100%;
-      box-sizing: border-box;
-      padding: 20px;
-    }
-
-    .tab-content.tab-full {
-      padding: 0;
-    }
-
-    .tab-content.active {
-      display: block;
-      animation: tabFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    /* Embed cluster iframe */
-    .cluster-iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      display: block;
-      background: #f0f2f5;
-    }
-
-    /* Cards & Stats */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-
-    .stat-card {
-      background: #ffffff;
-      border: 1px solid #e8e8e8;
-      border-radius: 8px;
-      padding: 16px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-    }
-
-    .stat-card-title {
-      font-size: 12.5px;
-      color: #8c8c8c;
-      font-weight: 500;
-    }
-
-    .stat-card-val {
-      font-size: 26px;
-      font-weight: 700;
-      color: #1f1f1f;
-    }
-    .text-green { color: #52c41a !important; }
-    .text-blue { color: #1677ff !important; }
-    .text-red { color: #ff4d4f !important; }
-
-    /* Data Tables */
-    .table-container {
-      background: #ffffff;
-      border: 1px solid #e8e8e8;
-      border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 20px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-    }
-
-    .table-toolbar {
-      padding: 14px 18px;
-      border-bottom: 1px solid #e8e8e8;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-      background: #ffffff;
-    }
-
-    .table-toolbar-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: #1f1f1f;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .admin-table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-      font-size: 13px;
-    }
-
-    .admin-table th {
-      background: #fafafa;
-      color: #595959;
-      padding: 11px 16px;
-      font-weight: 600;
-      border-bottom: 1px solid #e8e8e8;
-      white-space: nowrap;
-    }
-
-    .admin-table td {
-      padding: 12px 16px;
-      border-bottom: 1px solid #f0f0f0;
-      color: #262626;
-    }
-
-    .admin-table tr:hover td {
-      background: #fafafa;
-    }
-
-    /* Badges */
-    .badge-status {
-      display: inline-block;
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-size: 11.5px;
-      font-weight: 600;
-      border: 1px solid;
-    }
-
-    .badge-status.active {
-      background: #f6ffed;
-      color: #52c41a;
-      border-color: #b7eb8f;
-    }
-
-    .badge-status.unused {
-      background: #e6f4ff;
-      color: #1677ff;
-      border-color: #91caff;
-    }
-
-    .badge-status.used {
-      background: #f5f5f5;
-      color: #8c8c8c;
-      border-color: #d9d9d9;
-    }
-
-    .badge-status.revoked, .badge-status.banned, .badge-status.expired {
-      background: #fff1f0;
-      color: #ff4d4f;
-      border-color: #ffa39e;
-    }
-
-    /* System Logs Terminal Tab */
-    .log-filter-group {
-      display: inline-flex;
-      border: 1px solid #d9d9d9;
-      border-radius: 5px;
-      overflow: hidden;
-    }
-    .log-level-btn {
-      padding: 4px 10px;
-      font-size: 12px;
-      border: none;
-      background: #ffffff;
-      color: #595959;
-      cursor: pointer;
-      border-right: 1px solid #e8e8e8;
-      transition: all 0.15s ease;
-    }
-    .log-level-btn:last-child {
-      border-right: none;
-    }
-    .log-level-btn:hover {
-      background: #f5f5f5;
-      color: #1f1f1f;
-    }
-    .log-level-btn.active {
-      background: #1677ff;
-      color: #ffffff;
-      font-weight: 600;
-    }
-
-    .admin-log-viewport {
-      flex: 1;
-      min-height: 0;
-      background: #141414;
-      padding: 12px 14px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .admin-terminal-output {
-      margin: 0;
-      color: #d4d4d4;
-      font-family: Consolas, "SF Mono", Monaco, Menlo, monospace;
-      font-size: 12px;
-      line-height: 1.6;
-      word-break: break-all;
-    }
-
-    /* 现代工业级日志配色标准 (Catppuccin Mocha / DevTools APM 规范) */
-    .log-row {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      transition: background 0.12s ease;
-      font-family: inherit;
-    }
-    .log-row:hover {
-      background: rgba(255, 255, 255, 0.04);
-    }
-    .log-row.log-row-error {
-      background: rgba(243, 139, 168, 0.08);
-    }
-    .log-row.log-row-error:hover {
-      background: rgba(243, 139, 168, 0.14);
-    }
-    .log-row.log-row-warn {
-      background: rgba(249, 226, 175, 0.05);
-    }
-    .log-row.log-row-warn:hover {
-      background: rgba(249, 226, 175, 0.11);
-    }
-
-    .log-time {
-      color: #6c7086;
-      font-size: 11.5px;
-      white-space: nowrap;
-      user-select: none;
-      flex-shrink: 0;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .log-badge {
-      display: inline-block;
-      padding: 0 5px;
-      font-size: 10.5px;
-      font-weight: 700;
-      line-height: 17px;
-      border-radius: 3px;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      flex-shrink: 0;
-      text-align: center;
-      min-width: 44px;
-      user-select: none;
-    }
-    .log-badge-error {
-      background: rgba(243, 139, 168, 0.22);
-      color: #f38ba8;
-      border: 1px solid rgba(243, 139, 168, 0.38);
-    }
-    .log-badge-warn {
-      background: rgba(249, 226, 175, 0.18);
-      color: #fab387;
-      border: 1px solid rgba(250, 179, 135, 0.35);
-    }
-    .log-badge-info {
-      background: rgba(137, 180, 250, 0.18);
-      color: #89b4fa;
-      border: 1px solid rgba(137, 180, 250, 0.32);
-    }
-    .log-badge-http {
-      background: rgba(203, 166, 247, 0.18);
-      color: #cba6f7;
-      border: 1px solid rgba(203, 166, 247, 0.32);
-    }
-    .log-badge-debug {
-      background: rgba(108, 112, 134, 0.20);
-      color: #a6adc8;
-      border: 1px solid rgba(108, 112, 134, 0.3);
-    }
-
-    .log-tag {
-      font-size: 10.5px;
-      font-weight: 600;
-      padding: 0 4px;
-      line-height: 17px;
-      border-radius: 2px;
-      flex-shrink: 0;
-      user-select: none;
-      letter-spacing: 0.3px;
-    }
-    .log-tag-server {
-      color: #94e2d5;
-      background: rgba(148, 226, 213, 0.14);
-    }
-    .log-tag-client {
-      color: #a6e3a1;
-      background: rgba(166, 227, 161, 0.14);
-    }
-    .log-tag-http {
-      color: #cba6f7;
-      background: rgba(203, 166, 247, 0.14);
-    }
-
-    .log-content {
-      color: #cdd6f4;
-      flex: 1;
-      word-break: break-all;
-    }
-
-    .log-method {
-      font-weight: 700;
-      padding-right: 2px;
-    }
-    .log-method-get { color: #a6e3a1; }
-    .log-method-post { color: #89b4fa; }
-    .log-method-delete { color: #f38ba8; }
-    .log-method-put { color: #f9e2af; }
-    .log-method-patch { color: #f9e2af; }
-
-    .log-status-2xx { color: #a6e3a1; font-weight: 600; }
-    .log-status-3xx { color: #89dceb; font-weight: 600; }
-    .log-status-4xx { color: #fab387; font-weight: 700; }
-    .log-status-5xx { color: #f38ba8; font-weight: 700; }
-    .log-status-failed { color: #f38ba8; font-weight: 700; }
-
-    .log-duration { color: #7f849c; font-size: 11px; }
-    .log-user { color: #f5c2e7; }
-    .log-arrow { color: #6c7086; padding: 0 3px; }
-    .log-details { color: #7f849c; font-size: 11px; margin-left: 6px; }
-
-    /* Buttons */
-    .btn-action-sm {
-      padding: 4px 10px;
-      font-size: 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      border: 1px solid #d9d9d9;
-      background: #ffffff;
-      color: #262626;
-      transition: all 0.15s ease;
-    }
-    .btn-action-sm:hover {
-      border-color: #1677ff;
-      color: #1677ff;
-      background: #f5f5f5;
-    }
-    .btn-action-sm.danger {
-      color: #ff4d4f;
-      border-color: #ffa39e;
-      background: #fff1f0;
-    }
-    .btn-action-sm.danger:hover {
-      background: #ff4d4f;
-      color: #ffffff;
-      border-color: #ff4d4f;
-    }
-
-    /* Form Fields */
-    .form-field {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-    .form-field label {
-      font-size: 12.5px;
-      font-weight: 500;
-      color: #595959;
-    }
-    .form-input {
-      height: 34px;
-      padding: 0 10px;
-      font-size: 13px;
-      border: 1px solid #d9d9d9;
-      border-radius: 5px;
-      background: #ffffff;
-      color: #262626;
-      outline: none;
-      transition: border-color 0.15s ease;
-      box-sizing: border-box;
-    }
-    .form-input:focus {
-      border-color: #1677ff;
-      box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
-    }
-    .form-input:disabled {
-      background: #f5f5f5;
-      color: #bfbfbf;
-      border-color: #e8e8e8;
-      cursor: not-allowed;
-    }
-    input[type="search"]::-webkit-search-cancel-button,
-    input[type="search"]::-webkit-search-decoration {
-      -webkit-appearance: none;
-      appearance: none;
-      display: none;
-    }
-
-    /* Clean Card Benefits Form Controls */
-    .benefit-check-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
-      font-size: 13.5px;
-      font-weight: 500;
-      color: #1f1f1f;
-    }
-    .benefit-check-item input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: #1677ff;
-      cursor: pointer;
-    }
-
-    /* Benefit Badges in Table */
-    .benefit-badge-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      align-items: center;
-    }
-    .benefit-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-    .benefit-badge.cloud {
-      background: #e6f4ff;
-      color: #0958d9;
-      border: 1px solid #91caff;
-    }
-    .benefit-badge.zhencan {
-      background: #fff7e6;
-      color: #d46b08;
-      border: 1px solid #ffd591;
-    }
-    .benefit-badge.ip {
-      background: #f6ffed;
-      color: #389e0d;
-      border: 1px solid #b7eb8f;
-    }
-
-    /* Modal Animations */
-    @keyframes modalOverlayFadeIn {
-      from { opacity: 0; backdrop-filter: blur(0px); }
-      to { opacity: 1; backdrop-filter: blur(4px); }
-    }
-    @keyframes modalScaleIn {
-      from { opacity: 0; transform: scale(0.92) translateY(-14px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-
-    .admin-modal {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      animation: modalOverlayFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .admin-modal-card {
-      background: #ffffff;
-      border: 1px solid #e8e8e8;
-      border-radius: 10px;
-      padding: 24px;
-      width: 100%;
-      max-width: 520px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
-      animation: modalScaleIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      transform-origin: center center;
-    }
-
-    .admin-modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-    }
-
-    .admin-modal-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: #1f1f1f;
-    }
-
-    /* Toast 统一浮动提示 (轻量小巧、严格约束高宽、顶端微型提示条 - Ant Design 现代质感) */
-    .toast {
-      all: unset;
-      box-sizing: border-box !important;
-      position: fixed !important;
-      top: 20px !important;
-      bottom: auto !important;
-      left: 50% !important;
-      right: auto !important;
-      transform: translateX(-50%) translateY(-24px) !important;
-      background: #ffffff !important;
-      color: #1f1f1f !important;
-      border: 1px solid #e8e8e8 !important;
-      padding: 0 18px !important;
-      border-radius: 8px !important;
-      font-size: 13.5px !important;
-      font-weight: 500 !important;
-      box-shadow: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12) !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-      transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
-      z-index: 999999 !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 8px !important;
-      height: 38px !important;
-      line-height: 38px !important;
-      max-height: 38px !important;
-      min-height: 38px !important;
-      white-space: nowrap !important;
-    }
-    .toast.visible {
-      transform: translateX(-50%) translateY(0) !important;
-      opacity: 1 !important;
-      pointer-events: auto !important;
-    }
-    .toast.success {
-      background: #ffffff !important;
-      color: #1f1f1f !important;
-      border: 1px solid #e8e8e8 !important;
-    }
-    .toast.error {
-      background: #ffffff !important;
-      color: #1f1f1f !important;
-      border: 1px solid #ffa39e !important;
-    }
-
-    /* SMS Log Details Drawer */
-    .log-detail-row {
-      background: #fafafa !important;
-    }
-    .log-detail-box {
-      padding: 14px 18px;
-      border: 1px solid #e8e8e8;
-      border-radius: 6px;
-      margin: 8px 12px;
-      background: #ffffff;
-      font-size: 12.5px;
-    }
-    .log-code-pre {
-      background: #f8f9fa;
-      border: 1px solid #e8e8e8;
-      border-radius: 4px;
-      padding: 10px;
-      margin: 6px 0 0;
-      font-family: Consolas, monospace;
-      font-size: 12px;
-      max-height: 220px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-
-    .batch-cards-output {
-      width: 100%;
-      height: 180px;
-      background: #fafafa;
-      border: 1px solid #d9d9d9;
-      border-radius: 6px;
-      padding: 10px;
-      color: #1677ff;
-      font-family: Consolas, monospace;
-      font-size: 13px;
-      resize: vertical;
-      margin-bottom: 16px;
-      box-sizing: border-box;
-    }
-  </style>
+  <link rel="stylesheet" href="/vendor/open-props.min.css">
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/ui.css">
+  <link rel="stylesheet" href="/console.css">
+  <link rel="stylesheet" href="/admin.css">
+  
 </head>
 <body>
   <!-- Topbar -->
@@ -853,7 +76,7 @@
       <a class="nav-item" data-tab="logs" href="/admin/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         <span>系统运行日志</span>
-        <span class="nav-badge" id="navErrorBadge" style="display:none;">0</span>
+        <span class="nav-badge" id="navErrorBadge" style="display: none">0</span>
       </a>
       <a class="nav-item" data-tab="sms" href="/admin/sms">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
@@ -890,7 +113,7 @@
             <div class="table-toolbar-title">
               <span>用户列表</span>
             </div>
-            <button class="btn-action-sm" id="refreshUsersBtn" type="button">🔄 刷新列表</button>
+            <button class="btn-action-sm" id="refreshUsersBtn" type="button">刷新列表</button>
           </div>
           <table class="admin-table">
             <thead>
@@ -904,7 +127,7 @@
               </tr>
             </thead>
             <tbody id="usersTableBody">
-              <tr><td colspan="6" style="text-align:center; padding:30px;">正在加载用户列表…</td></tr>
+              <tr><td colspan="6" style="text-align: center; padding: var(--sp-32)">正在加载用户列表…</td></tr>
             </tbody>
           </table>
         </div>
@@ -912,23 +135,23 @@
 
       <!-- Tab 3: 卡密中心 -->
       <section class="tab-content" id="tab-cards">
-        <div class="table-container" style="margin-bottom: 20px;">
+        <div class="table-container" style="margin-bottom: var(--sp-20)">
           <div class="table-toolbar">
             <div class="table-toolbar-title">
-              <span>⚡ 生成卡密</span>
+              <span>生成卡密</span>
             </div>
           </div>
 
-          <form id="generateCardsForm" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px;">
+          <form id="generateCardsForm" style="padding: var(--sp-16) var(--sp-20); display: flex; flex-direction: column; gap: var(--sp-12)">
             <!-- 第 1 行：兑换内容勾选与配置 (支持多选) -->
-            <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0;">
-              <span style="font-size: 13.5px; font-weight: 600; color: #1f1f1f;">兑换内容：</span>
+            <div style="display: flex; align-items: center; gap: var(--sp-24); flex-wrap: wrap; padding-bottom: var(--sp-12); border-bottom: 1px solid var(--border)">
+              <span style="font-size: var(--fs-13); font-weight: var(--fw-600); color: var(--text-1)">兑换内容：</span>
 
               <!-- 1. 云机卡密 -->
               <label class="benefit-check-item">
                 <input type="checkbox" id="benefitCheckCloud" checked>
                 <span>1. 云机卡密</span>
-                <select id="cardDurationDays" class="form-input" style="width: 125px; height: 32px; font-size: 13px;">
+                <select id="cardDurationDays" class="form-input" style="width: 125px; height: var(--h-control-lg); font-size: var(--fs-13)">
                   <option value="1">1 天 (天卡)</option>
                   <option value="3">3 天</option>
                   <option value="7">7 天 (周卡)</option>
@@ -942,9 +165,9 @@
               <label class="benefit-check-item">
                 <input type="checkbox" id="benefitCheckZhencan">
                 <span>2. 真参卡密</span>
-                <div style="display: inline-flex; align-items: center; gap: 4px;">
-                  <input id="cardZhencanCount" class="form-input" type="number" min="1" max="10000" value="10" placeholder="10" style="width: 75px; height: 32px; font-size: 13px;" disabled>
-                  <span style="font-size: 12.5px; color: #595959;">套</span>
+                <div style="display: inline-flex; align-items: center; gap: var(--sp-4)">
+                  <input id="cardZhencanCount" class="form-input" type="number" min="1" max="10000" value="10" placeholder="10" style="width: 75px; height: var(--h-control-lg); font-size: var(--fs-13)" disabled>
+                  <span style="font-size: var(--fs-12); color: var(--text-2)">套</span>
                 </div>
               </label>
 
@@ -952,7 +175,7 @@
               <label class="benefit-check-item">
                 <input type="checkbox" id="benefitCheckIp">
                 <span>3. IP卡密</span>
-                <select id="cardIpDays" class="form-input" style="width: 110px; height: 32px; font-size: 13px;" disabled>
+                <select id="cardIpDays" class="form-input" style="width: 110px; height: var(--h-control-lg); font-size: var(--fs-13)" disabled>
                   <option value="1">1 天</option>
                   <option value="3">3 天</option>
                   <option value="7">7 天 (周卡)</option>
@@ -964,19 +187,19 @@
             </div>
 
             <!-- 第 2 行：数量、备注与生成按钮 -->
-            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <label for="cardCount" style="font-size: 13px; color: #595959;">生成数量：</label>
-                <input id="cardCount" class="form-input" type="number" min="1" max="500" value="5" style="width: 75px; height: 32px; font-size: 13px;">
-                <span style="font-size: 12.5px; color: #595959;">张</span>
+            <div style="display: flex; align-items: center; gap: var(--sp-20); flex-wrap: wrap">
+              <div style="display: flex; align-items: center; gap: var(--sp-8)">
+                <label for="cardCount" style="font-size: var(--fs-13); color: var(--text-2)">生成数量：</label>
+                <input id="cardCount" class="form-input" type="number" min="1" max="500" value="5" style="width: 75px; height: var(--h-control-lg); font-size: var(--fs-13)">
+                <span style="font-size: var(--fs-12); color: var(--text-2)">张</span>
               </div>
 
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <label for="cardBatchTag" style="font-size: 13px; color: #595959;">批次备注：</label>
-                <input id="cardBatchTag" name="card_batch_tag_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="选填，如首批代理" style="width: 220px; height: 32px; font-size: 13px;">
+              <div style="display: flex; align-items: center; gap: var(--sp-8)">
+                <label for="cardBatchTag" style="font-size: var(--fs-13); color: var(--text-2)">批次备注：</label>
+                <input id="cardBatchTag" name="card_batch_tag_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="选填，如首批代理" style="width: 220px; height: var(--h-control-lg); font-size: var(--fs-13)">
               </div>
 
-              <button class="run-button" style="height: 32px; margin: 0; background: #1677ff; color: #fff; border: none; border-radius: 5px; font-size: 13px; font-weight: 500; cursor: pointer; padding: 0 18px;" type="submit">立即生成</button>
+              <button class="run-button" style="height: var(--h-control-lg); margin: 0; background: var(--accent); color: var(--text-on-accent); border: none; border-radius: var(--r-4); font-size: var(--fs-13); font-weight: var(--fw-500); cursor: pointer; padding: 0 var(--sp-16)" type="submit">立即生成</button>
             </div>
           </form>
         </div>
@@ -986,20 +209,20 @@
             <div class="table-toolbar-title">
               <span>卡密列表</span>
             </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <select id="cardFilterType" class="form-input" style="width: 130px; height: 32px; font-size: 12.5px;">
+            <div style="display: flex; gap: var(--sp-8); align-items: center">
+              <select id="cardFilterType" class="form-input" style="width: 130px; height: var(--h-control-lg); font-size: var(--fs-12)">
                 <option value="">全部类别</option>
-                <option value="cloud">📱 包含云机</option>
-                <option value="zhencan">🧬 包含真参</option>
-                <option value="ip">🌐 包含IP</option>
+                <option value="cloud">包含云机</option>
+                <option value="zhencan">包含真参</option>
+                <option value="ip">包含IP</option>
               </select>
-              <select id="cardFilterStatus" class="form-input" style="width: 110px; height: 32px; font-size: 12.5px;">
+              <select id="cardFilterStatus" class="form-input" style="width: 110px; height: var(--h-control-lg); font-size: var(--fs-12)">
                 <option value="">全部状态</option>
                 <option value="unused">未使用</option>
                 <option value="used">已使用</option>
                 <option value="revoked">已作废</option>
               </select>
-              <button class="btn-action-sm" id="refreshCardsBtn" type="button">🔄 刷新列表</button>
+              <button class="btn-action-sm" id="refreshCardsBtn" type="button">刷新列表</button>
             </div>
           </div>
           <table class="admin-table">
@@ -1016,7 +239,7 @@
               </tr>
             </thead>
             <tbody id="cardsTableBody">
-              <tr><td colspan="8" style="text-align:center; padding:30px;">正在加载卡密列表…</td></tr>
+              <tr><td colspan="8" style="text-align: center; padding: var(--sp-32)">正在加载卡密列表…</td></tr>
             </tbody>
           </table>
         </div>
@@ -1044,7 +267,7 @@
             <div class="table-toolbar-title">
               <span>设备池映射与租约状态</span>
             </div>
-            <button class="btn-action-sm" id="refreshPoolBtn" type="button">🔄 刷新设备池</button>
+            <button class="btn-action-sm" id="refreshPoolBtn" type="button">刷新设备池</button>
           </div>
           <table class="admin-table">
             <thead>
@@ -1060,7 +283,7 @@
               </tr>
             </thead>
             <tbody id="poolTableBody">
-              <tr><td colspan="8" style="text-align:center; padding:30px;">正在加载设备池…</td></tr>
+              <tr><td colspan="8" style="text-align: center; padding: var(--sp-32)">正在加载设备池…</td></tr>
             </tbody>
           </table>
         </div>
@@ -1068,52 +291,52 @@
 
       <!-- Tab: 资源云盘 -->
       <section class="tab-content" id="tab-disk">
-        <div class="table-container" style="margin-bottom: 20px;">
+        <div class="table-container" style="margin-bottom: var(--sp-20)">
           <div class="table-toolbar">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <button type="button" class="btn-action-sm active" data-dir="真参" id="adminDiskDirParams" style="font-weight:600; padding:6px 16px; border-radius:6px; cursor:pointer;">
-                ⚙️ 真机参数 <span id="adminDiskCountParams" style="background:#1677ff; color:#fff; padding:1px 6px; border-radius:10px; font-size:12px; margin-left:4px;">0</span>
+            <div style="display: flex; align-items: center; gap: var(--sp-8)">
+              <button type="button" class="btn-action-sm active" data-dir="真参" id="adminDiskDirParams" style="font-weight: var(--fw-600); padding: var(--sp-6) var(--sp-16); border-radius: var(--r-6); cursor: pointer">
+                真机参数 <span id="adminDiskCountParams" style="background: var(--accent); color: var(--text-on-accent); padding: 0 var(--sp-6); border-radius: var(--r-8); font-size: var(--fs-12); margin-left: var(--sp-4)">0</span>
               </button>
-              <button type="button" class="btn-action-sm" data-dir="头像" id="adminDiskDirAvatars" style="font-weight:600; padding:6px 16px; border-radius:6px; cursor:pointer;">
-                🖼️ 用户头像 <span id="adminDiskCountAvatars" style="background:#e8e8e8; color:#595959; padding:1px 6px; border-radius:10px; font-size:12px; margin-left:4px;">0</span>
+              <button type="button" class="btn-action-sm" data-dir="头像" id="adminDiskDirAvatars" style="font-weight: var(--fw-600); padding: var(--sp-6) var(--sp-16); border-radius: var(--r-6); cursor: pointer">
+                用户头像 <span id="adminDiskCountAvatars" style="background: var(--border); color: var(--text-2); padding: 0 var(--sp-6); border-radius: var(--r-8); font-size: var(--fs-12); margin-left: var(--sp-4)">0</span>
               </button>
             </div>
-            <div style="display:flex; align-items:center; gap:10px;">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <label for="adminDiskDeviceSelect" style="font-size:13px; color:#595959;">目标云机：</label>
-                <select id="adminDiskDeviceSelect" class="form-input" style="width:250px; height:32px; font-size:13px;">
+            <div style="display: flex; align-items: center; gap: var(--sp-8)">
+              <div style="display: flex; align-items: center; gap: var(--sp-6)">
+                <label for="adminDiskDeviceSelect" style="font-size: var(--fs-13); color: var(--text-2)">目标云机：</label>
+                <select id="adminDiskDeviceSelect" class="form-input" style="width: 250px; height: var(--h-control-lg); font-size: var(--fs-13)">
                   <option value="">加载设备中…</option>
                 </select>
-                <button class="btn-action-sm" id="adminDiskRefreshDevicesBtn" type="button" title="刷新设备列表">🔄</button>
+                <button class="btn-action-sm" id="adminDiskRefreshDevicesBtn" type="button" title="刷新设备列表">刷新</button>
               </div>
               <input type="file" id="adminDiskFileInput" multiple hidden />
-              <button class="btn-action-sm" id="adminDiskUploadBtn" type="button" style="background:#1677ff; color:#fff; border-color:#1677ff; font-weight:500; height:32px; padding:0 14px;">⬆️ 上传文件</button>
-              <button class="btn-action-sm" id="adminDiskRefreshBtn" type="button" style="height:32px; padding:0 12px;">🔄 刷新</button>
+              <button class="btn-action-sm" id="adminDiskUploadBtn" type="button" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: var(--fw-500); height: var(--h-control-lg); padding: 0 var(--sp-12)">⬆️ 上传文件</button>
+              <button class="btn-action-sm" id="adminDiskRefreshBtn" type="button" style="height: var(--h-control-lg); padding: 0 var(--sp-12)">刷新</button>
             </div>
           </div>
-          <div style="padding: 16px 20px;">
+          <div style="padding: var(--sp-16) var(--sp-20)">
             <!-- 用户头像操作栏 (选中图片时显示) -->
-            <div class="avatar-operation-bar" id="avatarOperationBar" style="display:none;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:13px; color:#595959;">已选中：</span>
-                <span id="avatarSelectedName" style="font-size:13px; font-weight:600; color:#1677ff;"></span>
-                <span id="avatarSelectedSize" style="font-size:12px; color:#8c8c8c;"></span>
+            <div class="avatar-operation-bar" id="avatarOperationBar" style="display: none">
+              <div style="display: flex; align-items: center; gap: var(--sp-8)">
+                <span style="font-size: var(--fs-13); color: var(--text-2)">已选中：</span>
+                <span id="avatarSelectedName" style="font-size: var(--fs-13); font-weight: var(--fw-600); color: var(--accent)"></span>
+                <span id="avatarSelectedSize" style="font-size: var(--fs-12); color: var(--text-3)"></span>
               </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <button type="button" class="btn-action-sm" id="btnPreviewSelectedAvatar" style="padding:4px 12px;">
-                  🔍 预览
+              <div style="display: flex; align-items: center; gap: var(--sp-8)">
+                <button type="button" class="btn-action-sm" id="btnPreviewSelectedAvatar" style="padding: var(--sp-4) var(--sp-12)">
+                  预览
                 </button>
-                <button type="button" class="btn-action-sm" id="btnPushSelectedAvatar" style="background:#1677ff; color:#fff; border-color:#1677ff; font-weight:600; padding:4px 14px;">
-                  🚀 推送到相册
+                <button type="button" class="btn-action-sm" id="btnPushSelectedAvatar" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: var(--fw-600); padding: var(--sp-4) var(--sp-12)">
+                  推送到相册
                 </button>
-                <button type="button" class="btn-action-sm danger" id="btnDeleteSelectedAvatar" style="padding:4px 12px;">
-                  🗑️ 删除
+                <button type="button" class="btn-action-sm danger" id="btnDeleteSelectedAvatar" style="padding: var(--sp-4) var(--sp-12)">
+                  删除
                 </button>
               </div>
             </div>
 
             <!-- 文件列表 / 网格 (支持直接拖拽文件到此处上传) -->
-            <div class="disk-file-list" id="adminDiskFileList" style="min-height: 200px;">
+            <div class="disk-file-list" id="adminDiskFileList" style="min-height: var(--h-textarea)">
               <div class="disk-empty-state">
                 <p>正在读取云盘文件…</p>
               </div>
@@ -1124,12 +347,12 @@
 
       <!-- Tab 5: 系统运行日志 -->
       <section class="tab-content tab-full" id="tab-logs">
-        <div class="table-container" style="height: 100%; margin-bottom: 0; border-radius: 0; display: flex; flex-direction: column;">
+        <div class="table-container" style="height: 100%; margin-bottom: 0; border-radius: 0; display: flex; flex-direction: column">
           <div class="table-toolbar">
             <div class="table-toolbar-title">
-              <span>🖥️ 全局系统运行日志</span>
+              <span>全局系统运行日志</span>
             </div>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <div style="display: flex; gap: var(--sp-8); align-items: center; flex-wrap: wrap">
               <div class="log-filter-group" id="logLevelFilters">
                 <button type="button" class="log-level-btn active" data-level="ALL">全部</button>
                 <button type="button" class="log-level-btn" data-level="INFO">INFO</button>
@@ -1137,16 +360,16 @@
                 <button type="button" class="log-level-btn" data-level="ERROR">ERROR</button>
                 <button type="button" class="log-level-btn" data-level="HTTP">HTTP</button>
               </div>
-              <div style="position: relative; display: inline-flex; align-items: center;">
-                <input type="search" id="adminLogSearch" name="admin_log_search_filter_no_autofill" class="form-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly','readonly');" placeholder="过滤关键字..." style="width: 175px; height: 30px; font-size: 12px; padding-right: 22px;">
-                <button type="button" id="clearAdminLogSearchBtn" title="清空搜索" style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; color: #8c8c8c; font-size: 13px; display: none; line-height: 1; padding: 2px;">✕</button>
+              <div style="position: relative; display: inline-flex; align-items: center">
+                <input type="search" id="adminLogSearch" name="admin_log_search_filter_no_autofill" class="form-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly','readonly');" placeholder="过滤关键字..." style="width: 175px; height: var(--h-control); font-size: var(--fs-12); padding-right: var(--sp-20)">
+                <button type="button" id="clearAdminLogSearchBtn" title="清空搜索" style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; color: var(--text-3); font-size: var(--fs-13); display: none; line-height: 1; padding: var(--sp-2)">×</button>
               </div>
-              <label style="font-size: 12.5px; display:flex; align-items:center; gap:4px; cursor:pointer; color:#595959; user-select:none;">
+              <label style="font-size: var(--fs-12); display: flex; align-items: center; gap: var(--sp-4); cursor: pointer; color: var(--text-2); user-select: none">
                 <input type="checkbox" id="adminLogAutoScroll" checked> 自动滚屏
               </label>
-              <button class="btn-action-sm" id="adminLogCopyBtn" type="button">📋 复制全部</button>
+              <button class="btn-action-sm" id="adminLogCopyBtn" type="button">复制全部</button>
               <button class="btn-action-sm" id="adminLogClearBtn" type="button">清空</button>
-              <button class="btn-action-sm" id="adminLogRefreshBtn" type="button">🔄 刷新</button>
+              <button class="btn-action-sm" id="adminLogRefreshBtn" type="button">刷新</button>
             </div>
           </div>
           <div class="admin-log-viewport" id="adminLogViewport">
@@ -1157,14 +380,14 @@
 
       <!-- Tab 6: AI全局设置 -->
       <section class="tab-content" id="tab-ai">
-        <div class="table-container" style="margin-bottom: 24px;">
+        <div class="table-container" style="margin-bottom: var(--sp-24)">
           <div class="table-toolbar">
             <div class="table-toolbar-title">
               <span>AI 供应商列表</span>
             </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <button class="btn-action-sm" id="btnAddAiProvider" type="button" style="background:#1677ff; color:#fff; border-color:#1677ff;">+ 新增供应商</button>
-              <button class="btn-action-sm" id="refreshAiProvidersBtn" type="button">🔄 刷新</button>
+            <div style="display: flex; gap: var(--sp-8); align-items: center">
+              <button class="btn-action-sm" id="btnAddAiProvider" type="button" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent)">+ 新增供应商</button>
+              <button class="btn-action-sm" id="refreshAiProvidersBtn" type="button">刷新</button>
             </div>
           </div>
 
@@ -1181,7 +404,7 @@
               </tr>
             </thead>
             <tbody id="aiProvidersTableBody">
-              <tr><td colspan="7" style="text-align:center; padding:30px;">正在加载供应商列表…</td></tr>
+              <tr><td colspan="7" style="text-align: center; padding: var(--sp-32)">正在加载供应商列表…</td></tr>
             </tbody>
           </table>
         </div>
@@ -1190,38 +413,38 @@
       <!-- Tab 7: 接码平台管理 (玄武 OpenAPI) -->
       <section class="tab-content" id="tab-sms">
         <!-- 1. API Key 配置栏 (极简单行，保存供后续新脚本全局统一调用) -->
-        <div class="table-container" style="margin-bottom: 18px;">
+        <div class="table-container" style="margin-bottom: var(--sp-16)">
           <div class="table-toolbar">
             <div class="table-toolbar-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-              <span>⚡ 接码平台 (玄武 OpenAPI) 配置</span>
-              <span style="font-size:12.5px; font-weight:normal; color:#8c8c8c;">（配置 API Key 供后续自动化脚本直接调用）</span>
+              <span>接码平台 (玄武 OpenAPI) 配置</span>
+              <span style="font-size: var(--fs-12); font-weight: var(--fw-400); color: var(--text-3)">（配置 API Key 供后续自动化脚本直接调用）</span>
             </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <span id="smsConfigStatusBadge" class="badge-status unused" style="font-size:12px;">已载入</span>
+            <div style="display: flex; gap: var(--sp-8); align-items: center">
+              <span id="smsConfigStatusBadge" class="badge-status unused" style="font-size: var(--fs-12)">已载入</span>
             </div>
           </div>
 
-          <form id="smsConfigForm" autocomplete="off" onsubmit="return false;" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <form id="smsConfigForm" autocomplete="off" onsubmit="return false;" style="padding: var(--sp-16) var(--sp-20); display: flex; align-items: center; gap: var(--sp-12); flex-wrap: wrap">
             <!-- 隐藏的防自动填充陷阱：彻底阻断浏览器密码管理器扫描并将用户名串联填充到下方日志搜索框 -->
-            <input type="text" name="fake_user_trap" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
-            <input type="password" name="fake_pwd_trap" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
+            <input type="text" name="fake_user_trap" tabindex="-1" autocomplete="off" aria-hidden="true" style="position: absolute; top: -9999px; left: -9999px; width: 0; height: 0; opacity: 0; pointer-events: none">
+            <input type="password" name="fake_pwd_trap" tabindex="-1" autocomplete="new-password" aria-hidden="true" style="position: absolute; top: -9999px; left: -9999px; width: 0; height: 0; opacity: 0; pointer-events: none">
 
-            <label for="smsApiKey" style="font-size: 13.5px; font-weight: 600; color: #1f1f1f; white-space: nowrap;">
+            <label for="smsApiKey" style="font-size: var(--fs-13); font-weight: var(--fw-600); color: var(--text-1); white-space: nowrap">
               玄武 API Key：
             </label>
-            <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 280px; max-width: 480px;">
-              <input id="smsApiKey" name="xuanwu_openapi_key_not_login" class="form-input" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" spellcheck="false" placeholder="请输入玄武平台 API Key" style="width: 100%; height: 34px; font-size: 13px; font-family: monospace;">
-              <button type="button" class="btn-action-sm" id="toggleSmsKeyVisBtn" title="显示/隐藏明文" style="height: 34px; padding: 0 10px;">👁️</button>
+            <div style="display: flex; align-items: center; gap: var(--sp-6); flex: 1; min-width: 280px; max-width: 480px">
+              <input id="smsApiKey" name="xuanwu_openapi_key_not_login" class="form-input" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" spellcheck="false" placeholder="请输入玄武平台 API Key" style="width: 100%; height: var(--h-control-lg); font-size: var(--fs-13); font-family: monospace">
+              <button type="button" class="btn-action-sm" id="toggleSmsKeyVisBtn" title="显示/隐藏明文" style="height: var(--h-control-lg); padding: 0 var(--sp-8)">明文</button>
             </div>
 
-            <button type="submit" class="btn-action-sm" id="saveSmsConfigBtn" style="height: 34px; padding: 0 18px; font-size: 13px; background: #1677ff; color: #fff; border: 1px solid #1677ff; font-weight: 600;">
-              💾 保存配置
+            <button type="submit" class="btn-action-sm" id="saveSmsConfigBtn" style="height: var(--h-control-lg); padding: 0 var(--sp-16); font-size: var(--fs-13); background: var(--accent); color: var(--text-on-accent); border: 1px solid var(--accent); font-weight: var(--fw-600)">
+              保存配置
             </button>
-            <button type="button" class="btn-action-sm" id="testSmsConnBtn" style="height: 34px; padding: 0 16px; font-size: 13px; font-weight: 500;">
-              ⚡ 测试连通性
+            <button type="button" class="btn-action-sm" id="testSmsConnBtn" style="height: var(--h-control-lg); padding: 0 var(--sp-16); font-size: var(--fs-13); font-weight: var(--fw-500)">
+              测试连通性
             </button>
-            <span id="smsConfigMsg" style="font-size: 12.5px; font-weight: 600;"></span>
+            <span id="smsConfigMsg" style="font-size: var(--fs-12); font-weight: var(--fw-600)"></span>
           </form>
         </div>
 
@@ -1229,37 +452,37 @@
         <div class="table-container">
           <div class="table-toolbar">
             <div class="table-toolbar-title">
-              <span>📜 脚本调用日志</span>
-              <span style="font-size:12px; font-weight:normal; color:#8c8c8c;" id="smsLogTotalCount">共 0 条记录</span>
+              <span>脚本调用日志</span>
+              <span style="font-size: var(--fs-12); font-weight: var(--fw-400); color: var(--text-3)" id="smsLogTotalCount">共 0 条记录</span>
             </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <div style="position: relative; display: inline-flex; align-items: center;">
-                <input id="smsRecordSearch" name="sms_log_search_query_no_autofill" class="form-input" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly','readonly');" placeholder="搜索手机号 / 动作" style="width: 175px; height: 32px; font-size: 12.5px; padding-right: 22px;">
-                <button type="button" id="clearSmsSearchBtn" title="清空搜索" style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; color: #8c8c8c; font-size: 13px; display: none; line-height: 1; padding: 2px;">✕</button>
+            <div style="display: flex; gap: var(--sp-8); align-items: center">
+              <div style="position: relative; display: inline-flex; align-items: center">
+                <input id="smsRecordSearch" name="sms_log_search_query_no_autofill" class="form-input" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" readonly onfocus="this.removeAttribute('readonly');" onblur="if(!this.value) this.setAttribute('readonly','readonly');" placeholder="搜索手机号 / 动作" style="width: 175px; height: var(--h-control-lg); font-size: var(--fs-12); padding-right: var(--sp-20)">
+                <button type="button" id="clearSmsSearchBtn" title="清空搜索" style="position: absolute; right: 6px; background: none; border: none; cursor: pointer; color: var(--text-3); font-size: var(--fs-13); display: none; line-height: 1; padding: var(--sp-2)">×</button>
               </div>
-              <select id="smsRecordStatusFilter" class="form-input" style="width: 100px; height: 32px; font-size: 12.5px;">
+              <select id="smsRecordStatusFilter" class="form-input" style="width: 100px; height: var(--h-control-lg); font-size: var(--fs-12)">
                 <option value="">全部状态</option>
                 <option value="success">调用成功</option>
                 <option value="failed">调用失败</option>
               </select>
-              <button class="btn-action-sm" id="refreshSmsRecordsBtn" type="button">🔄 刷新日志</button>
-              <button class="btn-action-sm danger" id="clearSmsRecordsBtn" type="button">🗑️ 清空日志</button>
+              <button class="btn-action-sm" id="refreshSmsRecordsBtn" type="button">刷新日志</button>
+              <button class="btn-action-sm danger" id="clearSmsRecordsBtn" type="button">清空日志</button>
             </div>
           </div>
           <table class="admin-table">
             <thead>
               <tr>
-                <th style="width: 155px;">调用时间</th>
-                <th style="width: 140px;">接口动作</th>
-                <th style="width: 135px;">手机号码</th>
-                <th style="width: 100px;">验证码</th>
-                <th style="width: 80px;">状态</th>
-                <th style="width: 80px;">耗时</th>
-                <th style="width: 100px; text-align: center;">调用详情</th>
+                <th style="width: 155px">调用时间</th>
+                <th style="width: 140px">接口动作</th>
+                <th style="width: 135px">手机号码</th>
+                <th style="width: 100px">验证码</th>
+                <th style="width: 80px">状态</th>
+                <th style="width: 80px">耗时</th>
+                <th style="width: 100px; text-align: center">调用详情</th>
               </tr>
             </thead>
             <tbody id="smsRecordsTableBody">
-              <tr><td colspan="7" style="text-align:center; padding:30px; color:#8c8c8c;">暂无脚本调用日志</td></tr>
+              <tr><td colspan="7" style="text-align: center; padding: var(--sp-32); color: var(--text-3)">暂无脚本调用日志</td></tr>
             </tbody>
           </table>
         </div>
@@ -1268,23 +491,23 @@
   </div>
 
   <!-- AI 供应商配置弹窗 -->
-  <div class="admin-modal" id="aiProviderModal" style="display: none;">
-    <div class="admin-modal-card" style="max-width: 540px;">
+  <div class="admin-modal" id="aiProviderModal" style="display: none">
+    <div class="admin-modal-card" style="max-width: 540px">
       <div class="admin-modal-header">
         <div class="admin-modal-title" id="aiProviderModalTitle">新增 AI 供应商</div>
-        <button class="btn-action-sm" id="closeAiProviderModalBtn" type="button" style="border:none; font-size:16px;">✕</button>
+        <button class="btn-action-sm" id="closeAiProviderModalBtn" type="button" style="border: none; font-size: var(--fs-16)">×</button>
       </div>
-      <form id="aiProviderForm" autocomplete="off" style="display:flex; flex-direction:column; gap:14px;">
+      <form id="aiProviderForm" autocomplete="off" style="display: flex; flex-direction: column; gap: var(--sp-12)">
         <input type="hidden" id="editProviderId">
 
         <div>
-          <label for="editProviderName" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">供应商名称</label>
-          <input id="editProviderName" name="edit_provider_name_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="例如：DeepSeek 官方、硅基流动" style="width:100%; height:34px;" required>
+          <label for="editProviderName" style="font-size: var(--fs-13); font-weight: var(--fw-600); display: block; margin-bottom: var(--sp-4)">供应商名称</label>
+          <input id="editProviderName" name="edit_provider_name_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="例如：DeepSeek 官方、硅基流动" style="width: 100%; height: var(--h-control-lg)" required>
         </div>
 
         <div>
-          <label for="editProviderProtocol" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">调用格式</label>
-          <select id="editProviderProtocol" class="form-input" style="width:100%; height:34px;">
+          <label for="editProviderProtocol" style="font-size: var(--fs-13); font-weight: var(--fw-600); display: block; margin-bottom: var(--sp-4)">调用格式</label>
+          <select id="editProviderProtocol" class="form-input" style="width: 100%; height: var(--h-control-lg)">
             <option value="openai">OpenAI 兼容协议</option>
             <option value="deepseek">DeepSeek 官方协议</option>
             <option value="custom">通用自定义接口</option>
@@ -1292,51 +515,51 @@
         </div>
 
         <div>
-          <label for="editProviderEndpoint" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">接口链接</label>
-          <input id="editProviderEndpoint" name="edit_provider_endpoint_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="https://api.deepseek.com" style="width:100%; height:34px;" required>
+          <label for="editProviderEndpoint" style="font-size: var(--fs-13); font-weight: var(--fw-600); display: block; margin-bottom: var(--sp-4)">接口链接</label>
+          <input id="editProviderEndpoint" name="edit_provider_endpoint_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="https://api.deepseek.com" style="width: 100%; height: var(--h-control-lg)" required>
         </div>
 
         <div>
-          <label for="editProviderApiKey" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">API Key</label>
-          <div style="display:flex; gap:8px;">
-            <input id="editProviderApiKey" name="edit_provider_api_key_no_autofill" class="form-input masked-secret" type="text" placeholder="输入 API Key" style="flex:1; height:34px;" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
-            <button type="button" class="btn-action-sm" id="editProviderClearKeyBtn" style="color:#ff4d4f;">清空</button>
+          <label for="editProviderApiKey" style="font-size: var(--fs-13); font-weight: var(--fw-600); display: block; margin-bottom: var(--sp-4)">API Key</label>
+          <div style="display: flex; gap: var(--sp-8)">
+            <input id="editProviderApiKey" name="edit_provider_api_key_no_autofill" class="form-input masked-secret" type="text" placeholder="输入 API Key" style="flex: 1; height: var(--h-control-lg)" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+            <button type="button" class="btn-action-sm" id="editProviderClearKeyBtn" style="color: var(--danger)">清空</button>
           </div>
         </div>
 
         <div>
-          <label for="editProviderModel" style="font-size:13px; font-weight:600; display:block; margin-bottom:4px;">模型名称</label>
-          <input id="editProviderModel" name="edit_provider_model_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="deepseek-chat" style="width:100%; height:34px;" required>
+          <label for="editProviderModel" style="font-size: var(--fs-13); font-weight: var(--fw-600); display: block; margin-bottom: var(--sp-4)">模型名称</label>
+          <input id="editProviderModel" name="edit_provider_model_no_autofill" class="form-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="deepseek-chat" style="width: 100%; height: var(--h-control-lg)" required>
         </div>
 
-        <details style="border:1px solid #f0f0f0; border-radius:6px; padding:10px 14px; background:#fafafa;">
-          <summary style="font-size:13px; font-weight:600; color:#595959; cursor:pointer;">高级参数</summary>
-          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-top:10px;">
+        <details style="border: 1px solid var(--border); border-radius: var(--r-6); padding: var(--sp-8) var(--sp-12); background: var(--bg-subtle)">
+          <summary style="font-size: var(--fs-13); font-weight: var(--fw-600); color: var(--text-2); cursor: pointer">高级参数</summary>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-8); margin-top: var(--sp-8)">
             <div>
-              <label for="editProviderTemp" style="font-size:12px; color:#595959; display:block; margin-bottom:4px;">温度</label>
-              <input id="editProviderTemp" class="form-input" type="number" min="0" max="2" step="0.1" value="0.7" style="height:32px; width:100%;">
+              <label for="editProviderTemp" style="font-size: var(--fs-12); color: var(--text-2); display: block; margin-bottom: var(--sp-4)">温度</label>
+              <input id="editProviderTemp" class="form-input" type="number" min="0" max="2" step="0.1" value="0.7" style="height: var(--h-control-lg); width: 100%">
             </div>
             <div>
-              <label for="editProviderMaxTokens" style="font-size:12px; color:#595959; display:block; margin-bottom:4px;">最大 Token</label>
-              <input id="editProviderMaxTokens" class="form-input" type="number" min="50" max="4000" step="50" value="150" style="height:32px; width:100%;">
+              <label for="editProviderMaxTokens" style="font-size: var(--fs-12); color: var(--text-2); display: block; margin-bottom: var(--sp-4)">最大 Token</label>
+              <input id="editProviderMaxTokens" class="form-input" type="number" min="50" max="4000" step="50" value="150" style="height: var(--h-control-lg); width: 100%">
             </div>
             <div>
-              <label for="editProviderTimeout" style="font-size:12px; color:#595959; display:block; margin-bottom:4px;">超时 (ms)</label>
-              <input id="editProviderTimeout" class="form-input" type="number" min="3000" max="120000" step="1000" value="15000" style="height:32px; width:100%;">
+              <label for="editProviderTimeout" style="font-size: var(--fs-12); color: var(--text-2); display: block; margin-bottom: var(--sp-4)">超时 (ms)</label>
+              <input id="editProviderTimeout" class="form-input" type="number" min="3000" max="120000" step="1000" value="15000" style="height: var(--h-control-lg); width: 100%">
             </div>
           </div>
         </details>
 
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+        <label style="display: flex; align-items: center; gap: var(--sp-6); font-size: var(--fs-13); cursor: pointer">
           <input type="checkbox" id="editProviderIsDefault">
           <span>设为当前默认启用供应商</span>
         </label>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--sp-8)">
           <button type="button" class="btn-action-sm" id="testEditProviderBtn">测试连接</button>
-          <div style="display:flex; gap:10px;">
+          <div style="display: flex; gap: var(--sp-8)">
             <button type="button" class="btn-action-sm" id="cancelEditProviderBtn">取消</button>
-            <button type="submit" class="btn-action-sm" id="saveEditProviderBtn" style="background:#1677ff; color:#fff; border-color:#1677ff; font-weight:600;">保存供应商</button>
+            <button type="submit" class="btn-action-sm" id="saveEditProviderBtn" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: var(--fw-600)">保存供应商</button>
           </div>
         </div>
       </form>
@@ -1344,17 +567,17 @@
   </div>
 
   <!-- Batch Cards Result Modal -->
-  <div class="admin-modal" id="cardsResultModal" style="display: none;">
+  <div class="admin-modal" id="cardsResultModal" style="display: none">
     <div class="admin-modal-card">
       <div class="admin-modal-header">
-        <div class="admin-modal-title">🎉 卡密生成成功</div>
-        <button class="btn-action-sm" id="closeCardsModalBtn" type="button" style="border:none; font-size:16px;">✕</button>
+        <div class="admin-modal-title">卡密生成成功</div>
+        <button class="btn-action-sm" id="closeCardsModalBtn" type="button" style="border: none; font-size: var(--fs-16)">×</button>
       </div>
-      <p style="font-size:13px; color:#595959; margin-bottom:12px;">已成功生成以下卡密，你可以一键复制或导出分发给用户：</p>
+      <p style="font-size: var(--fs-13); color: var(--text-2); margin-bottom: var(--sp-12)">已成功生成以下卡密，你可以一键复制或导出分发给用户：</p>
       <textarea class="batch-cards-output" id="batchCardsOutput" readonly></textarea>
-      <div style="display:flex; justify-content:flex-end; gap:10px;">
-        <button class="btn-action-sm" id="copyAllCardsBtn" type="button" style="background:#1677ff; color:#fff; border-color:#1677ff;">📋 一键复制全部</button>
-        <button class="btn-action-sm" id="downloadCardsTxtBtn" type="button">💾 导出 TXT</button>
+      <div style="display: flex; justify-content: flex-end; gap: var(--sp-8)">
+        <button class="btn-action-sm" id="copyAllCardsBtn" type="button" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent)">一键复制全部</button>
+        <button class="btn-action-sm" id="downloadCardsTxtBtn" type="button">导出 TXT</button>
       </div>
     </div>
   </div>
@@ -1363,37 +586,37 @@
   <dialog class="disk-preview-dialog" id="adminDiskPreviewDialog">
     <div class="disk-dialog-header">
       <h3 class="disk-dialog-title" id="adminDiskPreviewTitle">文件预览</h3>
-      <button class="btn-action-sm" id="closeAdminDiskPreviewBtn" type="button" style="border:none; font-size:16px;">✕</button>
+      <button class="btn-action-sm" id="closeAdminDiskPreviewBtn" type="button" style="border: none; font-size: var(--fs-16)">×</button>
     </div>
     <div class="disk-dialog-body" id="adminDiskPreviewBody"></div>
   </dialog>
 
   <!-- 页面风格一致的通用确认模态弹窗 (用于卡密作废、用户封禁等敏感动作) -->
-  <div class="admin-modal" id="adminConfirmModal" style="display: none;">
-    <div class="admin-modal-card" style="max-width: 440px; padding: 22px;">
-      <div style="display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px;">
-        <div id="confirmModalIcon" style="width: 40px; height: 40px; border-radius: 50%; background: #fff2f0; border: 1px solid #ffccc7; color: #ff4d4f; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">⚠️</div>
-        <div style="flex: 1;">
-          <h3 id="confirmModalTitle" style="font-size: 16px; font-weight: 700; color: #1f1f1f; margin: 0 0 6px 0;">确认作废该卡密？</h3>
-          <div id="confirmModalDesc" style="font-size: 13px; color: #595959; margin: 0; line-height: 1.5;">作废后该卡密将立即失效，用户将无法再兑换。此操作无法撤销，是否继续？</div>
+  <div class="admin-modal" id="adminConfirmModal" style="display: none">
+    <div class="admin-modal-card" style="max-width: 440px; padding: var(--sp-20)">
+      <div style="display: flex; gap: var(--sp-12); align-items: flex-start; margin-bottom: var(--sp-20)">
+        <div id="confirmModalIcon" style="width: 40px; height: var(--h-toolbar); border-radius: var(--r-pill); background: var(--text-on-accent)2f0; border: 1px solid var(--danger); color: var(--danger); display: flex; align-items: center; justify-content: center; font-size: var(--fs-20); flex-shrink: 0">!</div>
+        <div style="flex: 1">
+          <h3 id="confirmModalTitle" style="font-size: var(--fs-16); font-weight: var(--fw-600); color: var(--text-1); margin: 0 0 var(--sp-6) 0">确认作废该卡密？</h3>
+          <div id="confirmModalDesc" style="font-size: var(--fs-13); color: var(--text-2); margin: 0; line-height: 1.5">作废后该卡密将立即失效，用户将无法再兑换。此操作无法撤销，是否继续？</div>
         </div>
       </div>
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button class="btn-action-sm" id="confirmModalCancelBtn" type="button" style="padding: 6px 16px; height: 32px; font-size: 13px;">取消</button>
-        <button class="btn-action-sm danger" id="confirmModalOkBtn" type="button" style="padding: 6px 18px; height: 32px; font-size: 13px; background: #ff4d4f; color: #fff; border: 1px solid #ff4d4f; font-weight: 600;">确认作废</button>
+      <div style="display: flex; justify-content: flex-end; gap: var(--sp-8)">
+        <button class="btn-action-sm" id="confirmModalCancelBtn" type="button" style="padding: var(--sp-6) var(--sp-16); height: var(--h-control-lg); font-size: var(--fs-13)">取消</button>
+        <button class="btn-action-sm danger" id="confirmModalOkBtn" type="button" style="padding: var(--sp-6) var(--sp-16); height: var(--h-control-lg); font-size: var(--fs-13); background: var(--danger); color: var(--text-on-accent); border: 1px solid var(--danger); font-weight: var(--fw-600)">确认作废</button>
       </div>
     </div>
   </div>
 
   <!-- 修改登录密码 -->
-  <div class="admin-modal" id="adminPasswordModal" style="display: none;">
-    <div class="admin-modal-card" style="max-width: 420px; padding: 22px;">
+  <div class="admin-modal" id="adminPasswordModal" style="display: none">
+    <div class="admin-modal-card" style="max-width: 420px; padding: var(--sp-20)">
       <form id="adminPasswordForm" autocomplete="off" onsubmit="return false;">
         <!-- 显式内部账号槽位：将密码修改框的账号范围彻底封闭在表单内部，杜绝浏览器向全局搜索框倒灌账号 -->
-        <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" style="position:absolute; top:-9999px; left:-9999px; width:0; height:0; opacity:0; pointer-events:none;">
-        <h3 style="font-size: 16px; font-weight: 700; color: #1f1f1f; margin: 0 0 6px 0;">修改登录密码</h3>
-        <p style="font-size: 12.5px; color: #8c8c8c; margin: 0 0 16px 0; line-height: 1.5;">新密码至少 8 位。保存后所有设备上的旧登录状态立即失效，需用新密码重新登录。</p>
-        <div style="display: flex; flex-direction: column; gap: 12px;">
+        <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" style="position: absolute; top: -9999px; left: -9999px; width: 0; height: 0; opacity: 0; pointer-events: none">
+        <h3 style="font-size: var(--fs-16); font-weight: var(--fw-600); color: var(--text-1); margin: 0 0 var(--sp-6) 0">修改登录密码</h3>
+        <p style="font-size: var(--fs-12); color: var(--text-3); margin: 0 0 var(--sp-16) 0; line-height: 1.5">新密码至少 8 位。保存后所有设备上的旧登录状态立即失效，需用新密码重新登录。</p>
+        <div style="display: flex; flex-direction: column; gap: var(--sp-12)">
           <div class="form-field">
             <label for="pwdCurrentInput">当前密码</label>
             <input class="form-input" type="password" id="pwdCurrentInput" autocomplete="current-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="请输入当前登录密码">
@@ -1406,11 +629,11 @@
             <label for="pwdConfirmInput">确认新密码</label>
             <input class="form-input" type="password" id="pwdConfirmInput" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="再次输入新密码">
           </div>
-          <div id="pwdModalError" style="font-size: 12.5px; color: #ff4d4f; min-height: 16px;"></div>
+          <div id="pwdModalError" style="font-size: var(--fs-12); color: var(--danger); min-height: 16px"></div>
         </div>
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
-          <button class="btn-action-sm" id="pwdModalCancelBtn" type="button" style="padding: 6px 16px; height: 32px; font-size: 13px;">取消</button>
-          <button class="btn-action-sm" id="pwdModalOkBtn" type="button" style="padding: 6px 18px; height: 32px; font-size: 13px; background: #1677ff; color: #fff; border: 1px solid #1677ff; font-weight: 600;">保存新密码</button>
+        <div style="display: flex; justify-content: flex-end; gap: var(--sp-8); margin-top: var(--sp-12)">
+          <button class="btn-action-sm" id="pwdModalCancelBtn" type="button" style="padding: var(--sp-6) var(--sp-16); height: var(--h-control-lg); font-size: var(--fs-13)">取消</button>
+          <button class="btn-action-sm" id="pwdModalOkBtn" type="button" style="padding: var(--sp-6) var(--sp-16); height: var(--h-control-lg); font-size: var(--fs-13); background: var(--accent); color: var(--text-on-accent); border: 1px solid var(--accent); font-weight: var(--fw-600)">保存新密码</button>
         </div>
       </form>
     </div>

@@ -1,39 +1,24 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui="v2">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f8fafc">
+  <meta name="theme-color" content="#ffffff">
   <title>登录 - momo全托管</title>
+  <link rel="stylesheet" href="/vendor/open-props.min.css">
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/ui.css">
   <style>
-    :root {
-      --bg: #f8fafc;
-      --card-bg: #ffffff;
-      --border: #e2e8f0;
-      --border-focus: #2563eb;
-      --text-main: #0f172a;
-      --text-muted: #64748b;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --font-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    }
-
-    *, *::before, *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
     body {
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      background-color: var(--bg);
-      font-family: var(--font-base);
-      color: var(--text-main);
+      background-color: var(--bg-page);
+      font-family: var(--font-sans);
+      color: var(--text-1);
       -webkit-font-smoothing: antialiased;
-      padding: 20px;
+      padding: var(--sp-20);
     }
 
     .auth-wrapper {
@@ -42,166 +27,168 @@
     }
 
     .auth-card {
-      background: var(--card-bg);
+      background: var(--bg-surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 36px 32px;
-      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+      border-radius: var(--r-8);
+      padding: var(--sp-32) var(--sp-24);
+      box-shadow: var(--elev-2);
     }
 
     .brand-section {
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: var(--sp-24);
     }
 
     .brand-logo {
-      width: 48px;
-      height: 48px;
-      margin: 0 auto 14px;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 12px;
+      width: var(--h-toolbar);
+      height: var(--h-toolbar);
+      margin: 0 auto var(--sp-12);
+      background: var(--accent-soft);
+      border: 1px solid var(--accent);
+      border-radius: var(--r-8);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--primary);
+      color: var(--accent);
     }
 
     .brand-logo svg {
-      width: 24px;
-      height: 24px;
+      width: var(--icon-20);
+      height: var(--icon-20);
     }
 
     .brand-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text-main);
+      font-size: var(--fs-20);
+      font-weight: var(--fw-600);
+      color: var(--text-1);
       letter-spacing: -0.02em;
-      margin-bottom: 6px;
+      margin-bottom: var(--sp-6);
+      line-height: var(--lh-tight);
     }
 
     .brand-desc {
-      font-size: 13px;
-      color: var(--text-muted);
+      font-size: var(--fs-13);
+      color: var(--text-3);
+      line-height: var(--lh-normal);
     }
 
     /* 选项卡 */
     .tab-nav {
       display: flex;
-      background: #f1f5f9;
-      padding: 4px;
-      border-radius: 8px;
-      margin-bottom: 24px;
-      gap: 4px;
+      background: var(--bg-subtle);
+      padding: var(--sp-4);
+      border-radius: var(--r-6);
+      margin-bottom: var(--sp-20);
+      gap: var(--sp-4);
+      border: 1px solid var(--border);
     }
 
     .tab-btn {
       flex: 1;
-      height: 34px;
+      height: var(--h-control);
       border: none;
       background: transparent;
-      color: var(--text-muted);
-      font-size: 13.5px;
-      font-weight: 600;
-      border-radius: 6px;
+      color: var(--text-2);
+      font-size: var(--fs-13);
+      font-weight: var(--fw-500);
+      border-radius: var(--r-4);
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
     }
 
     .tab-btn.active {
-      background: #ffffff;
-      color: var(--text-main);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      background: var(--bg-surface);
+      color: var(--text-1);
+      box-shadow: var(--elev-1);
     }
 
     /* 表单控件 */
     .form-group {
-      margin-bottom: 18px;
+      margin-bottom: var(--sp-16);
     }
 
     .form-label {
       display: block;
-      font-size: 12.5px;
-      font-weight: 600;
-      color: var(--text-main);
-      margin-bottom: 6px;
+      font-size: var(--fs-12);
+      font-weight: var(--fw-500);
+      color: var(--text-2);
+      margin-bottom: var(--sp-6);
     }
 
     .form-input {
       width: 100%;
-      height: 42px;
-      padding: 0 12px;
-      background: #ffffff;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 14px;
-      color: var(--text-main);
+      height: var(--h-control-lg);
+      padding: 0 var(--sp-12);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r-6);
+      font-size: var(--fs-13);
+      color: var(--text-1);
       outline: none;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
     }
 
     .form-input:focus {
-      border-color: var(--border-focus);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      border-color: var(--accent);
+      box-shadow: var(--focus-ring);
     }
 
     .form-input::placeholder {
-      color: #94a3b8;
+      color: var(--text-3);
     }
 
     /* 主按钮 */
     .submit-btn {
       width: 100%;
-      height: 42px;
-      background: var(--primary);
-      border: 1px solid var(--primary-hover);
-      border-radius: 8px;
-      color: #ffffff;
-      font-size: 14px;
-      font-weight: 600;
+      height: var(--h-control-lg);
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: var(--r-6);
+      color: var(--text-on-accent);
+      font-size: var(--fs-13);
+      font-weight: var(--fw-500);
       cursor: pointer;
-      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
-      transition: all 0.15s ease;
-      margin-top: 6px;
+      box-shadow: var(--elev-1);
+      transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+      margin-top: var(--sp-8);
     }
 
     .submit-btn:hover {
-      background: var(--primary-hover);
-      box-shadow: 0 4px 8px rgba(37, 99, 235, 0.25);
-      transform: translateY(-1px);
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
     }
 
     .submit-btn:active {
-      transform: translateY(0);
+      background: var(--accent);
     }
 
     .submit-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-      transform: none;
     }
 
     /* 提示信息 */
     .alert-box {
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 13px;
-      margin-bottom: 18px;
+      padding: var(--sp-8) var(--sp-12);
+      border-radius: var(--r-6);
+      font-size: var(--fs-12);
+      line-height: var(--lh-normal);
+      margin-bottom: var(--sp-16);
       display: none;
     }
 
     .alert-box.error {
       display: block;
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #dc2626;
+      background: var(--danger-soft);
+      border: 1px solid var(--danger);
+      color: var(--danger);
     }
 
     .alert-box.success {
       display: block;
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
-      color: #059669;
+      background: var(--ok-soft);
+      border: 1px solid var(--ok);
+      color: var(--ok);
     }
   </style>
 </head>
