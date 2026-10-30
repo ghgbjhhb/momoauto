@@ -1,16 +1,20 @@
 'use strict';
 
+// V3 任务模块：初始化流水线、脚本分组、自定义组合、批量执行引擎。
+// 批量执行 = 前端按设备逐台串行调度（同一时刻只占用一台设备），服务端执行协议不变。
+
 const STEPS_META = [
-  { order: 1, id: 'flow-01-import-cloud-disk', name: '导入云盘', full: '01 导入云盘所有文件' },
-  { order: 2, id: 'flow-02-upload-cert', name: '上传证书', full: '02 上传证书' },
-  { order: 2.1, id: 'flow-02.1-import-params', name: '导入真参', full: '02.1 导入真参' },
-  { order: 3, id: 'flow-03-set-vpc-proxy', name: 'VPC 代理', full: '03 设置 VPC 代理' },
-  { order: 4, id: 'flow-04-setup-environment', name: '环境配置', full: '04 环境配置' },
-  { order: 5, id: 'flow-05-generate-all', name: '一键生成', full: '05 一键生成全部' },
-  { order: 6, id: 'flow-06-locate-ip', name: 'IP 定位', full: '06 定位到ip地' },
-  { order: 7, id: 'flow-07-init-amap', name: '高德地图', full: '07 高德初始化' },
-  { order: 8, id: 'flow-08-init-ime', name: '输入法', full: '08 输入法初始化' },
+  { order: 1, name: '导入云盘', full: '01 导入云盘所有文件' },
+  { order: 2, name: '上传证书', full: '02 上传证书' },
+  { order: 2.1, name: '导入真参', full: '02.1 导入真参' },
+  { order: 3, name: 'VPC 代理', full: '03 设置 VPC 代理' },
+  { order: 4, name: '环境配置', full: '04 环境配置' },
+  { order: 5, name: '一键生成', full: '05 一键生成全部' },
+  { order: 6, name: 'IP 定位', full: '06 定位到ip地' },
+  { order: 7, name: '高德地图', full: '07 高德初始化' },
+  { order: 8, name: '输入法', full: '08 输入法初始化' }
 ];
+window.STEPS_META = STEPS_META;
 
 const STATUS_LABELS = {
   idle: '待执行',
@@ -19,6 +23,16 @@ const STATUS_LABELS = {
   failed: '执行失败',
   cancelled: '已停止，需核对'
 };
+window.STATUS_LABELS = STATUS_LABELS;
+
+const GROUPS = [
+  { key: 'v2', title: 'V2 流程架构 (01~09)' },
+  { key: 'v3', title: 'V3 极速架构 (01~09)' },
+  { key: 'momo', title: 'MOMO 业务自动化 (11~18)' },
+  { key: 'custom', title: '自定义组合脚本' }
+];
+
+const RUN_STATE_TEXT = { ok: '已完成', failed: '执行失败', cancelled: '已停止', skipped: '已跳过', pending: '排队中', running: '执行中' };
 
 function formatStepOrder(order) {
   if (typeof order !== 'number') return String(order || '');
@@ -27,1409 +41,852 @@ function formatStepOrder(order) {
 }
 
 function saveDeviceProgress() {
-  try {
-    localStorage.setItem('yunmomo.deviceProgress', JSON.stringify(state.deviceProgress));
-  } catch { /* Storage might be unavailable. */ }
+  try { localStorage.setItem('yunmomo.deviceProgress', JSON.stringify(state.deviceProgress)); } catch {}
 }
 
 function getStepState(deviceId, order) {
   if (!deviceId || !state.deviceProgress[deviceId]) return 'idle';
   return state.deviceProgress[deviceId][order] || 'idle';
 }
+window.getStepState = getStepState;
 
 function setStepState(deviceId, order, status) {
   if (!deviceId) return;
   if (!state.deviceProgress[deviceId]) state.deviceProgress[deviceId] = {};
   state.deviceProgress[deviceId][order] = status;
   saveDeviceProgress();
-  renderPipelineStepper();
-  updateMiniStepperForDevice(deviceId);
+  if (state.page === 'tasks') renderPipeline();
 }
 
 function resetDeviceProgress(deviceId) {
   if (!deviceId) return;
   delete state.deviceProgress[deviceId];
   saveDeviceProgress();
-  renderPipelineStepper();
-  updateMiniStepperForDevice(deviceId);
-  showToast('已重置该云手机执行记录');
+  renderPipeline();
+  showToast('已重置该云手机的流程执行记录');
 }
 
-function updateMiniStepperForDevice(deviceId) {
-  const card = elements.deviceGrid?.querySelector(`.device-card[data-device-id="${deviceId}"]`);
-  if (!card) return;
-  const miniStepper = card.querySelector('.device-mini-stepper');
-  if (!miniStepper) return;
-  const dev = state.devices.find(d => String(d.deviceId) === String(deviceId));
-  const isV2 = String(dev?.sdkVersion || '').toLowerCase() === 'v2';
-  const metaList = STEPS_META.filter(s => isV2 ? s.order !== 8 : s.order !== 2.1);
-  for (const meta of metaList) {
-    const dot = miniStepper.querySelector(`[data-step="${meta.order}"]`);
-    if (!dot) continue;
-    dot.className = 'mini-step-dot';
-    const st = getStepState(deviceId, meta.order);
-    if (st && st !== 'idle') dot.classList.add(st);
-    dot.title = `${meta.name}: ${STATUS_LABELS[st] || '待执行'}`;
+function scriptTitle(script) {
+  return script.order ? script.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '') : script.title;
+}
+
+function isScriptManageMode() {
+  return Boolean(state.isAdmin);
+}
+window.isScriptManageMode = isScriptManageMode;
+
+function scriptVisible(script) {
+  return state.visibility?.scripts?.[script.id] !== false;
+}
+
+function groupVisible(key) {
+  return state.visibility?.groups?.[key] !== false;
+}
+
+/* ---------- 页面骨架 ---------- */
+
+function currentTaskScript() {
+  const visible = state.scripts.filter(s => scriptVisible(s) && !s.batch);
+  return visible.find(s => s.id === state.taskScriptId) || null;
+}
+
+function renderTasksPage() {
+  const left = elements.taskLeftCol;
+  const right = elements.taskRightCol;
+  if (!left || !right) return;
+
+  const headActions = elements.taskHeadActions;
+  if (headActions) {
+    headActions.innerHTML = isScriptManageMode()
+      ? '<button class="btn" id="openCreateBundleBtn" type="button">新建组合脚本</button>'
+      : '';
+    byId('openCreateBundleBtn')?.addEventListener('click', () => openBundleModal());
+  }
+
+  left.innerHTML = `
+    <section class="panel">
+      <div class="panel-head"><h2>初始化流程</h2><span class="badge" id="pipelineTargetBadge">未选择目标</span></div>
+      <div class="pipeline-row" id="pipelineRow"></div>
+      <div class="details-footer" style="border-top:1px solid var(--line); margin-top:0;">
+        <span class="footer-note">节点按当前目标云机的版本自动适配 V2 / V3</span>
+        <button class="btn" id="resetStepperBtn" type="button">重置记录</button>
+        <button class="btn primary" id="stepperRunAllBtn" type="button">${ic('play', 15)} 执行全流程</button>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>任务列表</h2><span class="hint" id="taskCountHint"></span></div>
+      <div id="taskGroups"></div>
+    </section>
+  `;
+
+  right.innerHTML = `
+    <section class="panel" id="taskDetailPanel"><div class="empty">选择左侧任务查看配置</div></section>
+    <div id="aiRunCardHost"></div>
+    <div id="brainCardHost"></div>
+  `;
+
+  byId('resetStepperBtn')?.addEventListener('click', () => {
+    if (!state.selectedDeviceId) { showToast('未选择云手机'); return; }
+    resetDeviceProgress(state.selectedDeviceId);
+  });
+  byId('stepperRunAllBtn')?.addEventListener('click', runFlowAll);
+  byId('taskGroups')?.addEventListener('click', onTaskGroupsClick);
+  byId('taskDetailPanel')?.addEventListener('input', onDetailInput);
+  byId('taskDetailPanel')?.addEventListener('change', onDetailInput);
+  byId('taskDetailPanel')?.addEventListener('click', onDetailClick);
+
+  renderPipeline();
+  renderTaskGroups();
+  renderTaskDetail();
+  byId('pipelineRow')?.addEventListener('click', onPipelineClick);
+  eventBus.dispatchEvent(new CustomEvent('tasks:rendered'));
+}
+
+function onPipelineClick(event) {
+  const step = event.target.closest('[data-step-order]');
+  if (!step) return;
+  const target = currentDevice();
+  if (!target) { showToast('请先在「设备」页选择目标云机'); return; }
+  const order = Number(step.dataset.stepOrder);
+  const isV2 = String(target.sdkVersion || '').toLowerCase() === 'v2';
+  const script = state.scripts.find(s => s.order === order && (s.category === (isV2 ? 'v2' : 'v3') || s.id.endsWith('-' + (isV2 ? 'v2' : 'v3'))))
+    || state.scripts.find(s => s.order === order);
+  if (!script) { showToast(`未找到步骤 ${order} 对应的执行脚本`); return; }
+  runScriptDirect(script, target.deviceId);
+}
+
+function onTaskGroupsClick(event) {
+  const collapse = event.target.closest('[data-collapse-group]');
+  if (collapse) {
+    const key = collapse.dataset.collapseGroup;
+    const next = !collapse.closest('.task-group').classList.contains('collapsed');
+    collapse.closest('.task-group').classList.toggle('collapsed', next);
+    try { localStorage.setItem('yunmomo.collapse.' + key, String(next)); } catch {}
+    return;
+  }
+  const visBundle = event.target.closest('[data-vis-bundle]');
+  if (visBundle) {
+    const bundle = state.bundles.find(item => item.id === visBundle.dataset.visBundle);
+    if (bundle) { bundle.enabled = !(bundle.enabled !== false); saveBundleDirect(bundle); }
+    return;
+  }
+  const visScript = event.target.closest('[data-vis-script]');
+  if (visScript) {
+    saveVisibilityConfig({ type: 'script', id: visScript.dataset.visScript, visible: !visScript.classList.contains('on') });
+    return;
+  }
+  const visGroup = event.target.closest('[data-vis-group]');
+  if (visGroup) {
+    saveVisibilityConfig({ type: 'group', id: visGroup.dataset.visGroup, visible: !visGroup.classList.contains('on') });
+    return;
+  }
+  const bundleEdit = event.target.closest('[data-bundle-edit]');
+  if (bundleEdit) {
+    const bundle = state.bundles.find(item => item.id === bundleEdit.dataset.bundleEdit);
+    if (bundle) openBundleModal(bundle);
+    return;
+  }
+  const bundleDelete = event.target.closest('[data-bundle-delete]');
+  if (bundleDelete) {
+    const bundle = state.bundles.find(item => item.id === bundleDelete.dataset.bundleDelete);
+    if (!bundle) return;
+    showInPageConfirm({
+      title: '确认删除脚本组合？',
+      message: `<p class="confirm-lead">确定要彻底删除组合脚本 <strong>${escapeHtml(bundle.name)}</strong> 吗？此操作无法撤销。</p>`,
+      okText: '确认删除'
+    }).then(confirmed => { if (confirmed) deleteBundle(bundle.id); });
+    return;
+  }
+  const bundleRun = event.target.closest('[data-bundle-run]');
+  if (bundleRun) {
+    const bundle = state.bundles.find(item => item.id === bundleRun.dataset.bundleRun);
+    if (bundle) executeBundle(bundle);
+    return;
+  }
+  const card = event.target.closest('[data-task-select]');
+  if (card) {
+    state.taskScriptId = card.dataset.taskSelect;
+    renderTaskGroups();
+    renderTaskDetail();
   }
 }
 
-function renderPipelineStepper() {
-  if (!elements.pipelineStepper) return;
+function onDetailInput(event) {
+  const batch = event.target.closest('[data-batch-device]');
+  if (batch) {
+    const id = batch.dataset.batchDevice;
+    if (batch.checked && !state.batchDevices.includes(id)) state.batchDevices.push(id);
+    else if (!batch.checked) state.batchDevices = state.batchDevices.filter(item => item !== id);
+    batch.closest('.device-choice')?.classList.toggle('checked', batch.checked);
+    updateBatchCount();
+    return;
+  }
+  const input = event.target.closest('[data-task-param]');
+  if (input && state.taskScriptId) {
+    state.taskParamValues[state.taskScriptId + ':' + input.dataset.taskParam] = input.value;
+  }
+}
+
+/* ---------- 流水线 ---------- */
+
+function renderPipeline() {
+  const row = byId('pipelineRow');
+  if (!row) return;
   const target = currentDevice();
-  if (elements.stepperTargetBadge) {
+  const badge = byId('pipelineTargetBadge');
+  if (badge) {
     if (target) {
-      const idx = state.devices.indexOf(target) + 1;
       const ver = String(target.sdkVersion || '').toUpperCase();
-      elements.stepperTargetBadge.textContent = `#${String(idx).padStart(2, '0')} ${target.name}` + (ver ? ` [${ver}]` : '');
-      elements.stepperTargetBadge.title = `目标云机: ${target.name} (${target.deviceId})${ver ? ' · 架构版本: ' + ver : ''}`;
+      badge.textContent = `${deviceIndexLabel(target)} ${target.name}` + (ver ? ` · ${ver}` : '');
+      badge.title = `目标云机: ${deviceLabel(target)}`;
     } else {
-      elements.stepperTargetBadge.textContent = '未选择目标';
-      elements.stepperTargetBadge.title = '请在左侧选择目标云手机';
+      badge.textContent = '未选择目标';
     }
   }
-
   const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
-  if (elements.stepperRunAllBtn) {
-    const label = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
-    const labelSpan = elements.stepperRunAllBtn.querySelector('span:last-child');
-    if (labelSpan) labelSpan.textContent = label;
-    else elements.stepperRunAllBtn.textContent = label;
-    elements.stepperRunAllBtn.title = isV2 ? '执行全流程 01–07 (V2)' : '执行全流程 01–08 (V3)';
-  }
-
-  elements.pipelineStepper.replaceChildren();
   const visibleSteps = STEPS_META.filter(step => isV2 ? step.order !== 8 : step.order !== 2.1);
-  for (const step of visibleSteps) {
+  row.innerHTML = visibleSteps.map(step => {
     const status = target ? getStepState(target.deviceId, step.order) : 'idle';
-    const node = document.createElement('div');
-    node.className = `step-node ${status}`;
-    node.dataset.stepOrder = String(step.order);
-    node.tabIndex = 0;
-    node.setAttribute('role', 'button');
-    node.title = `${step.full}（状态: ${STATUS_LABELS[status] || status}，点击单独执行）`;
+    const mark = status === 'completed' ? '✓' : status === 'failed' ? '✗' : '';
+    return `<button class="step-node ${status}" data-step-order="${step.order}" type="button" title="${escapeHtml(step.full)}（${STATUS_LABELS[status] || status}，点击单独执行）">
+      <span class="num">${formatStepOrder(step.order)}</span>${escapeHtml(step.name)}${mark ? `<b>${mark}</b>` : ''}
+    </button>`;
+  }).join('');
 
-    const num = document.createElement('span');
-    num.className = 'step-node-num';
-    num.textContent = formatStepOrder(step.order);
-
-    const info = document.createElement('div');
-    info.className = 'step-node-info';
-
-    const title = document.createElement('div');
-    title.className = 'step-node-title';
-    title.textContent = step.name;
-
-    info.append(title);
-
-    const indicator = document.createElement('span');
-    indicator.className = 'step-node-indicator';
-    if (status === 'completed') indicator.innerHTML = '<span class="status-icon-check">✓</span>';
-    else if (status === 'running') indicator.innerHTML = '<span class="status-icon-pulse"></span>';
-    else if (status === 'failed') indicator.innerHTML = '<span class="status-icon-fail">✗</span>';
-
-    node.append(num, info, indicator);
-
-    const triggerStep = () => {
-      const dev = currentDevice();
-      if (!dev) {
-        showToast('请先选择一台云机');
-        return;
-      }
-      const isV2 = String(dev.sdkVersion || '').toLowerCase() === 'v2';
-      const targetVer = isV2 ? 'v2' : 'v3';
-      const script = state.scripts.find(s => s.order === step.order && (s.category === targetVer || s.version === targetVer || s.id.endsWith('-' + targetVer)))
-        || state.scripts.find(s => s.order === step.order);
-      if (script) {
-        const card = elements.scriptList.querySelector(`[data-script-id="${script.id}"]`);
-        const btn = card?.querySelector('.run-button');
-        executeScript(script, btn, card);
-      } else {
-        showToast(`未找到步骤 ${step.order} 对应的 ${targetVer.toUpperCase()} 执行脚本`);
-      }
-    };
-
-    node.addEventListener('click', triggerStep);
-    node.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        triggerStep();
-      }
-    });
-
-    elements.pipelineStepper.append(node);
+  const runAll = byId('stepperRunAllBtn');
+  if (runAll) {
+    runAll.textContent = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
+    runAll.prepend(ic('play', 15));
   }
 }
 
+async function runFlowAll() {
+  if (!currentDevice()) { showToast('请先在「设备」页选择目标云机'); return; }
+  const target = currentDevice();
+  const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
+  const flowAll = state.scripts.find(s => s.id === (isV2 ? 'flow-all-v2' : 'flow-all'))
+    || state.scripts.find(s => s.batch === true);
+  if (!flowAll) { showToast('未找到全流程自动化脚本'); return; }
+  await runScriptDirect(flowAll, target.deviceId);
+}
 
-function parameterChoiceLabel(field, value) {
-  if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
-  if (field.name === 'androidVersion') return value === 'all' ? '全部版本' : 'Android ' + value;
-  if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新',
-    execute: '执行发送', draft: '生成并输入', watch: '1. 挂机模式 (巡查前几页)', drain: '2. 全量模式 (必须翻到底)' })[value] || String(value);
-  if (field.name === 'maxContacts') return ({ xx: '持续运行(无上限)', '1': '1人(单次测试)', '3': '3人', '5': '5人', '10': '10人' })[value] || String(value);
-  if (field.name === 'warmupInterval') return ({ default: '默认(25~70分随机)', '0': '【立即养号(测试-启动即养号)】', '60000': '1分钟后养号', '300000': '5分钟后养号' })[value] || String(value);
-  if (field.name === 'greetingsInterval') return ({ '0': '【发现招呼立即处理(测试)】', '1200000': '20分钟一次', '1800000': '30分钟一次' })[value] || String(value);
-  if (field.name === 'maxApproved') return value + ' 人';
-  if (field.name === 'maxDistance') return ({ none: '不限距离', '3': '≤ 3公里', '5': '≤ 5公里', '10': '≤ 10公里', '20': '≤ 20公里', '50': '≤ 50公里' })[value] || (value === 'none' ? '不限距离' : '≤ ' + value + '公里');
-  if (field.name === 'approveProbability') return Math.round(Number(value) * 100) + '%';
-  return String(value);
+/* ---------- 任务分组列表 ---------- */
+
+function groupScripts(key) {
+  if (key === 'v2') {
+    return state.scripts.filter(s => (s.category === 'v2' || s.version === 'v2' || s.id.endsWith('-v2')) && !s.batch)
+      .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  }
+  if (key === 'v3') {
+    return state.scripts.filter(s => (s.category === 'v3' || s.version === 'v3' || s.id.endsWith('-v3')) && !s.batch)
+      .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  }
+  if (key === 'momo') {
+    return state.scripts.filter(s => s.category === 'momo' && !s.batch)
+      .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  }
+  return [];
+}
+
+function taskCardHtml(script) {
+  const manage = isScriptManageMode();
+  const visible = scriptVisible(script);
+  if (!manage && !visible) return '';
+  const active = state.taskScriptId === script.id ? 'active' : '';
+  const hiddenBadge = manage && !visible ? '<span class="badge warn">用户侧隐藏</span>' : '';
+  const danger = script.destructive ? '<span class="danger-tag">清数据</span>' : '';
+  const hero = script.batch ? '<span class="hero-tag">全流程</span>' : '';
+  const visSwitch = manage ? `<button class="switch ${visible ? 'on' : ''}" data-vis-script="${escapeHtml(script.id)}" type="button" title="控制此脚本在用户侧是否显示" role="switch"></button>` : '';
+  return `<div class="task-card ${active}" data-task-select="${escapeHtml(script.id)}" role="button" tabindex="0">
+    ${script.order ? `<span class="num">${formatStepOrder(script.order)}</span>` : '<span class="num">组</span>'}
+    <span class="task-card-main">
+      <span class="task-name">${escapeHtml(scriptTitle(script))}${danger}${hero}${hiddenBadge}</span>
+      <span class="task-sub">${escapeHtml(script.file || '')}</span>
+    </span>
+    ${visSwitch}${ic('chevron', 15)}
+  </div>`;
+}
+
+function bundleCardHtml(bundle) {
+  const manage = isScriptManageMode();
+  const enabled = bundle.enabled !== false;
+  if (!manage && !enabled) return '';
+  const stepScripts = (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
+  const stepsFlow = stepScripts.length
+    ? `<span class="bundle-steps-flow">${stepScripts.map((s, i) =>
+        `${i ? '<span class="bundle-step-arrow">→</span>' : ''}<span class="bundle-step-item">${i + 1}. ${escapeHtml(scriptTitle(s))}</span>`).join('')}</span>`
+    : '';
+  const manageActions = manage ? `
+    <span class="task-group-extra">
+      <button class="switch ${enabled ? 'on' : ''}" data-vis-bundle="${escapeHtml(bundle.id)}" type="button" title="控制此组合在用户侧是否显示" role="switch"></button>
+      <button class="btn sm" data-bundle-edit="${escapeHtml(bundle.id)}" type="button">编辑</button>
+      <button class="btn sm flat" data-bundle-delete="${escapeHtml(bundle.id)}" type="button">删除</button>
+    </span>` : '';
+  return `<div class="task-card" data-bundle-card="${escapeHtml(bundle.id)}" style="cursor:default;">
+    <span class="num">组</span>
+    <span class="task-card-main">
+      <span class="task-name">${escapeHtml(bundle.name)}${manage && !enabled ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span>
+      ${bundle.description ? `<span class="task-sub">${escapeHtml(bundle.description)}</span>` : ''}
+      ${stepsFlow}
+    </span>
+    ${manageActions}
+    <button class="btn sm primary" data-bundle-run="${escapeHtml(bundle.id)}" type="button">${ic('play', 13)} 执行组合</button>
+  </div>`;
+}
+
+function renderTaskGroups() {
+  const host = byId('taskGroups');
+  if (!host) return;
+  const manage = isScriptManageMode();
+  let html = '';
+  let visibleCount = 0;
+
+  for (const group of GROUPS) {
+    if (group.key === 'custom') {
+      const bundles = Array.isArray(state.bundles) ? state.bundles : [];
+      const displayBundles = manage ? bundles : bundles.filter(b => b.enabled !== false);
+      if (!manage && (!groupVisible('custom') || !displayBundles.length)) continue;
+      const collapsed = localStorage.getItem('yunmomo.collapse.custom') === 'true';
+      const visSwitch = manage ? `<button class="switch ${groupVisible('custom') ? 'on' : ''}" data-vis-group="custom" type="button" role="switch" title="控制是否在用户侧显示"></button>` : '';
+      html += `<div class="task-group ${collapsed ? 'collapsed' : ''}">
+        <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible('custom') && manage ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra">${visSwitch}<button class="collapse-btn" data-collapse-group="custom" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
+        <div class="task-group-body">${displayBundles.length ? displayBundles.map(bundleCardHtml).join('') : '<div class="empty">暂无自定义组合脚本</div>'}</div>
+      </div>`;
+      visibleCount += displayBundles.length;
+      continue;
+    }
+
+    const scripts = groupScripts(group.key);
+    const visibleScripts = manage ? scripts : scripts.filter(scriptVisible);
+    if (!manage && (!groupVisible(group.key) || !visibleScripts.length)) continue;
+    const collapsed = localStorage.getItem('yunmomo.collapse.' + group.key) === 'true';
+    const visSwitch = manage ? `<button class="switch ${groupVisible(group.key) ? 'on' : ''}" data-vis-group="${group.key}" type="button" role="switch" title="控制是否在用户侧显示"></button>` : '';
+    html += `<div class="task-group ${collapsed ? 'collapsed' : ''}">
+      <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible(group.key) && manage ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra">${visSwitch}<button class="collapse-btn" data-collapse-group="${group.key}" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
+      <div class="task-group-body">${visibleScripts.map(taskCardHtml).join('')}</div>
+    </div>`;
+    visibleCount += visibleScripts.length;
+  }
+
+  host.innerHTML = html || '<div class="empty">暂无可用任务</div>';
+  const hint = byId('taskCountHint');
+  if (hint) hint.textContent = `${visibleCount} 项`;
 }
 
 async function saveVisibilityConfig({ type, id, visible }) {
-  if (!isScriptManageMode()) return;
-  const payload = {};
-  if (type === 'group') {
-    if (!state.visibility.groups) state.visibility.groups = {};
-    state.visibility.groups[id] = visible;
-    payload.groups = { [id]: visible };
-  } else if (type === 'script') {
-    if (!state.visibility.scripts) state.visibility.scripts = {};
-    state.visibility.scripts[id] = visible;
-    payload.scripts = { [id]: visible };
-  }
+  const payload = type === 'group' ? { groups: { [id]: visible } } : { scripts: { [id]: visible } };
   try {
     const res = await requestJson('/api/admin/scripts/visibility', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    if (res.ok && res.visibility) {
-      state.visibility = res.visibility;
-    }
+    if (res.ok && res.visibility) state.visibility = res.visibility;
     showToast(`已${visible ? '开启' : '关闭'}在用户侧的显示`);
-    renderScripts();
+    renderTaskGroups();
   } catch (err) {
     showToast('更新显隐设置失败: ' + err.message);
   }
 }
 
-function createScriptCard(script) {
-  const isManageMode = isScriptManageMode();
-  const isScriptVisible = state.visibility?.scripts?.[script.id] !== false;
+/* ---------- 任务配置详情 ---------- */
 
-  // 普通用户视角（非管理模式）：若该脚本被管理员关闭，则直接不渲染
-  if (!isManageMode && !isScriptVisible) return null;
+function parameterChoiceLabel(field, value) {
+  if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
+  if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新', execute: '执行发送', draft: '生成并输入', watch: '挂机模式 (巡查前几页)', drain: '全量模式 (必须翻到底)' })[value] || String(value);
+  if (field.name === 'maxContacts') return ({ xx: '持续运行(无上限)', '1': '1人(单次测试)', '3': '3人', '5': '5人', '10': '10人' })[value] || String(value);
+  if (field.name === 'warmupInterval') return ({ default: '默认(25~70分随机)', '0': '立即养号(测试)', '60000': '1分钟后养号', '300000': '5分钟后养号' })[value] || String(value);
+  if (field.name === 'greetingsInterval') return ({ '0': '发现招呼立即处理(测试)', '1200000': '20分钟一次', '1800000': '30分钟一次' })[value] || String(value);
+  if (field.name === 'maxApproved') return value + ' 人';
+  if (field.name === 'maxDistance') return ({ none: '不限距离', '3': '≤ 3公里', '5': '≤ 5公里', '10': '≤ 10公里', '20': '≤ 20公里', '50': '≤ 50公里' })[value] || String(value);
+  if (field.name === 'approveProbability') return Math.round(Number(value) * 100) + '%';
+  if (field.name === 'androidVersion') return value === 'all' ? '全部版本' : 'Android ' + value;
+  return String(value);
+}
 
-  const card = document.createElement('article');
-  card.className = 'script-card';
-  card.dataset.scriptId = script.id;
-  if (!isScriptVisible && isManageMode) card.classList.add('hidden-from-user');
-  if (script.batch) card.classList.add('script-hero-card');
+function renderTaskDetail() {
+  const panel = byId('taskDetailPanel');
+  if (!panel) return;
+  const script = currentTaskScript();
+  if (!script) {
+    panel.innerHTML = '<div class="empty">暂无可执行任务</div>';
+    return;
+  }
+  if (!state.taskScriptId) state.taskScriptId = script.id;
 
   const isSingleInline = script.parameters?.length === 1 && !script.parameters[0].multiline;
-  if (script.parameters?.length && !isSingleInline) card.classList.add('script-card-has-params');
-  if (script.destructive) card.classList.add('script-card-destructive');
-
-  const head = document.createElement('div');
-  head.className = 'script-card-head';
-
-  const titleGroup = document.createElement('div');
-  titleGroup.className = 'script-title-group';
-
-  if (script.order) {
-    const order = document.createElement('span');
-    order.className = 'script-order';
-    order.textContent = formatStepOrder(script.order);
-    titleGroup.append(order);
-  }
-
-  const title = document.createElement('div');
-  title.className = 'script-title';
-  title.textContent = script.order ? script.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '') : script.title;
-  titleGroup.append(title);
-
-  if (!isScriptVisible && isManageMode) {
-    const hiddenBadge = document.createElement('span');
-    hiddenBadge.className = 'badge-hidden-user';
-    hiddenBadge.textContent = '用户侧隐藏';
-    titleGroup.append(hiddenBadge);
-  }
-
-  head.append(titleGroup);
-
-  if (script.destructive) {
-    const dangerTag = document.createElement('span');
-    dangerTag.className = 'script-danger-badge';
-    dangerTag.textContent = '清数据';
-    head.append(dangerTag);
-  }
-
-  // 仅在管理模式下渲染开关
-  if (isManageMode) {
-    const visWrap = document.createElement('div');
-    visWrap.className = 'script-visibility-wrap';
-    visWrap.innerHTML = `
-      <label class="switch-toggle" title="控制此脚本在普通用户侧是否显示">
-        <input type="checkbox" ${isScriptVisible ? 'checked' : ''}>
-        <span class="switch-slider"></span>
-        <span class="switch-text">${isScriptVisible ? '用户可见' : '隐藏'}</span>
-      </label>
-    `;
-    const visInput = visWrap.querySelector('input');
-    visInput.addEventListener('click', e => e.stopPropagation());
-    visInput.addEventListener('change', e => {
-      e.stopPropagation();
-      saveVisibilityConfig({ type: 'script', id: script.id, visible: e.target.checked });
-    });
-    head.append(visWrap);
-  }
-
-  card.append(head);
-
-  if (script.parameters?.length && !isSingleInline) {
-    const settings = document.createElement('details');
-    settings.className = 'script-settings';
-    settings.open = true;
-    const summary = document.createElement('summary');
-    summary.textContent = '配置参数';
-    settings.append(summary);
-
-    for (const field of script.parameters) {
-      const label = document.createElement('label');
-      label.textContent = field.label;
-      const input = document.createElement(field.choices ? 'select' : field.multiline ? 'textarea' : 'input');
-      input.dataset.parameter = field.name;
-      input.setAttribute('aria-label', field.label);
-      if (field.required) {
-        input.required = true;
-        input.setAttribute('aria-required', 'true');
-      }
-      if (field.choices) {
-        for (const value of field.choices) {
-          const option = document.createElement('option');
-          option.value = value;
-          option.textContent = parameterChoiceLabel(field, value);
-          input.append(option);
-        }
-      } else {
-        if (!field.multiline) input.type = 'text';
-        else input.rows = 3;
-        input.name = `param_${script.id}_${field.name}`;
-        input.autocomplete = 'new-password';
-        input.setAttribute('autocomplete', 'new-password');
-        input.setAttribute('data-lpignore', 'true');
-        input.setAttribute('data-1p-ignore', 'true');
-        input.setAttribute('data-form-type', 'other');
-        input.spellcheck = false;
-        if (field.maxLength) input.maxLength = field.maxLength;
-        if (field.placeholder) input.placeholder = field.placeholder;
-      }
-      input.value = field.defaultValue ?? '';
-      label.append(input);
-      settings.append(label);
-    }
-    card.append(settings);
-  }
-
-  const actions = document.createElement('div');
-  actions.className = 'script-actions';
-
-  // 单一参数（如 VPC 代理操作选择、或真参输入）直接内联展示在执行按钮左侧，保持整齐一致
-  if (isSingleInline) {
-    const field = script.parameters[0];
+  const fieldsHtml = (script.parameters || []).map(field => {
+    const key = script.id + ':' + field.name;
+    const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+    if (isSingleInline) return '';
     if (field.choices) {
-      const select = document.createElement('select');
-      select.className = 'script-inline-select';
-      select.dataset.parameter = field.name;
-      select.setAttribute('aria-label', field.label);
-      for (const value of field.choices) {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = parameterChoiceLabel(field, value);
-        select.append(option);
+      return `<div class="field"><label for="param-${field.name}">${escapeHtml(field.label)}</label>
+        <select class="select" id="param-${field.name}" data-task-param="${escapeHtml(field.name)}">
+          ${field.choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(value) === String(choice) ? 'selected' : ''}>${escapeHtml(parameterChoiceLabel(field, choice))}</option>`).join('')}
+        </select></div>`;
+    }
+    if (field.multiline) {
+      return `<div class="field"><label for="param-${field.name}">${escapeHtml(field.label)}</label>
+        <textarea class="input textarea" id="param-${field.name}" data-task-param="${escapeHtml(field.name)}" ${field.required ? 'required' : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} placeholder="${escapeHtml(field.placeholder || '')}">${escapeHtml(value)}</textarea></div>`;
+    }
+    return `<div class="field"><label for="param-${field.name}">${escapeHtml(field.label)}</label>
+      <input class="input" id="param-${field.name}" data-task-param="${escapeHtml(field.name)}" type="text" ${field.required ? 'required' : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} placeholder="${escapeHtml(field.placeholder || '')}" value="${escapeHtml(value)}" autocomplete="off" spellcheck="false"></div>`;
+  }).join('');
+
+  const inlineParam = isSingleInline ? (() => {
+    const field = script.parameters[0];
+    const key = script.id + ':' + field.name;
+    const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+    if (field.choices) {
+      return `<div class="field"><label>${escapeHtml(field.label)}</label><select class="select full" data-task-param="${escapeHtml(field.name)}">
+        ${field.choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(value) === String(choice) ? 'selected' : ''}>${escapeHtml(parameterChoiceLabel(field, choice))}</option>`).join('')}</select></div>`;
+    }
+    return `<div class="field"><label>${escapeHtml(field.label)}</label><input class="input" data-task-param="${escapeHtml(field.name)}" type="text" ${field.required ? 'required' : ''} placeholder="${escapeHtml(field.placeholder || '')}" value="${escapeHtml(value)}" autocomplete="off" spellcheck="false"></div>`;
+  })() : '';
+
+  panel.innerHTML = `
+    <div class="section-line">
+      <h3>任务配置</h3>
+      <span class="badge ${state.batchRunning ? 'run' : ''}" id="detailRunBadge">${state.batchRunning ? '执行中' : '待命'}</span>
+    </div>
+    <div class="details">
+      <div class="details-heading">
+        <h2>${escapeHtml(scriptTitle(script))}</h2>
+        ${script.destructive ? '<span class="danger-tag">清数据</span>' : ''}
+      </div>
+      ${inlineParam}
+      ${fieldsHtml}
+      ${renderDevicePicker()}
+      ${renderBatchResults()}
+      <div class="details-footer">
+        <span class="footer-note" id="detailNote"></span>
+        ${state.batchRunning
+          ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
+          : `<button class="btn primary" id="batchRunBtn" type="button">${ic('play', 15)} 执行 (<span id="batchCount">0</span> 台)</button>`}
+      </div>
+    </div>
+  `;
+  updateBatchCount();
+  updateTaskRuntime();
+}
+
+function renderDevicePicker() {
+  if (!state.devices.length) return '<div class="selection-summary">暂无设备，请先在「设备」页确认</div>';
+  // 平台在线状态可能滞后（离线设备仍可能可操作），与旧版一致不按在线状态禁选
+  if (!state.batchDevices.length && state.selectedDeviceId) state.batchDevices = [state.selectedDeviceId];
+  const picker = state.devices.map(device => {
+    const active = deviceRunning(device.deviceId);
+    const checked = state.batchDevices.includes(device.deviceId);
+    const note = active ? '正在执行' : isOnline(device) ? '可执行' : '离线';
+    return `<label class="device-choice ${checked ? 'checked' : ''}">
+      <input type="checkbox" data-batch-device="${escapeHtml(device.deviceId)}" ${checked ? 'checked' : ''}>
+      <span class="choice-text"><b>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</b><small>${note}</small></span>
+    </label>`;
+  }).join('');
+  return `
+    <div class="device-select-head">
+      <label>执行设备</label>
+      <span class="quick">
+        <button class="small-link" data-picker-action="all" type="button">全选</button>
+        <button class="small-link" data-picker-action="current" type="button">仅当前目标</button>
+        <button class="small-link" data-picker-action="none" type="button">清空</button>
+      </span>
+    </div>
+    <div class="device-picker">${picker}</div>
+    <div class="selection-summary" id="pickerSummary"></div>`;
+}
+
+function renderBatchResults() {
+  if (!state.batchResults?.length) return '';
+  const rows = state.batchResults.map(result => {
+    const device = state.devices.find(d => d.deviceId === result.deviceId);
+    const cls = result.status === 'ok' ? 'ok' : result.status === 'running' ? 'run'
+      : result.status === 'failed' || result.status === 'cancelled' ? 'err' : '';
+    const note = result.message ? `<span class="hint">${escapeHtml(result.message)}</span>` : '';
+    return `<div class="run-result-row">
+      <span class="result-name">${device ? `${deviceIndexLabel(device)} ${escapeHtml(device.name)}` : escapeHtml(result.deviceId)}</span>
+      <span class="result-status">${result.durationMs ? `<span class="hint">${(result.durationMs / 1000).toFixed(1)}s</span>` : ''}${note}<span class="badge ${cls}">${RUN_STATE_TEXT[result.status] || result.status}</span></span>
+    </div>`;
+  }).join('');
+  return `<div class="run-results"><div class="run-results-title">设备执行结果</div>${rows}</div>`;
+}
+
+function updateBatchCount() {
+  const count = byId('batchCount');
+  if (!count) return;
+  const script = currentTaskScript();
+  const usable = state.batchDevices.filter(id => state.devices.some(d => d.deviceId === id));
+  count.textContent = String(usable.length);
+  const note = byId('detailNote');
+  if (note) note.textContent = script?.requiresDevice
+    ? '按选择顺序逐台执行，同一时刻只占用一台设备'
+    : '该任务不依赖设备';
+}
+
+function resolveBatchDevices(script) {
+  let ids = state.batchDevices.filter(id => state.devices.some(d => d.deviceId === id));
+  if (script.requiresDevice && !ids.length && state.selectedDeviceId) ids = [state.selectedDeviceId];
+  return ids;
+}
+
+function collectTaskOptions(script) {
+  const panel = byId('taskDetailPanel');
+  const options = {};
+  if (panel) {
+    for (const input of panel.querySelectorAll('[data-task-param]')) {
+      const value = String(input.value ?? '').trim();
+      if (input.required && !value) {
+        input.focus?.();
+        throw new Error((input.closest('.field')?.querySelector('label')?.textContent || '该参数') + '为必填项');
       }
-      select.value = field.defaultValue ?? '';
-      actions.append(select);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'script-inline-input';
-      input.dataset.parameter = field.name;
-      input.name = `inline_${script.id}_${field.name}`;
-      input.setAttribute('autocomplete', 'new-password');
-      input.setAttribute('data-lpignore', 'true');
-      input.setAttribute('data-form-type', 'other');
-      input.setAttribute('aria-label', field.label);
-      input.title = `${field.label}: ${field.defaultValue ?? ''}`;
-      input.value = field.defaultValue ?? '';
-      input.spellcheck = false;
-      if (field.placeholder) input.placeholder = field.placeholder;
-      actions.append(input);
+      if (value) options[input.dataset.taskParam] = value;
     }
   }
+  return options;
+}
 
-  const activeRun = state.activeRun?.scriptId === script.id ? state.activeRun : null;
-  const isCurrentRunning = Boolean(activeRun);
-  const button = document.createElement('button');
-  button.dataset.runButton = 'true';
-  button.className = 'run-button' + (script.batch ? ' run-button-hero' : '') + (isCurrentRunning ? ' run-button-stop' : '');
-  button.type = 'button';
-  if (isCurrentRunning) {
-    button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">${activeRun.stopConfirmed ? '已停止，整理结果…' : activeRun.stopping ? '正在停止…' : '停止执行'}</span>`;
-    button.disabled = Boolean(activeRun.stopping || activeRun.stopConfirmed);
-    button.setAttribute('aria-label', '停止 ' + script.title);
-  } else {
-    button.innerHTML = `<span class="run-icon">▶</span><span class="run-text">${script.batch ? '一键执行全部' : '执行'}</span>`;
-    button.setAttribute('aria-label', '执行 ' + script.title);
+async function onDetailClick(event) {
+  const picker = event.target.closest('[data-picker-action]');
+  if (picker) {
+    const action = picker.dataset.pickerAction;
+    if (action === 'all') state.batchDevices = state.devices.map(d => d.deviceId);
+    else if (action === 'current') state.batchDevices = state.selectedDeviceId ? [state.selectedDeviceId] : [];
+    else state.batchDevices = [];
+    renderTaskDetail();
+    return;
   }
-  button.addEventListener('click', () => {
-    if (state.activeRun?.scriptId === script.id) stopRunningScript();
-    else executeScript(script, button, card);
-  });
-  actions.append(button);
 
-  card.append(actions);
-  return card;
+  const step = event.target.closest('[data-step-order]');
+  if (step) {
+    const target = currentDevice();
+    if (!target) { showToast('请先在「设备」页选择目标云机'); return; }
+    const order = Number(step.dataset.stepOrder);
+    const isV2 = String(target.sdkVersion || '').toLowerCase() === 'v2';
+    const script = state.scripts.find(s => s.order === order && (s.category === (isV2 ? 'v2' : 'v3') || s.id.endsWith('-' + (isV2 ? 'v2' : 'v3'))))
+      || state.scripts.find(s => s.order === order);
+    if (!script) { showToast(`未找到步骤 ${order} 对应的执行脚本`); return; }
+    await runScriptDirect(script, target.deviceId);
+    return;
+  }
+
+  if (event.target.closest('#batchRunBtn')) {
+    await startTaskBatch();
+    return;
+  }
+  if (event.target.closest('#batchStopBtn')) {
+    stopTaskBatch();
+    return;
+  }
+
+  const visScript = event.target.closest('[data-vis-script]');
+  if (visScript) {
+    const id = visScript.dataset.visScript;
+    await saveVisibilityConfig({ type: 'script', id, visible: !scriptVisible({ id }) });
+    return;
+  }
+  const visGroup = event.target.closest('[data-vis-group]');
+  if (visGroup) {
+    const key = visGroup.dataset.visGroup;
+    await saveVisibilityConfig({ type: 'group', id: key, visible: !groupVisible(key) });
+    return;
+  }
+  const bundleRun = event.target.closest('[data-bundle-run]');
+  if (bundleRun) {
+    const bundle = state.bundles.find(b => b.id === bundleRun.dataset.bundleRun);
+    if (bundle) await executeBundle(bundle);
+    return;
+  }
+  const bundleEdit = event.target.closest('[data-bundle-edit]');
+  if (bundleEdit) {
+    const bundle = state.bundles.find(b => b.id === bundleEdit.dataset.bundleEdit);
+    if (bundle) openBundleModal(bundle);
+    return;
+  }
+  const bundleDelete = event.target.closest('[data-bundle-delete]');
+  if (bundleDelete) {
+    const bundle = state.bundles.find(b => b.id === bundleDelete.dataset.bundleDelete);
+    if (!bundle) return;
+    const confirmed = await showInPageConfirm({
+      title: '确认删除脚本组合？',
+      message: `<p class="confirm-lead">确定要彻底删除组合脚本 <strong>${escapeHtml(bundle.name)}</strong> 吗？此操作无法撤销。</p>`,
+      okText: '确认删除'
+    });
+    if (confirmed) await deleteBundle(bundle.id);
+  }
+}
+
+/* ---------- 批量执行引擎 ---------- */
+
+async function startTaskBatch() {
+  const script = currentTaskScript();
+  if (!script) return;
+  if (state.batchRunning) { showToast('任务正在执行中'); return; }
+  if (state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本结束'); return; }
+  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
+  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
+
+  let options;
+  try {
+    options = collectTaskOptions(script);
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
+
+  const ids = resolveBatchDevices(script);
+  if (!ids.length) { showToast('请先勾选至少一台可执行设备'); return; }
+
+  if ((script.id === 'flow-03' || String(script.order) === '3' || script.id.startsWith('flow-03')) && options.action !== 'show' && options.action !== 'close') {
+    const vpcData = await promptVpcProxyDialog();
+    if (!vpcData) return;
+    options.vpcData = vpcData;
+  }
+
+  if (script.destructive && !(await confirmDestructive(script, options, ids))) return;
+  if (script.destructive) options.resetConfirmed = true;
+
+  state.batchRunning = true;
+  state.batchStopRequested = false;
+  state.batchResults = ids.map(id => ({ deviceId: id, status: 'pending' }));
+  renderTaskDetail();
+  eventBus.dispatchEvent(new CustomEvent('task:running', { detail: { scriptId: script.id } }));
+
+  for (let i = 0; i < ids.length; i++) {
+    if (state.batchStopRequested) {
+      state.batchResults[i].status = 'skipped';
+      continue;
+    }
+    const deviceId = ids[i];
+    state.batchResults[i].status = 'running';
+    renderBatchResultsOnly();
+    const result = await runScriptOnDevice(script, deviceId, options);
+    const record = state.batchResults[i];
+    if (record) {
+      record.status = result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed';
+      record.durationMs = result.durationMs;
+      record.message = result.message || '';
+    }
+    renderBatchResultsOnly();
+    if (result.cancelled) state.batchStopRequested = true;
+    if (typeof loadDevices === 'function') loadDevices(true);
+  }
+
+  state.batchRunning = false;
+  renderTaskDetail();
+  loadSharedRuntimeState();
+  const ok = state.batchResults.filter(r => r.status === 'ok').length;
+  showToast(`批量任务结束：${ok}/${state.batchResults.length} 台成功`);
+}
+
+function stopTaskBatch() {
+  if (!state.batchRunning) return;
+  state.batchStopRequested = true;
+  showToast('正在停止当前设备上的脚本…');
+  stopRunningScript();
+}
+
+function renderBatchResultsOnly() {
+  const panel = byId('taskDetailPanel');
+  if (!panel) return;
+  const old = panel.querySelector('.run-results');
+  if (old) old.remove();
+  const results = renderBatchResults();
+  if (results) panel.querySelector('.details')?.insertAdjacentHTML('beforeend', results);
+  const badge = byId('detailRunBadge');
+  if (badge) {
+    const done = state.batchResults.filter(r => !['pending', 'running'].includes(r.status)).length;
+    badge.textContent = state.batchRunning ? `执行中 ${done}/${state.batchResults.length}` : '待命';
+    badge.className = 'badge ' + (state.batchRunning ? 'run' : '');
+  }
+}
+
+async function runScriptDirect(script, deviceId) {
+  if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本结束'); return null; }
+  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return null; }
+  let options = {};
+  try {
+    options = collectTaskOptions(script);
+  } catch { options = {}; }
+  if ((script.id === 'flow-03' || String(script.order) === '3' || script.id.startsWith('flow-03')) && options.action !== 'show' && options.action !== 'close') {
+    const vpcData = await promptVpcProxyDialog();
+    if (!vpcData) return null;
+    options.vpcData = vpcData;
+  }
+  if (script.destructive && !(await confirmDestructive(script, options, [deviceId]))) return null;
+  if (script.destructive) options.resetConfirmed = true;
+  state.batchRunning = true;
+  state.batchResults = [{ deviceId, status: 'pending' }];
+  if (state.page === 'tasks') renderTaskDetail();
+  state.batchResults[0].status = 'running';
+  renderBatchResultsOnly();
+  const result = await runScriptOnDevice(script, deviceId, options);
+  state.batchResults[0] = {
+    deviceId,
+    status: result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed',
+    durationMs: result.durationMs,
+    message: result.message || ''
+  };
+  state.batchRunning = false;
+  if (state.page === 'tasks') renderTaskDetail();
+  loadSharedRuntimeState();
+  return result;
+}
+
+async function runScriptOnDevice(script, deviceId, options = {}) {
+  const device = state.devices.find(d => d.deviceId === deviceId);
+  const label = device ? deviceLabel(device) : deviceId.slice(-8);
+  const externalRun = state.runtimeState.runs.find(run => !run.currentPage && run.deviceId === deviceId);
+  if (externalRun) {
+    return { ok: false, skipped: true, message: `正在另一个网页执行「${externalRun.title}」` };
+  }
+  const manual = manualWindowsForDevice(deviceId);
+  if (manual?.windows) {
+    return { ok: false, skipped: true, message: '正在被其他网页手动操作' };
+  }
+
+  const scriptRunId = createScriptRunId();
+  const run = { id: scriptRunId, scriptId: script.id, deviceId, stopping: false, stopConfirmed: false };
+  state.activeRun = run;
+  state.runningScript = script.id;
+  writeOutput(`[设备 ${label}] 开始执行：${script.title}`, [], { runId: scriptRunId });
+  eventBus.dispatchEvent(new CustomEvent('task:running', { detail: { scriptId: script.id, deviceId } }));
+
+  if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'running');
+
+  let polling = false;
+  const outputPollTimer = setInterval(async () => {
+    if (!state.activeRun || state.activeRun.id !== scriptRunId) { clearInterval(outputPollTimer); return; }
+    if (polling) return;
+    polling = true;
+    try {
+      const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
+      if (live.ok && (live.stdout || live.stderr) && state.activeRun?.id === scriptRunId) {
+        writeOutput(`[设备 ${label}] 执行中：${script.title}`, cleanScriptLines(live.stdout, live.stderr), { runId: scriptRunId, logFile: live.logFile });
+      }
+    } catch { /* 轮询异常静默忽略 */ }
+    finally { polling = false; }
+  }, 300);
+
+  try {
+    const result = await requestJson('/api/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scriptRunId, scriptId: script.id, deviceId, pageId: state.pageId, options, resetConfirmed: options.resetConfirmed === true })
+    });
+    const durationMs = Number.isFinite(result.durationMs) ? result.durationMs : null;
+    const title = result.cancelled ? `脚本已停止：${script.title}`
+      : result.ok ? `执行成功：${script.title}${durationMs ? ' (' + (durationMs / 1000).toFixed(1) + 's)' : ''}`
+      : `执行失败：${script.title}${result.exitCode !== null && result.exitCode !== undefined ? ' (退出码: ' + result.exitCode + ')' : ''}`;
+    writeOutput(`[设备 ${label}] ${title}`, cleanScriptLines(result.stdout, result.stderr), { runId: scriptRunId, logFile: result.logFile });
+
+    if (script.order >= 1 && script.order <= 8) {
+      setStepState(deviceId, script.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
+    }
+
+    if (result.cancelled) showToast(`[${label}] 脚本已停止，请核对设备状态`);
+    else if (!result.ok) showToast(`[${label}] 脚本执行失败，请查看运行日志`);
+    else window.AppLogger?.info('Script', `脚本执行成功 [${script.title}] @ ${label}`);
+
+    return { ok: Boolean(result.ok), cancelled: Boolean(result.cancelled), exitCode: result.exitCode, durationMs, logFile: result.logFile };
+  } catch (error) {
+    if (run.stopConfirmed) {
+      writeOutput(`[设备 ${label}] 脚本已停止：${script.title}`, [
+        '服务端已确认脚本进程退出并释放设备占用。',
+        '脚本中断时设备状态可能只完成了部分操作；请核对设备后再继续。'
+      ], { runId: scriptRunId });
+      if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'cancelled');
+      return { ok: false, cancelled: true, durationMs: null };
+    }
+    if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'failed');
+    const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError');
+    const display = isNetwork ? '网络连接失败：后端控制台服务暂时断开或重启中，请稍后重试。' : error.message;
+    writeOutput(`[设备 ${label}] 执行请求失败：${script.title}`, [display, `调用编号：${scriptRunId}`], { runId: scriptRunId });
+    showToast(display);
+    return { ok: false, cancelled: false, durationMs: null, message: display };
+  } finally {
+    clearInterval(outputPollTimer);
+    if (state.activeRun?.id === scriptRunId) {
+      state.activeRun = null;
+      state.runningScript = '';
+    }
+    if (typeof requestAllPreviews === 'function') requestAllPreviews();
+  }
+}
+
+async function confirmDestructive(script, options, deviceIds) {
+  const isBlock = script.id === 'flow-18';
+  const isV2 = script.id === 'flow-09-v2';
+  const first = state.devices.find(d => d.deviceId === deviceIds[0]);
+  const scope = deviceIds.length > 1 ? `${deviceIds.length} 台设备` : (first ? deviceLabel(first) : '目标设备');
+  let title, message, okText;
+  if (isBlock) {
+    title = '确认执行【拉黑联系人】？';
+    okText = '确认拉黑';
+    message = `<p class="confirm-lead">确认拉黑联系人 <strong>${escapeHtml(options.contactName || '未指定联系人')}</strong>？</p>
+      <div class="confirm-card"><span class="confirm-card-icon">!</span><span><span class="confirm-card-title">拉黑后对方将无法再联系此账号！</span><span class="confirm-card-desc">执行前请确认云机已停留在该联系人的聊天页，脚本会先核验顶栏姓名再操作。</span></span></div>`;
+  } else if (isV2) {
+    title = '确认执行【重置数据】？';
+    okText = '确认重置';
+    message = `<p class="confirm-lead">确认对 <strong>${escapeHtml(scope)}</strong> 执行“重置数据”？</p>
+      <div class="confirm-card"><span class="confirm-card-icon">!</span><span><span class="confirm-card-title">警告：即将重置该设备，此操作不可恢复！</span><span class="confirm-card-desc">清空该设备所有数据并恢复出厂设置。</span></span></div>`;
+  } else {
+    title = '确认执行【改机重置】？';
+    okText = '确认改机重置';
+    message = `<p class="confirm-lead">确认对 <strong>${escapeHtml(scope)}</strong> 执行“改机重置”？机型范围：Android ${escapeHtml(options.androidVersion || '16')}；国家：${escapeHtml(options.countryCode || 'CN')}。</p>
+      <div class="confirm-card"><span class="confirm-card-icon">!</span><span><span class="confirm-card-title">警告：此操作会清除该设备所有数据且不可撤销！</span><span class="confirm-card-desc">重置后云机将自动重启并应用新机型参数。</span></span></div>`;
+  }
+  return showInPageConfirm({ title, message, okText, isDanger: true });
 }
 
 async function stopRunningScript() {
   const run = state.activeRun;
-  if (!run) {
-    showToast('当前没有正在执行的脚本');
-    return;
-  }
+  if (!run) { showToast('当前没有正在执行的脚本'); return; }
   if (run.stopping || run.stopConfirmed) return;
   run.stopping = true;
-  updateScriptRunControls(run);
-  showToast('正在停止脚本并等待进程退出…');
   try {
     const res = await requestJson('/api/execute/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scriptRunId: run.id
-      })
+      body: JSON.stringify({ scriptRunId: run.id })
     });
     if (res.stopped !== true) {
       run.stopping = false;
-      updateScriptRunControls(run);
       showToast(res.message || '停止尚未确认，请查看当前运行状态');
       return;
     }
     if (state.activeRun?.id === run.id) {
       run.stopConfirmed = true;
       run.stopping = false;
-      updateScriptRunControls(run);
-      showToast(res.message || (res.pending ? '停止请求已登记' : '脚本已停止'));
-      writeOutput(res.pending ? '【已登记停止请求】' : '【已停止并确认脚本进程退出】', [
-        res.pending
-          ? '服务端已登记停止请求；如果启动请求尚在途中，将在登记时取消脚本启动。页面会等待执行请求返回。'
-          : '停止请求已确认，服务端已等待脚本进程退出并释放设备占用。',
-        '脚本中断时设备状态可能只完成了部分操作；请核对设备后再继续。'
-      ]);
+      showToast(res.pending ? '停止请求已登记，等待执行请求返回' : '脚本已停止');
     }
   } catch (error) {
-    if (state.activeRun?.id === run.id) {
-      run.stopping = false;
-      updateScriptRunControls(run);
-    }
+    if (state.activeRun?.id === run.id) run.stopping = false;
     showToast('停止请求失败：' + error.message);
   }
 }
+window.stopRunningScript = stopRunningScript;
 
-function showInPageConfirm({ title, message, okText = '确定', cancelText = '取消', isDanger = true, icon = '!' } = {}) {
-  return new Promise(resolve => {
-    const dialog = document.getElementById('userConfirmDialog');
-    if (!dialog) return resolve(false);
-    const titleEl = document.getElementById('userConfirmTitle');
-    const descEl = document.getElementById('userConfirmDesc');
-    const okBtn = document.getElementById('userConfirmOkBtn');
-    const cancelBtn = document.getElementById('userConfirmCancelBtn');
-    const closeBtn = document.getElementById('userConfirmCloseBtn');
-    const iconEl = document.getElementById('userConfirmIcon');
+/* ---------- 组合脚本执行 ---------- */
 
-    if (titleEl) titleEl.textContent = title;
-    if (descEl) descEl.innerHTML = message;
-    if (okBtn) {
-      okBtn.textContent = okText;
-      okBtn.className = isDanger ? 'danger-button' : 'run-button';
-      okBtn.style.background = '';
-      okBtn.style.borderColor = '';
-      okBtn.style.color = '';
-    }
-    if (cancelBtn) cancelBtn.textContent = cancelText;
-    if (iconEl) {
-      iconEl.textContent = icon;
-      iconEl.classList.toggle('info', !isDanger);
-    }
-
-    let settled = false;
-    const cleanup = () => {
-      if (settled) return;
-      settled = true;
-      try { dialog.close(); } catch {}
-      okBtn?.removeEventListener('click', onOk);
-      cancelBtn?.removeEventListener('click', onCancel);
-      closeBtn?.removeEventListener('click', onCancel);
-      dialog.removeEventListener('keydown', onKeyDown);
-      dialog.removeEventListener('cancel', onCancel);
-      dialog.removeEventListener('click', onBackdropClick);
-    };
-
-    const onOk = () => { cleanup(); resolve(true); };
-    const onCancel = () => { cleanup(); resolve(false); };
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); cleanup(); resolve(false); }
-    };
-    const onBackdropClick = (e) => {
-      const rect = dialog.getBoundingClientRect();
-      const inDialog = (rect.top <= e.clientY && e.clientY <= rect.top + rect.height
-        && rect.left <= e.clientX && e.clientX <= rect.left + rect.width);
-      if (!inDialog) {
-        cleanup();
-        resolve(false);
-      }
-    };
-
-    okBtn?.addEventListener('click', onOk);
-    cancelBtn?.addEventListener('click', onCancel);
-    closeBtn?.addEventListener('click', onCancel);
-    dialog.addEventListener('keydown', onKeyDown);
-    dialog.addEventListener('cancel', onCancel, { once: true });
-    dialog.addEventListener('click', onBackdropClick);
-
-    if (typeof dialog.showModal === 'function') dialog.showModal();
-    else dialog.setAttribute('open', '');
-
-    // 高危破坏性操作默认将焦点落在“取消”按钮，防止误敲回车造成不可逆损失
-    if (isDanger) {
-      cancelBtn?.focus();
-    } else {
-      okBtn?.focus();
-    }
-  });
+async function executeSingleStep(script, targetId) {
+  return runScriptOnDevice(script, targetId, {});
 }
 
-function createVersionSection(versionTag, title, scripts, defaultCollapsed = false, groupKey = '') {
-  const isManageMode = isScriptManageMode();
-  const isGroupVisible = state.visibility?.groups?.[groupKey] !== false;
-
-  // 普通用户视角（非管理模式）：如果该分组被关闭，直接不渲染
-  if (!isManageMode && !isGroupVisible) return null;
-
-  const section = document.createElement('section');
-  const tagClass = versionTag.toLowerCase() + '-tag';
-  const colClass = versionTag.toLowerCase() + '-column';
-
-  const storageKey = `yunmomo.collapse.${versionTag.toLowerCase()}`;
-  let isCollapsed = defaultCollapsed;
-  try {
-    const saved = localStorage.getItem(storageKey);
-    if (saved !== null) isCollapsed = saved === 'true';
-  } catch {}
-
-  section.className = `scripts-version-column ${colClass}` + (isCollapsed ? ' collapsed' : '') + (!isGroupVisible && isManageMode ? ' hidden-from-user' : '');
-  section.innerHTML = `
-    <div class="version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
-      <div class="version-badge-group">
-        <span class="version-title">${title}</span>
-        ${!isGroupVisible && isManageMode ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
-      </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        ${isManageMode ? `
-          <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此分组">
-            <label class="switch-toggle" onclick="event.stopPropagation()">
-              <input type="checkbox" class="group-vis-input" data-group="${groupKey}" ${isGroupVisible ? 'checked' : ''}>
-              <span class="switch-slider"></span>
-              <span class="switch-text">${isGroupVisible ? '用户可见' : '隐藏'}</span>
-            </label>
-          </div>
-        ` : ''}
-        <button class="version-collapse-btn" type="button" aria-expanded="${!isCollapsed}" title="点击收起/展开">
-          <span class="toggle-text">${isCollapsed ? '展开' : '收起'}</span>
-          <span class="toggle-icon">${isCollapsed ? '▼' : '▲'}</span>
-        </button>
-      </div>
-    </div>
-    <div class="version-cards-stack"></div>
-  `;
-
-  if (isManageMode) {
-    const groupInput = section.querySelector('.group-vis-input');
-    if (groupInput) {
-      groupInput.addEventListener('change', e => {
-        e.stopPropagation();
-        saveVisibilityConfig({ type: 'group', id: groupKey, visible: e.target.checked });
-      });
-    }
-  }
-
-  const stack = section.querySelector('.version-cards-stack');
-  let visibleCount = 0;
-  for (const script of scripts) {
-    const card = createScriptCard(script);
-    if (card) {
-      stack.append(card);
-      visibleCount++;
-    }
-  }
-
-  if (!isManageMode && visibleCount === 0) return null;
-
-  const head = section.querySelector('.version-column-head');
-  const toggleBtn = section.querySelector('.version-collapse-btn');
-  const toggleText = section.querySelector('.toggle-text');
-  const toggleIcon = section.querySelector('.toggle-icon');
-
-  function toggleCollapse(e) {
-    if (e) e.stopPropagation();
-    isCollapsed = !isCollapsed;
-    section.classList.toggle('collapsed', isCollapsed);
-    toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
-    toggleText.textContent = isCollapsed ? '展开' : '收起';
-    toggleIcon.textContent = isCollapsed ? '▼' : '▲';
-    try {
-      localStorage.setItem(storageKey, String(isCollapsed));
-    } catch {}
-  }
-
-  head.addEventListener('click', toggleCollapse);
-  head.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggleCollapse(e);
-    }
-  });
-
-  return section;
-}
-
-function createBundleCard(bundle) {
-  const isManageMode = isScriptManageMode();
-  const isEnabled = bundle.enabled !== false;
-
-  // 普通用户视角（非管理模式）：若组合脚本被关闭，直接不渲染
-  if (!isManageMode && !isEnabled) return null;
-
-  const card = document.createElement('article');
-  card.className = 'script-card bundle-card' + (!isEnabled && isManageMode ? ' hidden-from-user' : '');
-  card.dataset.bundleId = bundle.id;
-
-  const stepScripts = (bundle.stepIds || [])
-    .map(id => state.scripts.find(s => s.id === id))
-    .filter(Boolean);
-
-  const head = document.createElement('div');
-  head.className = 'script-card-head';
-  head.style.flexDirection = 'column';
-  head.style.alignItems = 'stretch';
-  head.style.gap = 'var(--sp-4)';
-
-  // 标题行与管理操作
-  const titleRow = document.createElement('div');
-  titleRow.className = 'ui-row-between';
-
-  const titleGroup = document.createElement('div');
-  titleGroup.className = 'script-title-group';
-
-  const badge = document.createElement('span');
-  badge.className = 'bundle-badge';
-  badge.textContent = '组合';
-
-  const title = document.createElement('div');
-  title.className = 'script-title';
-  title.textContent = bundle.name;
-
-  titleGroup.append(badge, title);
-
-  if (!isEnabled && isManageMode) {
-    const hiddenBadge = document.createElement('span');
-    hiddenBadge.className = 'badge-hidden-user';
-    hiddenBadge.textContent = '用户侧隐藏';
-    titleGroup.append(hiddenBadge);
-  }
-
-  titleRow.append(titleGroup);
-
-  if (isManageMode) {
-    const adminActions = document.createElement('div');
-    adminActions.className = 'bundle-admin-actions';
-
-    // 显隐开关
-    const visWrap = document.createElement('div');
-    visWrap.className = 'script-visibility-wrap';
-    visWrap.innerHTML = `
-      <label class="switch-toggle" title="控制此组合脚本在普通用户侧是否显示">
-        <input type="checkbox" ${isEnabled ? 'checked' : ''}>
-        <span class="switch-slider"></span>
-        <span class="switch-text">${isEnabled ? '用户可见' : '隐藏'}</span>
-      </label>
-    `;
-    const visInput = visWrap.querySelector('input');
-    visInput.addEventListener('change', async e => {
-      e.stopPropagation();
-      bundle.enabled = e.target.checked;
-      await saveBundleDirect(bundle);
-    });
-
-    // 编辑按钮
-    const editBtn = document.createElement('button');
-    editBtn.className = 'action-btn small';
-    editBtn.type = 'button';
-    editBtn.textContent = '编辑';
-    editBtn.title = '编辑组合名称、备注及步骤';
-    editBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      openBundleModal(bundle);
-    });
-
-    // 删除按钮
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'action-btn small danger';
-    deleteBtn.type = 'button';
-    deleteBtn.textContent = '删除';
-    deleteBtn.title = '删除此自定义脚本组合';
-    deleteBtn.addEventListener('click', async e => {
-      e.stopPropagation();
-      const confirmed = await showInPageConfirm({
-        title: '确认删除脚本组合？',
-        message: `确定要彻底删除组合脚本 <strong>${escapeHtml(bundle.name)}</strong> 吗？此操作无法撤销。`,
-        okText: '确认删除',
-        isDanger: true
-      });
-      if (!confirmed) return;
-      await deleteBundle(bundle.id);
-    });
-
-    adminActions.append(visWrap, editBtn, deleteBtn);
-    titleRow.append(adminActions);
-  }
-
-  head.append(titleRow);
-
-  // 备注 / 脚本功能说明
-  if (bundle.description) {
-    const desc = document.createElement('div');
-    desc.className = 'bundle-desc';
-    desc.textContent = bundle.description;
-    head.append(desc);
-  }
-
-  // 步骤徽章流
-  if (stepScripts.length > 0) {
-    const flow = document.createElement('div');
-    flow.className = 'bundle-steps-flow';
-    stepScripts.forEach((step, idx) => {
-      if (idx > 0) {
-        const arrow = document.createElement('span');
-        arrow.className = 'bundle-step-arrow';
-        arrow.textContent = '→';
-        flow.append(arrow);
-      }
-      const tag = document.createElement('span');
-      tag.className = 'bundle-step-item';
-      tag.textContent = `${idx + 1}. ${step.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '')}`;
-      flow.append(tag);
-    });
-    head.append(flow);
-  }
-
-  card.append(head);
-
-  // 执行按钮
-  const actions = document.createElement('div');
-  actions.className = 'script-actions';
-
-  const isCurrentRunning = state.activeBundleRun?.bundleId === bundle.id;
-  const button = document.createElement('button');
-  button.className = 'run-button' + (isCurrentRunning ? ' run-button-stop' : '');
-  button.type = 'button';
-
-  if (isCurrentRunning) {
-    button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止组合</span>`;
-  } else {
-    button.innerHTML = `<span class="run-icon">▶</span><span class="run-text">执行组合</span>`;
-  }
-
-  button.addEventListener('click', () => {
-    if (state.activeBundleRun?.bundleId === bundle.id) {
-      stopRunningBundle();
-    } else {
-      executeScriptBundle(bundle, button, card);
-    }
-  });
-
-  actions.append(button);
-  card.append(actions);
-
-  return card;
-}
-
-function renderScripts() {
-  elements.scriptList.replaceChildren();
-
-  const isManageMode = isScriptManageMode();
-
-  const v2Scripts = state.scripts
-    .filter(s => s.category === 'v2' || s.version === 'v2' || s.id.endsWith('-v2'))
-    .filter(s => !s.batch)
-    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
-
-  const v3Scripts = state.scripts
-    .filter(s => s.category === 'v3' || s.version === 'v3' || s.id.endsWith('-v3'))
-    .filter(s => !s.batch)
-    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
-
-  const momoScripts = state.scripts
-    .filter(s => s.category === 'momo')
-    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
-
-  const batchScripts = state.scripts
-    .filter(s => s.batch || s.id.startsWith('flow-all'));
-
-  // 1 & 2: V2 与 V3 流程架构双列并排展示
-  const columnsContainer = document.createElement('div');
-  columnsContainer.className = 'scripts-columns-container';
-
-  if (v2Scripts.length > 0) {
-    const v2Section = createVersionSection('V2', 'V2 流程架构 (01~07)', v2Scripts, false, 'v2');
-    if (v2Section) columnsContainer.append(v2Section);
-  }
-
-  if (v3Scripts.length > 0) {
-    const v3Section = createVersionSection('V3', 'V3 极速架构 (01~08)', v3Scripts, false, 'v3');
-    if (v3Section) columnsContainer.append(v3Section);
-  }
-
-  if (columnsContainer.hasChildNodes()) {
-    elements.scriptList.append(columnsContainer);
-  }
-
-  // 3. MOMO 业务自动化板块 (11~15 + 全量执行)
-  const isMomoVisible = state.visibility?.groups?.momo !== false;
-  if ((momoScripts.length || batchScripts.length) && (isManageMode || isMomoVisible)) {
-    const momoSection = document.createElement('section');
-    const storageKey = 'yunmomo.collapse.momo';
-    let isMomoCollapsed = false;
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved !== null) isMomoCollapsed = saved === 'true';
-    } catch {}
-
-    momoSection.className = 'scripts-momo-section' + (isMomoCollapsed ? ' collapsed' : '') + (!isMomoVisible && isManageMode ? ' hidden-from-user' : '');
-    momoSection.innerHTML = `
-      <div class="momo-section-head version-column-head" role="button" tabindex="0" title="点击展开/收起此栏脚本">
-        <div class="momo-title-group version-badge-group">
-          <span class="momo-title version-title">MOMO 业务自动化 (11~15)</span>
-          ${!isMomoVisible && isManageMode ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-          ${isManageMode ? `
-            <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此分组">
-              <label class="switch-toggle" onclick="event.stopPropagation()">
-                <input type="checkbox" class="momo-vis-input" ${isMomoVisible ? 'checked' : ''}>
-                <span class="switch-slider"></span>
-                <span class="switch-text">${isMomoVisible ? '用户可见' : '隐藏'}</span>
-              </label>
-            </div>
-          ` : ''}
-          <button class="version-collapse-btn" type="button" aria-expanded="${!isMomoCollapsed}" title="点击收起/展开">
-            <span class="toggle-text">${isMomoCollapsed ? '展开' : '收起'}</span>
-            <span class="toggle-icon">${isMomoCollapsed ? '▼' : '▲'}</span>
-          </button>
-        </div>
-      </div>
-      <div class="momo-cards-grid version-cards-stack"></div>
-    `;
-
-    if (isManageMode) {
-      const momoVisInput = momoSection.querySelector('.momo-vis-input');
-      if (momoVisInput) {
-        momoVisInput.addEventListener('change', e => {
-          e.stopPropagation();
-          saveVisibilityConfig({ type: 'group', id: 'momo', visible: e.target.checked });
-        });
-      }
-    }
-
-    const momoGrid = momoSection.querySelector('.momo-cards-grid');
-    let visibleCount = 0;
-    for (const script of momoScripts) {
-      const card = createScriptCard(script);
-      if (card) { momoGrid.append(card); visibleCount++; }
-    }
-    for (const script of batchScripts) {
-      const card = createScriptCard(script);
-      if (card) { momoGrid.append(card); visibleCount++; }
-    }
-
-    if (isManageMode || visibleCount > 0) {
-      const head = momoSection.querySelector('.momo-section-head');
-      const toggleBtn = momoSection.querySelector('.version-collapse-btn');
-      const toggleText = momoSection.querySelector('.toggle-text');
-      const toggleIcon = momoSection.querySelector('.toggle-icon');
-
-      function toggleMomo(e) {
-        if (e) e.stopPropagation();
-        isMomoCollapsed = !isMomoCollapsed;
-        momoSection.classList.toggle('collapsed', isMomoCollapsed);
-        toggleBtn.setAttribute('aria-expanded', String(!isMomoCollapsed));
-        toggleText.textContent = isMomoCollapsed ? '展开' : '收起';
-        toggleIcon.textContent = isMomoCollapsed ? '▼' : '▲';
-        try {
-          localStorage.setItem(storageKey, String(isMomoCollapsed));
-        } catch {}
-      }
-
-      head.addEventListener('click', toggleMomo);
-      head.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleMomo(e);
-        }
-      });
-
-      elements.scriptList.append(momoSection);
-    }
-  }
-
-  // 4. 自定义组合脚本板块
-  const isCustomGroupVisible = state.visibility?.groups?.custom !== false;
-  const bundles = Array.isArray(state.bundles) ? state.bundles : [];
-  const displayBundles = isManageMode
-    ? bundles
-    : bundles.filter(b => b.enabled !== false);
-
-  if (isManageMode || (isCustomGroupVisible && displayBundles.length > 0)) {
-    const bundleSection = document.createElement('section');
-    bundleSection.className = 'scripts-bundle-section' + (!isCustomGroupVisible && isManageMode ? ' hidden-from-user' : '');
-    bundleSection.innerHTML = `
-      <div class="bundle-section-head">
-        <div class="bundle-title-group">
-          <span class="bundle-badge">组合</span>
-          <span class="bundle-section-title">自定义组合脚本</span>
-          ${!isCustomGroupVisible && isManageMode ? '<span class="badge-hidden-user">用户侧隐藏</span>' : ''}
-        </div>
-        <div class="bundle-head-actions">
-          ${isManageMode ? `
-            <div class="group-visibility-wrap" title="控制是否在普通用户侧显示此组合板块">
-              <label class="switch-toggle" onclick="event.stopPropagation()">
-                <input type="checkbox" class="custom-group-vis-input" ${isCustomGroupVisible ? 'checked' : ''}>
-                <span class="switch-slider"></span>
-                <span class="switch-text">${isCustomGroupVisible ? '用户可见' : '隐藏'}</span>
-              </label>
-            </div>
-            <button class="action-btn small" id="openCreateBundleBtn" type="button" style="background:#1677ff; color:#fff; border-color:#1677ff; font-weight:600;">+ 新建组合脚本</button>
-          ` : ''}
-        </div>
-      </div>
-      <div class="bundle-cards-stack"></div>
-    `;
-
-    if (isManageMode) {
-      const customGroupInput = bundleSection.querySelector('.custom-group-vis-input');
-      if (customGroupInput) {
-        customGroupInput.addEventListener('change', e => {
-          e.stopPropagation();
-          saveVisibilityConfig({ type: 'group', id: 'custom', visible: e.target.checked });
-        });
-      }
-      const openCreateBtn = bundleSection.querySelector('#openCreateBundleBtn');
-      if (openCreateBtn) {
-        openCreateBtn.addEventListener('click', () => openBundleModal());
-      }
-    }
-
-    const bundleStack = bundleSection.querySelector('.bundle-cards-stack');
-    if (displayBundles.length === 0) {
-      const emptyTip = document.createElement('div');
-      emptyTip.className = 'ui-empty';
-      emptyTip.textContent = isManageMode
-        ? '暂无自定义组合脚本，点击右上角【+ 新建组合脚本】可以将多个脚本按序串联为一个组合供用户使用。'
-        : '暂无可用组合脚本';
-      bundleStack.append(emptyTip);
-    } else {
-      for (const bundle of displayBundles) {
-        const bCard = createBundleCard(bundle);
-        if (bCard) bundleStack.append(bCard);
-      }
-    }
-
-    elements.scriptList.append(bundleSection);
-  }
-}
-
-
-
-function promptVpcProxyDialog() {
-  const dialog = document.getElementById('vpcDialog') || document.getElementById('vpcProxyDialog');
-  const input = document.getElementById('vpcRawInput') || document.getElementById('vpcProxyInput');
-  const closeBtn = document.getElementById('closeVpcDialogBtn');
-  const cancelBtn = document.getElementById('cancelVpcBtn') || document.getElementById('cancelVpcDialogBtn');
-  const confirmBtn = document.getElementById('confirmVpcBtn') || document.getElementById('confirmVpcDialogBtn');
-
-  if (!dialog || !input) return Promise.resolve(null);
-
-  return new Promise(resolve => {
-    let resolved = false;
-
-    const cleanup = () => {
-      closeBtn?.removeEventListener('click', onCancel);
-      cancelBtn?.removeEventListener('click', onCancel);
-      confirmBtn?.removeEventListener('click', onConfirm);
-      dialog.removeEventListener('cancel', onCancel);
-      dialog.removeEventListener('keydown', onKeyDown);
-    };
-
-    const finish = value => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      try { dialog.close(); } catch {}
-      resolve(value);
-    };
-
-    const onCancel = () => finish(null);
-
-    const onConfirm = () => {
-      const val = input.value.trim();
-      if (!val) {
-        showToast('请输入 VPC 代理数据');
-        input.focus();
-        return;
-      }
-      finish(val);
-    };
-
-    const onKeyDown = e => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        onConfirm();
-      }
-    };
-
-    closeBtn?.addEventListener('click', onCancel);
-    cancelBtn?.addEventListener('click', onCancel);
-    confirmBtn?.addEventListener('click', onConfirm);
-    dialog.addEventListener('cancel', onCancel, { once: true });
-    dialog.addEventListener('keydown', onKeyDown);
-
-    input.value = '';
-    try {
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-      else dialog.setAttribute('open', '');
-    } catch {
-      dialog.setAttribute('open', '');
-    }
-    setTimeout(() => input.focus(), 50);
-  });
-}
-
-async function executeScript(script, button, card) {
-  if (state.activeRun || state.runningScript) { showToast('请等待当前脚本结束'); return; }
+async function executeBundle(bundle) {
+  if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return; }
   if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
-  if (!state.tokenConfigured) {
-    showToast('尚未连接');
-    return;
-  }
-  if (script.requiresDevice && !currentDevice()) {
-    showToast('请点击一台云机');
-    return;
-  }
+  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
   const targetId = state.selectedDeviceId;
-  const externalRun = remoteRunForScript(script);
-  if (externalRun) {
-    const device = state.devices.find(item => item.deviceId === externalRun.deviceId);
-    showToast(`${device ? device.name + ' ' : ''}正在另一个网页执行「${externalRun.title}」`);
-    return;
-  }
-  const manual = script.requiresDevice ? manualWindowsForDevice(targetId) : null;
-  if (manual?.windows) {
-    showToast(`${currentDevice()?.name || '所选设备'}正在被其他网页手动操作`);
-    return;
-  }
-  const options = {};
-  if (card) {
-    for (const input of card.querySelectorAll('[data-parameter]')) {
-      const value = String(input.value ?? '').trim();
-      if (input.required && !value) {
-        input.focus?.();
-        showToast((input.getAttribute('aria-label') || '该参数') + '为必填项');
-        return;
-      }
-      if (value) options[input.dataset.parameter] = value;
-    }
-  }
+  const stepScripts = (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
+  if (!stepScripts.length) { showToast('此组合未包含有效脚本步骤'); return; }
+  if (stepScripts.some(s => s.requiresDevice) && !targetId) { showToast('此组合需要操作云机，请先选择目标云机'); return; }
 
-  // 03 设置 VPC 代理：网页弹窗识别并输入 VPC 代理（仅当操作指令为设置时才弹窗）
-  if (script.id === 'flow-03' || script.order === 3 || script.id.startsWith('flow-03')) {
-    const action = options.action || 'set';
-    if (action === 'set') {
-      const vpcData = await promptVpcProxyDialog();
-      if (!vpcData) return;
-      options.vpcData = vpcData;
-    }
-  }
-
-  let resetConfirmed = false;
-  if (script.destructive) {
-    const isV2 = script.id === 'flow-09-v2';
-    const isBlock = script.id === 'flow-18';
-    const targetLabel = escapeHtml(deviceLabel(currentDevice()));
-    let message, title, okText;
-    if (isBlock) {
-      const peerLabel = escapeHtml(options.contactName || '未指定联系人');
-      title = '确认执行【拉黑联系人】？';
-      okText = '确认拉黑';
-      message = `<div class="confirm-target-lead">确认拉黑联系人 <strong>${peerLabel}</strong>？</div>
-         <div class="confirm-danger-card">
-           <div class="confirm-danger-card-icon">!</div>
-           <div class="confirm-danger-card-body">
-             <div class="confirm-danger-card-title">拉黑后对方将无法再联系此账号！</div>
-             <div class="confirm-danger-card-desc">执行前请确认云机已停留在该联系人的聊天页，脚本会先核验顶栏姓名再操作。</div>
-           </div>
-         </div>`;
-    } else {
-      message = isV2
-        ? `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“重置数据”？</div>
-           <div class="confirm-danger-card">
-             <div class="confirm-danger-card-icon">!</div>
-             <div class="confirm-danger-card-body">
-               <div class="confirm-danger-card-title">警告：即将重置该设备，此操作不可恢复！</div>
-               <div class="confirm-danger-card-desc">清空该设备所有数据并恢复出厂设置。</div>
-             </div>
-           </div>`
-        : `<div class="confirm-target-lead">确认对 <strong>${targetLabel}</strong> 执行“改机重置”？</div>
-           <div class="confirm-sub-text" style="margin-bottom:8px;">机型范围：Android ${escapeHtml(options.androidVersion || '16')}；国家：${escapeHtml(options.countryCode || 'CN')}。</div>
-           <div class="confirm-danger-card">
-             <div class="confirm-danger-card-icon">!</div>
-             <div class="confirm-danger-card-body">
-               <div class="confirm-danger-card-title">警告：此操作会清除该设备所有数据且不可撤销！</div>
-               <div class="confirm-danger-card-desc">重置后云机将自动重启并应用新机型参数。</div>
-             </div>
-           </div>`;
-      title = isV2 ? '确认执行【重置数据】？' : '确认执行【改机重置】？';
-      okText = isV2 ? '确认重置' : '确认改机重置';
-    }
-    resetConfirmed = await showInPageConfirm({
-      title,
-      message,
-      okText,
-      isDanger: true,
-      icon: '!'
-    });
-    if (!resetConfirmed) return;
-  }
-  const scriptRunId = createScriptRunId();
-  const run = { id: scriptRunId, scriptId: script.id, deviceId: targetId, stopping: false, stopConfirmed: false };
-  state.activeRun = run;
-  state.runningScript = script.id;
-  if (elements.stopScriptBtn) {
-    elements.stopScriptBtn.style.display = 'inline-flex';
-    elements.stopScriptBtn.disabled = false;
-    elements.stopScriptBtn.textContent = '⏹ 停止脚本';
-  }
-  if (button) {
-    button.disabled = false;
-    button.classList.add('run-button-stop');
-    button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止执行</span>`;
-  }
-  if (card) card.classList.add('running');
-  window.AppLogger?.info('Script', `启动执行脚本 [${script.title}] (目标设备: ${targetId}, 运行ID: ${scriptRunId})`);
-  writeOutput('正在执行：' + script.title, [], { runId: scriptRunId });
-
-  let isPollingOutput = false;
-  const outputPollTimer = setInterval(async () => {
-    if (!state.activeRun || state.activeRun.id !== scriptRunId) {
-      clearInterval(outputPollTimer);
-      return;
-    }
-    if (isPollingOutput) return;
-    isPollingOutput = true;
-    try {
-      const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
-      if (live.ok) {
-        if (live.logFile && state.activeRun) state.activeRun.logFile = live.logFile;
-        if (live.stdout || live.stderr) {
-          if (state.activeRun && state.activeRun.id === scriptRunId) {
-            const lines = cleanScriptLines(live.stdout, live.stderr);
-            writeOutput('正在执行：' + script.title, lines, { runId: scriptRunId, logFile: live.logFile });
-          }
-        }
-      }
-    } catch { /* 轮询异常静默忽略 */ }
-    finally { isPollingOutput = false; }
-  }, 300);
-
-  if (script.order >= 1 && script.order <= 8) {
-    setStepState(targetId, script.order, 'running');
-  } else if (script.batch || script.id === 'flow-all') {
-    setStepState(targetId, 1, 'running');
-  }
-
-  try {
-    const result = await requestJson('/api/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scriptRunId,
-        scriptId: script.id,
-        deviceId: targetId,
-        pageId: state.pageId,
-        options,
-        resetConfirmed
-      })
-    });
-    clearInterval(outputPollTimer);
-    if (state.activeRun && state.activeRun.id !== scriptRunId) return;
-    const lines = cleanScriptLines(result.stdout, result.stderr);
-    const durationSec = Number.isFinite(result.durationMs) ? (result.durationMs / 1000).toFixed(1) + 's' : '';
-    let title;
-    if (result.cancelled) {
-      title = '脚本已停止：' + script.title;
-      lines.push('（已停止执行）');
-    } else if (result.ok) {
-      title = '执行成功：' + script.title + (durationSec ? ' (' + durationSec + ')' : '');
-    } else {
-      title = '执行失败：' + script.title + (result.exitCode !== null ? ' (退出码: ' + result.exitCode + ')' : '');
-    }
-    writeOutput(title, lines, { runId: scriptRunId, logFile: result.logFile });
-    if (result.ok && card) {
-      const privateInput = card.querySelector('[data-parameter="vpcData"]');
-      if (privateInput) privateInput.value = '';
-    }
-    if (result.ok) {
-      const vpcInput = document.getElementById('vpcRawInput') || document.getElementById('vpcProxyInput');
-      if (vpcInput) vpcInput.value = '';
-    }
-
-    if (script.order >= 1 && script.order <= 8) {
-      setStepState(targetId, script.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
-    } else if (script.batch || script.id === 'flow-all') {
-      if (result.ok) {
-        for (let i = 1; i <= 8; i++) setStepState(targetId, i, 'completed');
-      } else {
-        const out = (result.stdout || '') + '\n' + (result.stderr || '');
-        for (let i = 1; i <= 8; i++) {
-          if (out.includes(`[${i}/8] 成功完成`)) {
-            setStepState(targetId, i, 'completed');
-          } else if (out.includes(`[${i}/8] 执行失败`)) {
-            setStepState(targetId, i, 'failed');
-          }
-        }
-      }
-      if (result.cancelled) {
-        for (let i = 1; i <= 8; i++) {
-          if (getStepState(targetId, i) === 'running') setStepState(targetId, i, 'cancelled');
-        }
-      }
-    }
-
-    if (result.cancelled) {
-      window.AppLogger?.warn('Script', `脚本已人为中断 [${script.title}] (运行ID: ${scriptRunId})`);
-      showToast('脚本已停止，请核对设备状态');
-    } else if (!result.ok) {
-      window.AppLogger?.error('Script', `脚本执行未达成目标 [${script.title}] (运行ID: ${scriptRunId})`);
-      showToast('脚本执行失败，请查看执行记录');
-    } else {
-      window.AppLogger?.info('Script', `脚本执行成功达成 [${script.title}] (运行ID: ${scriptRunId})`);
-    }
-    requestAllPreviews();
-    if (state.tokenConfigured) loadDevices(true);
-  } catch (error) {
-    if (state.activeRun && state.activeRun.id !== scriptRunId) return;
-    if (run.stopConfirmed) {
-      writeOutput('脚本已停止：' + script.title, [
-        '服务端已确认脚本进程退出并释放设备占用。',
-        '脚本中断时设备状态可能只完成了部分操作；请核对设备后再继续。'
-      ]);
-      showToast('脚本已停止，请核对设备状态');
-      if (targetId && script.order >= 1 && script.order <= 8) {
-        setStepState(targetId, script.order, 'cancelled');
-      } else if (targetId && (script.batch || script.id === 'flow-all')) {
-        for (let i = 1; i <= 8; i++) {
-          if (getStepState(targetId, i) === 'running') setStepState(targetId, i, 'cancelled');
-        }
-      }
-      return;
-    }
-    if (targetId) {
-      if (script.order >= 1 && script.order <= 8) {
-        setStepState(targetId, script.order, 'failed');
-      } else if (script.batch || script.id === 'flow-all') {
-        const cur = getStepState(targetId, 1);
-        if (cur === 'running') setStepState(targetId, 1, 'failed');
-      }
-    }
-    const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError');
-    const displayMsg = isNetwork
-      ? '网络连接失败（Failed to fetch）：后端控制台服务暂时断开或重启中，请检查服务是否运行或稍后重试。'
-      : error.message;
-    writeOutput('执行请求失败：' + script.title, [
-      displayMsg,
-      Number.isFinite(error.durationMs) ? '总耗时：' + error.durationMs + ' ms' : '',
-      `调用编号：${scriptRunId}`,
-      state.activeRun?.logFile ? `原始日志：${state.activeRun.logFile}` : ''
-    ], { runId: scriptRunId });
-    window.AppLogger?.error('Script', `脚本执行异常失败 [${script.title}]: ${displayMsg}`, { runId: scriptRunId, error: error.message });
-    showToast(displayMsg);
-  } finally {
-    clearInterval(outputPollTimer);
-    if (state.activeRun?.id === scriptRunId) {
-      state.activeRun = null;
-      state.runningScript = '';
-      if (elements.stopScriptBtn) {
-        elements.stopScriptBtn.style.display = 'none';
-        elements.stopScriptBtn.disabled = false;
-        elements.stopScriptBtn.textContent = '⏹ 停止脚本';
-      }
-      if (button) {
-        button.disabled = false;
-        button.classList.remove('run-button-stop');
-        button.innerHTML = `<span class="run-icon">▶</span><span class="run-text">${script.batch ? '一键执行全部' : '执行'}</span>`;
-      }
-      if (card) card.classList.remove('running');
-    }
-    loadSharedRuntimeState();
-  }
-}
-
-
-
-async function executeSingleStep(script, targetId, options = {}) {
-  const scriptRunId = createScriptRunId();
-  const run = { id: scriptRunId, scriptId: script.id, deviceId: targetId, stopping: false, stopConfirmed: false };
-  state.activeRun = run;
-  state.runningScript = script.id;
-
-  if (elements.stopScriptBtn) {
-    elements.stopScriptBtn.style.display = 'inline-flex';
-    elements.stopScriptBtn.disabled = false;
-    elements.stopScriptBtn.textContent = '⏹ 停止脚本';
-  }
-
-  if (script.order >= 1 && script.order <= 8) {
-    setStepState(targetId, script.order, 'running');
-  }
-
-  let isPollingOutput = false;
-  const outputPollTimer = setInterval(async () => {
-    if (!state.activeRun || state.activeRun.id !== scriptRunId) {
-      clearInterval(outputPollTimer);
-      return;
-    }
-    if (isPollingOutput) return;
-    isPollingOutput = true;
-    try {
-      const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
-      if (live.ok) {
-        if (live.logFile && state.activeRun) state.activeRun.logFile = live.logFile;
-        if (live.stdout || live.stderr) {
-          if (state.activeRun && state.activeRun.id === scriptRunId) {
-            const lines = cleanScriptLines(live.stdout, live.stderr);
-            writeOutput('正在执行：' + script.title, lines, { runId: scriptRunId, logFile: live.logFile });
-          }
-        }
-      }
-    } catch {}
-    finally { isPollingOutput = false; }
-  }, 300);
-
-  try {
-    const result = await requestJson('/api/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scriptRunId,
-        scriptId: script.id,
-        deviceId: targetId,
-        pageId: state.pageId,
-        options
-      })
-    });
-    clearInterval(outputPollTimer);
-    const lines = cleanScriptLines(result.stdout, result.stderr);
-    const durationSec = Number.isFinite(result.durationMs) ? (result.durationMs / 1000).toFixed(1) + 's' : '';
-    writeOutput(
-      result.cancelled ? '脚本已停止：' + script.title : result.ok ? '执行成功：' + script.title : '执行失败：' + script.title,
-      lines,
-      { runId: scriptRunId, logFile: result.logFile }
-    );
-
-    if (script.order >= 1 && script.order <= 8) {
-      setStepState(targetId, script.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
-    }
-
-    return {
-      ok: Boolean(result.ok),
-      cancelled: Boolean(result.cancelled),
-      exitCode: result.exitCode,
-      durationSec,
-      logFile: result.logFile
-    };
-  } catch (err) {
-    clearInterval(outputPollTimer);
-    if (script.order >= 1 && script.order <= 8) {
-      setStepState(targetId, script.order, 'failed');
-    }
-    return {
-      ok: false,
-      cancelled: run.stopConfirmed,
-      exitCode: -1,
-      durationSec: '',
-      error: err.message
-    };
-  } finally {
-    clearInterval(outputPollTimer);
-    if (state.activeRun?.id === scriptRunId) {
-      state.activeRun = null;
-      state.runningScript = '';
-      if (elements.stopScriptBtn) {
-        elements.stopScriptBtn.style.display = 'none';
-        elements.stopScriptBtn.disabled = false;
-        elements.stopScriptBtn.textContent = '⏹ 停止脚本';
-      }
-    }
-  }
-}
-
-async function executeScriptBundle(bundle, button, card) {
-  if (state.activeRun || state.runningScript || state.activeBundleRun) {
-    showToast('请等待当前正在运行的脚本完成');
-    return;
-  }
-  if (state.manualDeviceId) {
-    showToast('请先关闭手动操作窗，再运行脚本');
-    return;
-  }
-  if (!state.tokenConfigured) {
-    showToast('尚未连接');
-    return;
-  }
-  const targetId = state.selectedDeviceId;
-  const stepScripts = (bundle.stepIds || [])
-    .map(id => state.scripts.find(s => s.id === id))
-    .filter(Boolean);
-
-  if (stepScripts.length === 0) {
-    showToast('此组合未包含有效脚本步骤');
-    return;
-  }
-
-  const anyRequiresDevice = stepScripts.some(s => s.requiresDevice);
-  if (anyRequiresDevice && !currentDevice()) {
-    showToast('此组合脚本需要操作云机，请先在左侧选择目标云机');
-    return;
-  }
-
-  const bundleRunState = {
-    bundleId: bundle.id,
-    stopped: false,
-    currentStepIndex: 0
-  };
+  const bundleRunState = { bundleId: bundle.id, stopped: false };
   state.activeBundleRun = bundleRunState;
-
-  if (button) {
-    button.classList.add('run-button-stop');
-    button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">停止组合</span>`;
-  }
-  if (card) card.classList.add('running');
-
   const total = stepScripts.length;
   writeOutput(`【开始执行组合脚本】: ${bundle.name}`, [
     `功能备注：${bundle.description || '无'}`,
     `目标设备：${targetId ? deviceLabel(currentDevice()) : '无需设备'}`,
-    `计划执行步骤（共 ${total} 步）：`,
     ...stepScripts.map((s, i) => `  ${i + 1}. ${s.title}`)
   ]);
 
@@ -1440,45 +897,25 @@ async function executeScriptBundle(bundle, button, card) {
         showToast('组合脚本已停止');
         break;
       }
-
-      bundleRunState.currentStepIndex = i;
       const script = stepScripts[i];
-      if (button) {
-        button.innerHTML = `<span class="run-icon">⏹</span><span class="run-text">[${i + 1}/${total}] ${escapeHtml(script.title.slice(0, 8))}…</span>`;
-      }
-
-      writeOutput(`\n▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [
-        `正在运行子脚本 ${script.id}...`
-      ]);
-
+      writeOutput(`▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [`正在运行子脚本 ${script.id}...`]);
       const stepRes = await executeSingleStep(script, targetId);
-
       if (bundleRunState.stopped || stepRes.cancelled) {
         writeOutput(`【组合脚本中断】: 步骤 ${i + 1} (${script.title}) 已停止。`, ['终止后续执行。']);
         showToast(`组合脚本已在步骤 ${i + 1} 停止`);
         break;
       }
-
       if (!stepRes.ok) {
-        writeOutput(`【组合脚本失败中断】: 步骤 ${i + 1} (${script.title}) 执行未达成`, [
-          `退出码: ${stepRes.exitCode ?? '未知'}`,
-          '组合脚本后续步骤已自动熔断中止。请排查错误后重试。'
-        ]);
+        writeOutput(`【组合脚本失败中断】: 步骤 ${i + 1} (${script.title}) 执行未达成`, ['组合脚本后续步骤已自动熔断中止。']);
         showToast(`步骤 ${i + 1} (${script.title}) 执行失败，组合已中断`);
         break;
       }
-
-      writeOutput(`✓ [步骤 ${i + 1}/${total}] 成功达成: ${script.title}`, [
-        `耗时: ${stepRes.durationSec || '--'}`
-      ]);
-
+      writeOutput(`✓ [步骤 ${i + 1}/${total}] 成功达成: ${script.title}`, [`耗时: ${stepRes.durationMs ? (stepRes.durationMs / 1000).toFixed(1) + 's' : '--'}`]);
       if (i === total - 1) {
-        writeOutput(`\n【组合脚本全部执行成功】${bundle.name}`, [
-          `共 ${total} 个步骤全部依次顺利执行达成！`
-        ]);
+        writeOutput(`【组合脚本全部执行成功】${bundle.name}`, [`共 ${total} 个步骤全部依次顺利执行达成！`]);
         showToast(`组合脚本【${bundle.name}】全部执行完成`);
       } else {
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
   } catch (err) {
@@ -1486,13 +923,8 @@ async function executeScriptBundle(bundle, button, card) {
     showToast('组合脚本异常: ' + err.message);
   } finally {
     state.activeBundleRun = null;
-    if (button) {
-      button.classList.remove('run-button-stop');
-      button.innerHTML = `<span class="run-icon">▶</span><span class="run-text">执行组合</span>`;
-    }
-    if (card) card.classList.remove('running');
     loadSharedRuntimeState();
-    requestAllPreviews();
+    if (typeof requestAllPreviews === 'function') requestAllPreviews();
   }
 }
 
@@ -1504,137 +936,159 @@ function stopRunningBundle() {
   }
 }
 
+/* ---------- VPC 代理弹窗 ---------- */
+
+function promptVpcProxyDialog() {
+  const dialog = byId('vpcDialog');
+  const input = byId('vpcRawInput');
+  if (!dialog || !input) return Promise.resolve(null);
+  return new Promise(resolve => {
+    let resolved = false;
+    const cleanup = () => {
+      byId('closeVpcDialogBtn')?.removeEventListener('click', onCancel);
+      byId('cancelVpcBtn')?.removeEventListener('click', onCancel);
+      byId('confirmVpcBtn')?.removeEventListener('click', onConfirm);
+      dialog.removeEventListener('cancel', onCancel);
+      dialog.removeEventListener('keydown', onKeyDown);
+    };
+    const finish = value => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      try { dialog.close(); } catch {}
+      resolve(value);
+    };
+    const onCancel = () => finish(null);
+    const onConfirm = () => {
+      const val = input.value.trim();
+      if (!val) { showToast('请输入 VPC 代理数据'); input.focus(); return; }
+      finish(val);
+    };
+    const onKeyDown = e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onConfirm(); }
+    };
+    byId('closeVpcDialogBtn')?.addEventListener('click', onCancel);
+    byId('cancelVpcBtn')?.addEventListener('click', onCancel);
+    byId('confirmVpcBtn')?.addEventListener('click', onConfirm);
+    dialog.addEventListener('cancel', onCancel, { once: true });
+    dialog.addEventListener('keydown', onKeyDown);
+    input.value = '';
+    try { dialog.showModal(); } catch { dialog.setAttribute('open', ''); }
+    setTimeout(() => input.focus(), 50);
+  });
+}
+
+/* ---------- 组合脚本管理（管理员） ---------- */
+
 let editingBundleSteps = [];
 
 function openBundleModal(bundle = null) {
   const modal = byId('scriptBundleModal');
-  const title = byId('bundleModalTitle');
-  const editIdInput = byId('bundleEditId');
-  const nameInput = byId('bundleNameInput');
-  const descInput = byId('bundleDescInput');
-  const enabledInput = byId('bundleEnabledInput');
-  const scriptsSelect = byId('bundleAvailableScriptsSelect');
-
   if (!modal) return;
-
-  if (scriptsSelect) {
-    scriptsSelect.innerHTML = '';
-    const nonBatchScripts = state.scripts.filter(s => !s.batch && !s.id.startsWith('flow-all'));
-    for (const s of nonBatchScripts) {
-      const opt = document.createElement('option');
-      opt.value = s.id;
+  const select = byId('bundleAvailableScriptsSelect');
+  if (select) {
+    select.innerHTML = '';
+    for (const s of state.scripts.filter(item => !item.batch && !item.id.startsWith('flow-all'))) {
+      const option = document.createElement('option');
+      option.value = s.id;
       const ver = (s.category || s.version || '').toUpperCase();
-      opt.textContent = `${ver ? `[${ver}] ` : ''}${s.title}`;
-      scriptsSelect.append(opt);
+      option.textContent = `${ver ? `[${ver}] ` : ''}${s.title}`;
+      select.append(option);
     }
   }
-
   if (bundle) {
-    if (title) title.textContent = '编辑自定义脚本组合';
-    if (editIdInput) editIdInput.value = bundle.id;
-    if (nameInput) nameInput.value = bundle.name || '';
-    if (descInput) descInput.value = bundle.description || '';
-    if (enabledInput) enabledInput.checked = bundle.enabled !== false;
+    byId('bundleModalTitle').textContent = '编辑自定义脚本组合';
+    byId('bundleEditId').value = bundle.id;
+    byId('bundleNameInput').value = bundle.name || '';
+    byId('bundleDescInput').value = bundle.description || '';
+    byId('bundleEnabledInput').checked = bundle.enabled !== false;
     editingBundleSteps = Array.isArray(bundle.stepIds) ? [...bundle.stepIds] : [];
   } else {
-    if (title) title.textContent = '新建自定义脚本组合';
-    if (editIdInput) editIdInput.value = '';
-    if (nameInput) nameInput.value = '';
-    if (descInput) descInput.value = '';
-    if (enabledInput) enabledInput.checked = true;
+    byId('bundleModalTitle').textContent = '新建自定义脚本组合';
+    byId('bundleEditId').value = '';
+    byId('bundleNameInput').value = '';
+    byId('bundleDescInput').value = '';
+    byId('bundleEnabledInput').checked = true;
     editingBundleSteps = [];
   }
-
   renderModalSelectedSteps();
-  try {
-    if (typeof modal.showModal === 'function') modal.showModal();
-    else modal.setAttribute('open', '');
-  } catch {}
-}
-
-function closeBundleModal() {
-  const modal = byId('scriptBundleModal');
-  if (!modal) return;
-  try {
-    modal.close();
-  } catch {
-    modal.removeAttribute('open');
-  }
+  try { modal.showModal(); } catch { modal.setAttribute('open', ''); }
 }
 
 function renderModalSelectedSteps() {
   const container = byId('bundleSelectedSteps');
   if (!container) return;
   container.innerHTML = '';
-
-  if (editingBundleSteps.length === 0) {
-    const tip = document.createElement('div');
-    tip.className = 'ui-hint';
-    tip.style.textAlign = 'center';
-    tip.textContent = '暂未添加步骤，请在下方选择脚本并点击【+ 添加步骤】';
-    container.append(tip);
+  if (!editingBundleSteps.length) {
+    container.innerHTML = '<div class="hint" style="text-align:center;">暂未添加步骤，请在下方选择脚本并点击「添加步骤」</div>';
     return;
   }
-
   editingBundleSteps.forEach((stepId, index) => {
     const script = state.scripts.find(s => s.id === stepId);
     const row = document.createElement('div');
     row.className = 'bundle-step-row';
-
-    const info = document.createElement('div');
-    info.className = 'ui-row';
-    info.innerHTML = `
-      <span class="ui-mono" style="color:var(--accent); min-width:20px;">${index + 1}.</span>
-      <span style="font-weight:var(--fw-500);">${escapeHtml(script ? script.title : stepId)}</span>
-    `;
-
-    const actions = document.createElement('div');
-    actions.className = 'bundle-step-actions';
-
-    const upBtn = document.createElement('button');
-    upBtn.className = 'btn-icon';
-    upBtn.type = 'button';
-    upBtn.innerHTML = '▲';
-    upBtn.title = '上移一步';
-    upBtn.disabled = index === 0;
-    upBtn.addEventListener('click', () => {
-      if (index > 0) {
-        const tmp = editingBundleSteps[index];
-        editingBundleSteps[index] = editingBundleSteps[index - 1];
-        editingBundleSteps[index - 1] = tmp;
-        renderModalSelectedSteps();
-      }
-    });
-
-    const downBtn = document.createElement('button');
-    downBtn.className = 'btn-icon';
-    downBtn.type = 'button';
-    downBtn.innerHTML = '▼';
-    downBtn.title = '下移一步';
-    downBtn.disabled = index === editingBundleSteps.length - 1;
-    downBtn.addEventListener('click', () => {
-      if (index < editingBundleSteps.length - 1) {
-        const tmp = editingBundleSteps[index];
-        editingBundleSteps[index] = editingBundleSteps[index + 1];
-        editingBundleSteps[index + 1] = tmp;
-        renderModalSelectedSteps();
-      }
-    });
-
-    const rmBtn = document.createElement('button');
-    rmBtn.className = 'btn-icon danger';
-    rmBtn.type = 'button';
-    rmBtn.innerHTML = '✗';
-    rmBtn.title = '移除此步骤';
-    rmBtn.addEventListener('click', () => {
-      editingBundleSteps.splice(index, 1);
-      renderModalSelectedSteps();
-    });
-
-    actions.append(upBtn, downBtn, rmBtn);
-    row.append(info, actions);
+    row.innerHTML = `<span class="task-name"><span class="num">${index + 1}</span>${escapeHtml(script ? script.title : stepId)}</span>
+      <span class="bundle-step-actions">
+        <button class="btn-icon" data-step-up="${index}" type="button" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
+        <button class="btn-icon" data-step-down="${index}" type="button" ${index === editingBundleSteps.length - 1 ? 'disabled' : ''} title="下移">▼</button>
+        <button class="btn-icon danger" data-step-remove="${index}" type="button" title="移除">✗</button>
+      </span>`;
     container.append(row);
   });
+}
+
+function initBundleModalEvents() {
+  byId('closeBundleModalBtn')?.addEventListener('click', () => byId('scriptBundleModal')?.close());
+  byId('cancelBundleBtn')?.addEventListener('click', () => byId('scriptBundleModal')?.close());
+  byId('bundleSelectedSteps')?.addEventListener('click', event => {
+    const up = event.target.closest('[data-step-up]');
+    const down = event.target.closest('[data-step-down]');
+    const remove = event.target.closest('[data-step-remove]');
+    if (up) {
+      const i = Number(up.dataset.stepUp);
+      [editingBundleSteps[i - 1], editingBundleSteps[i]] = [editingBundleSteps[i], editingBundleSteps[i - 1]];
+      renderModalSelectedSteps();
+    } else if (down) {
+      const i = Number(down.dataset.stepDown);
+      [editingBundleSteps[i + 1], editingBundleSteps[i]] = [editingBundleSteps[i], editingBundleSteps[i + 1]];
+      renderModalSelectedSteps();
+    } else if (remove) {
+      editingBundleSteps.splice(Number(remove.dataset.stepRemove), 1);
+      renderModalSelectedSteps();
+    }
+  });
+  byId('addStepToBundleBtn')?.addEventListener('click', () => {
+    const select = byId('bundleAvailableScriptsSelect');
+    if (select?.value) { editingBundleSteps.push(select.value); renderModalSelectedSteps(); }
+  });
+  byId('saveBundleBtn')?.addEventListener('click', handleSaveBundleModal);
+}
+
+async function handleSaveBundleModal() {
+  const editId = byId('bundleEditId')?.value || '';
+  const name = byId('bundleNameInput')?.value?.trim();
+  if (!name) { showToast('请输入组合脚本名称'); return; }
+  if (!editingBundleSteps.length) { showToast('请至少添加一个执行步骤'); return; }
+  try {
+    const res = await requestJson('/api/admin/scripts/bundles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: editId || undefined,
+        name,
+        description: byId('bundleDescInput')?.value?.trim() || '',
+        enabled: byId('bundleEnabledInput')?.checked !== false,
+        stepIds: editingBundleSteps
+      })
+    });
+    if (res.ok) {
+      showToast('组合脚本保存成功');
+      byId('scriptBundleModal')?.close();
+      if (typeof loadScripts === 'function') await loadScripts();
+    }
+  } catch (err) {
+    showToast('保存组合脚本失败: ' + err.message);
+  }
 }
 
 async function saveBundleDirect(bundle) {
@@ -1645,8 +1099,8 @@ async function saveBundleDirect(bundle) {
       body: JSON.stringify(bundle)
     });
     if (res.ok) {
-      showToast(`已${bundle.enabled ? '开启' : '关闭'}组合脚本【${bundle.name}】的用户侧显示`);
-      await loadScripts();
+      showToast(`已${bundle.enabled ? '开启' : '关闭'}组合脚本的用户侧显示`);
+      if (typeof loadScripts === 'function') await loadScripts();
     }
   } catch (err) {
     showToast('更新组合脚本状态失败: ' + err.message);
@@ -1662,63 +1116,78 @@ async function deleteBundle(bundleId) {
     });
     if (res.ok) {
       showToast('组合脚本已成功删除');
-      await loadScripts();
+      if (typeof loadScripts === 'function') await loadScripts();
     }
   } catch (err) {
     showToast('删除组合脚本失败: ' + err.message);
   }
 }
 
-async function handleSaveBundleModal() {
-  const editId = byId('bundleEditId')?.value || '';
-  const name = byId('bundleNameInput')?.value?.trim();
-  const description = byId('bundleDescInput')?.value?.trim() || '';
-  const enabled = byId('bundleEnabledInput')?.checked !== false;
+/* ---------- 总览快捷任务 ---------- */
 
-  if (!name) {
-    showToast('请输入组合脚本名称');
-    byId('bundleNameInput')?.focus();
+function renderQuickTasks() {
+  const host = elements.quickTaskList;
+  if (!host) return;
+  const momo = state.scripts.filter(s => s.category === 'momo' && !s.batch && scriptVisible(s))
+    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).slice(0, 6);
+  if (!momo.length) {
+    host.innerHTML = '<div class="empty">任务加载中…</div>';
     return;
   }
+  host.innerHTML = momo.map(script => `<button class="task-row" data-quick-task="${escapeHtml(script.id)}" type="button">
+    <span class="task-icon">${ic('tasks', 16)}</span>
+    <span class="task-row-body"><b>${escapeHtml(scriptTitle(script))}</b><small>${escapeHtml(script.file || '')}</small></span>
+    ${ic('chevron', 15)}
+  </button>`).join('');
+}
 
-  if (editingBundleSteps.length === 0) {
-    showToast('请至少添加一个执行步骤');
-    return;
-  }
+elements.quickTaskList?.addEventListener?.('click', event => {
+  const row = event.target.closest('[data-quick-task]');
+  if (!row) return;
+  state.taskScriptId = row.dataset.quickTask;
+  setPage('tasks');
+});
 
-  try {
-    const payload = {
-      id: editId || undefined,
-      name,
-      description,
-      enabled,
-      stepIds: editingBundleSteps
-    };
-    const res = await requestJson('/api/admin/scripts/bundles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      showToast('组合脚本保存成功');
-      closeBundleModal();
-      await loadScripts();
+/* ---------- 运行时互斥状态同步 ---------- */
+
+function updateTaskRuntime() {
+  updateBatchCount();
+  const picker = byId('taskDetailPanel');
+  if (picker) {
+    for (const input of picker.querySelectorAll('[data-batch-device]')) {
+      const id = input.dataset.batchDevice;
+      const device = state.devices.find(d => d.deviceId === id);
+      const active = deviceRunning(id);
+      input.disabled = !device;
+      const note = input.closest('.device-choice')?.querySelector('small');
+      if (note && device) note.textContent = active ? '正在执行' : isOnline(device) ? '可执行' : '离线';
     }
-  } catch (err) {
-    showToast('保存组合脚本失败: ' + err.message);
   }
 }
 
-function initBundleModalEvents() {
-  byId('closeBundleModalBtn')?.addEventListener('click', closeBundleModal);
-  byId('cancelBundleBtn')?.addEventListener('click', closeBundleModal);
-  byId('saveBundleBtn')?.addEventListener('click', handleSaveBundleModal);
-  byId('addStepToBundleBtn')?.addEventListener('click', () => {
-    const select = byId('bundleAvailableScriptsSelect');
-    if (select && select.value) {
-      editingBundleSteps.push(select.value);
-      renderModalSelectedSteps();
-    }
-  });
-}
+window.updateTaskRuntime = updateTaskRuntime;
 
+/* ---------- 事件订阅 ---------- */
+
+eventBus.addEventListener('page:changed', event => {
+  if (event.detail.page === 'tasks') renderTasksPage();
+});
+
+eventBus.addEventListener('scripts:changed', () => {
+  if (state.page === 'tasks') renderTasksPage();
+  if (state.page === 'overview') renderQuickTasks();
+});
+
+eventBus.addEventListener('device:selected', () => {
+  if (state.page === 'tasks') { renderPipeline(); renderTaskDetail(); }
+});
+
+eventBus.addEventListener('runtime:changed', () => {
+  if (state.page === 'tasks') updateTaskRuntime();
+});
+
+eventBus.addEventListener('batch:devices', () => {
+  updateBatchCount();
+});
+
+byId('taskHeadActions')?.addEventListener?.('change', () => {});

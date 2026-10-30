@@ -1,47 +1,178 @@
 'use strict';
 
-function remoteRunForScript(script) {
-  if (script.requiresDevice) {
-    return state.runtimeState.runs.find(run => !run.currentPage && run.deviceId === state.selectedDeviceId) || null;
+// V3 会话模块：鉴权、数据加载编排、跨页互斥状态、日志页、设置页、兑换与改密。
+
+/* ---------- 跨页互斥提示 ---------- */
+
+function renderSharedActivity() {
+  const box = elements.sharedActivity;
+  if (!box) return;
+  const messages = [];
+  for (const run of state.runtimeState.runs) {
+    if (run.currentPage) continue;
+    const device = state.devices.find(item => item.deviceId === run.deviceId);
+    const target = device ? deviceLabel(device) + '：' : '';
+    const activity = run.status === 'cancelling' ? '正在停止' : run.status === 'starting' ? '准备执行' : '正在执行';
+    messages.push(`${target}${activity}「${run.title}」(另一个网页)`);
   }
-  return state.runtimeState.runs.find(run => !run.currentPage && run.scriptId === script.id) || null;
+  for (const item of state.runtimeState.manualDevices) {
+    const localWindow = state.manualDeviceId === item.deviceId ? 1 : 0;
+    const otherWindows = Math.max(0, item.windows - localWindow);
+    if (!otherWindows) continue;
+    const device = state.devices.find(entry => entry.deviceId === item.deviceId);
+    const target = device ? deviceLabel(device) : '设备 ' + item.deviceId.slice(-8);
+    const recent = item.lastInputAt
+      ? (item.lastInputFromCurrentPage ? '最近操作来自本网页' : '最近操作来自其他网页')
+      : '尚无操作';
+    messages.push(`${target}：另有 ${otherWindows} 个网页打开手动操作；${recent}，触控和按键由最后操作的网页接管`);
+  }
+  box.textContent = messages.join('\n');
+  box.hidden = messages.length === 0;
 }
 
-function updateSharedRunControls() {
-  for (const card of elements.scriptList.querySelectorAll('.script-card')) {
-    const script = state.scripts.find(item => item.id === card.dataset.scriptId);
-    const button = card.querySelector('[data-run-button]');
-    if (!script || !button || state.activeRun?.scriptId === script.id) continue;
-    const externalRun = remoteRunForScript(script);
-    const manual = script.requiresDevice ? manualWindowsForDevice(state.selectedDeviceId) : null;
-    let message = '';
-    if (externalRun) {
-      const device = state.devices.find(item => item.deviceId === externalRun.deviceId);
-      message = `${device ? device.name + ' ' : ''}正在另一个网页执行「${externalRun.title}」`;
-    } else if (manual?.windows) {
-      const device = currentDevice();
-      const otherWindows = Math.max(0, manual.windows - (state.manualDeviceId === state.selectedDeviceId ? 1 : 0));
-      message = otherWindows
-        ? `${device ? device.name : '所选设备'}正在被 ${otherWindows} 个其他网页手动操作`
-        : '本网页已打开该设备的手动操作窗';
+/* ---------- 鉴权 ---------- */
+
+async function checkAuth() {
+  try {
+    const savedToken = localStorage.getItem('yunmomo.auth_token');
+    const headers = savedToken ? { Authorization: `Bearer ${savedToken}` } : {};
+    const res = await fetch('/api/auth/me', { headers });
+    const data = await res.json();
+    if (!data.ok || !data.user) {
+      if (!isEmbedMode) location.href = '/login.html';
+      return null;
     }
-    button.disabled = Boolean(message);
-    card.classList.toggle('remote-blocked', Boolean(message));
-    let note = card.querySelector('.remote-run-status');
-    if (message) {
-      if (!note) {
-        note = document.createElement('div');
-        note.className = 'remote-run-status';
-        card.querySelector('.script-actions')?.after(note);
+    state.currentUser = data.user;
+    state.isAdmin = data.user.role === 'admin';
+
+    const email = elements.userEmail;
+    if (email) { email.hidden = false; email.textContent = data.user.email; email.title = data.user.email; }
+    if (elements.adminPortalLink) elements.adminPortalLink.hidden = !state.isAdmin;
+    if (elements.userLogoutBtn) elements.userLogoutBtn.hidden = Boolean(isEmbedMode);
+
+    const quota = byId('topbarZhencanQuota');
+    if (quota) {
+      quota.hidden = false;
+      if (state.isAdmin) {
+        quota.textContent = '真参配额：管理员无限';
+        quota.classList.remove('empty');
+        quota.title = '管理员特权免扣真参配额';
+      } else {
+        const count = parseInt(data.user.zhencanBalance, 10) || 0;
+        quota.textContent = `真参配额：${count} 套`;
+        quota.classList.toggle('empty', count <= 0);
+        quota.title = `当前可用真参配额: ${count} 套，导入真参自动核销 1 套，可通过卡密兑换充值`;
       }
-      if (note) note.textContent = message;
-    } else note?.remove();
+    }
+
+    if (elements.tabTerminalSystem) elements.tabTerminalSystem.hidden = !state.isAdmin;
+    if (elements.diagReportBtn) elements.diagReportBtn.hidden = !state.isAdmin;
+    const sessionPanel = byId('sessionPanel');
+    if (sessionPanel) sessionPanel.hidden = !state.isAdmin;
+    const adminEntryPanel = byId('adminEntryPanel');
+    if (adminEntryPanel) adminEntryPanel.hidden = !state.isAdmin;
+
+    renderSettingsAccount();
+    eventBus.dispatchEvent(new CustomEvent('auth:changed', { detail: { user: data.user } }));
+    return data.user;
+  } catch {
+    if (!isEmbedMode) location.href = '/login.html';
+    return null;
   }
-  if (elements.stepperRunAllBtn) {
-    const batch = state.scripts.find(script => script.id === 'flow-all' || script.batch === true);
-    const remoteRun = batch ? remoteRunForScript(batch) : null;
-    const manual = state.selectedDeviceId ? manualWindowsForDevice(state.selectedDeviceId) : null;
-    elements.stepperRunAllBtn.disabled = Boolean(state.activeRun || remoteRun || manual?.windows);
+}
+
+function renderSettingsAccount() {
+  const user = state.currentUser;
+  const email = byId('settingsEmail');
+  const role = byId('settingsRole');
+  const quotaRow = byId('settingsQuotaRow');
+  const quotaVal = byId('settingsQuota');
+  if (email) email.textContent = user?.email || '--';
+  if (role) role.textContent = user ? (state.isAdmin ? '管理员' : '普通用户') : '--';
+  if (quotaRow && quotaVal) {
+    if (state.isAdmin) {
+      quotaRow.hidden = false;
+      quotaVal.textContent = '管理员无限';
+    } else if (user) {
+      quotaRow.hidden = false;
+      quotaVal.textContent = `${parseInt(user.zhencanBalance, 10) || 0} 套`;
+    }
+  }
+}
+
+/* ---------- 状态与数据加载 ---------- */
+
+async function loadStatus() {
+  try {
+    const status = await requestJson('/api/status');
+    state.tokenConfigured = status.tokenConfigured === true;
+    const sessionPanel = byId('sessionPanel');
+    if (sessionPanel) sessionPanel.hidden = !state.isAdmin;
+    if (state.tokenConfigured) {
+      setService('ready', status.sessionSource === 'local-session' ? '网页登录态已就绪' : '已连接');
+    } else {
+      setService('error', '平台会话待同步，请联系管理员在「设置 → 平台会话」导入');
+      state.devices = [];
+      state.selectedDeviceId = '';
+      eventBus.dispatchEvent(new CustomEvent('devices:changed'));
+    }
+  } catch {
+    setService('error', '本地服务不可用');
+  }
+}
+
+async function loadScripts() {
+  try {
+    const data = await requestJson('/api/scripts');
+    state.scripts = Array.isArray(data.scripts) ? data.scripts : [];
+    state.bundles = Array.isArray(data.bundles) ? data.bundles : [];
+    state.visibility = data.visibility || { groups: {}, scripts: {} };
+    if (data.isAdmin !== undefined) state.isAdmin = Boolean(data.isAdmin);
+    if (!state.taskScriptId) {
+      const firstMomo = state.scripts.filter(s => s.category === 'momo' && !s.batch)
+        .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))[0];
+      state.taskScriptId = firstMomo?.id || state.scripts.find(s => !s.batch)?.id || '';
+    }
+    eventBus.dispatchEvent(new CustomEvent('scripts:changed'));
+  } catch (error) {
+    const host = byId('taskGroups');
+    if (host) host.innerHTML = `<div class="empty">脚本加载失败：${escapeHtml(error.message)}</div>`;
+  }
+}
+
+let isDevicesLoading = false;
+async function loadDevices(isBackground = false) {
+  if (isDevicesLoading) return;
+  if (isBackground && (!state.tokenConfigured || document.hidden)) return;
+  isDevicesLoading = true;
+  const refreshBtn = elements.refreshDevices;
+  if (!isBackground && refreshBtn) refreshBtn.disabled = true;
+  try {
+    const data = await requestJson('/api/devices');
+    state.devices = Array.isArray(data.devices) ? data.devices : [];
+    if (!state.devices.some(d => d.deviceId === state.selectedDeviceId)) {
+      state.selectedDeviceId = state.devices[0]?.deviceId || '';
+      if (state.selectedDeviceId) {
+        eventBus.dispatchEvent(new CustomEvent('device:selected', { detail: { deviceId: state.selectedDeviceId } }));
+        window.dispatchEvent(new CustomEvent('device:selected', { detail: { deviceId: state.selectedDeviceId } }));
+      }
+    }
+    eventBus.dispatchEvent(new CustomEvent('devices:changed'));
+    if (!isBackground && !state.devices.length) showToast('当前账号没有可用云机');
+  } catch (error) {
+    if (!isBackground) {
+      state.devices = [];
+      state.selectedDeviceId = '';
+      eventBus.dispatchEvent(new CustomEvent('devices:changed'));
+      showToast(error.message);
+    }
+    if (error.status === 401 || /Token|YUNMOMO_TOKEN/.test(error.message)) {
+      state.tokenConfigured = false;
+      setService('error', '网页登录已过期');
+    }
+  } finally {
+    isDevicesLoading = false;
+    if (!isBackground && refreshBtn) refreshBtn.disabled = false;
   }
 }
 
@@ -61,398 +192,212 @@ async function loadSharedRuntimeState() {
     sharedStateLoading = false;
   }
   renderSharedActivity();
-  updateSharedRunControls();
+  eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+  updateStopButton();
 }
 
+window.loadStatus = loadStatus;
+window.loadDevices = loadDevices;
+window.loadScripts = loadScripts;
+window.loadSharedRuntimeState = loadSharedRuntimeState;
 
-async function loadStatus() {
-  try {
-    const status = await requestJson('/api/status');
-    state.tokenConfigured = status.tokenConfigured === true;
-    elements.sessionSettings.hidden = state.tokenConfigured;
-    elements.sessionBridge.hidden = state.tokenConfigured;
-    if (state.tokenConfigured) {
-      setService('ready', status.sessionSource === 'local-session' ? '网页登录态已就绪' : '已连接');
-    } else {
-      setService('error', '会话待同步');
-      state.devices = [];
-      state.selectedDeviceId = '';
-      renderDeviceGrid();
-    }
-  } catch {
-    setService('error', '本地服务不可用');
-    elements.sessionBridge.hidden = false;
-    elements.sessionSettings.hidden = false;
-  }
+/* ---------- 运行日志页 ---------- */
+
+function updateStopButton() {
+  const btn = elements.stopScriptBtn;
+  if (!btn) return;
+  const busy = Boolean(state.activeRun || state.activeBundleRun || state.batchRunning);
+  btn.hidden = !busy;
+  btn.textContent = state.batchRunning ? '停止批量任务' : '停止脚本';
 }
 
-async function loadScripts() {
-  try {
-    const data = await requestJson('/api/scripts');
-    state.scripts = Array.isArray(data.scripts) ? data.scripts : [];
-    state.bundles = Array.isArray(data.bundles) ? data.bundles : [];
-    state.visibility = data.visibility || { groups: {}, scripts: {} };
-    if (data.isAdmin !== undefined) state.isAdmin = Boolean(data.isAdmin);
-    renderScripts();
-    updateSharedRunControls();
-  } catch (error) {
-    elements.scriptList.replaceChildren();
-    const failure = document.createElement('div');
-    failure.className = 'loading-card';
-    failure.textContent = '脚本加载失败：' + error.message;
-    elements.scriptList.append(failure);
-  }
+function updateSystemLogView() {
+  const box = elements.systemLogBox;
+  if (!box) return;
+  const logs = window.AppLogger ? window.AppLogger.getLogs() : [];
+  if (!logs.length) { box.textContent = '暂无系统日志。'; return; }
+  box.textContent = logs.map(item => {
+    const details = item.details ? ' ' + (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
+    return `[${item.time}] [${item.level}] [${item.tag}] ${item.message}${details}`;
+  }).join('\n');
+  box.scrollTop = box.scrollHeight;
 }
 
-let isDevicesLoading = false;
-async function loadDevices(isBackground = false) {
-  if (isDevicesLoading) return;
-  if (isBackground && (!state.tokenConfigured || document.hidden)) return;
-  isDevicesLoading = true;
-  if (!isBackground && elements.refreshDevices) {
-    elements.refreshDevices.disabled = true;
-    elements.refreshDevices.textContent = '读取中…';
-  }
-  try {
-    const data = await requestJson('/api/devices');
-    state.devices = Array.isArray(data.devices) ? data.devices : [];
-    renderDeviceGrid();
-    renderSharedActivity();
-    updateSharedRunControls();
-    if (!isBackground && !state.devices.length) showToast('当前账号没有可用云机');
-  } catch (error) {
-    if (!isBackground) {
-      state.devices = [];
-      state.selectedDeviceId = '';
-      renderDeviceGrid();
-      renderSharedActivity();
-      updateSharedRunControls();
-      showToast(error.message);
-    }
-    if (error.status === 401 || /Token|YUNMOMO_TOKEN/.test(error.message)) {
-      state.tokenConfigured = false;
-      if (elements.sessionBridge) elements.sessionBridge.hidden = false;
-      if (elements.sessionSettings) elements.sessionSettings.hidden = false;
-      setService('error', '网页登录已过期');
-    }
-  } finally {
-    isDevicesLoading = false;
-    if (!isBackground && elements.refreshDevices) {
-      elements.refreshDevices.disabled = false;
-      elements.refreshDevices.textContent = '刷新';
-    }
-  }
+function updateSystemLogBadge() {
+  const badge = elements.systemLogBadge;
+  if (!badge || !window.AppLogger) return;
+  const count = window.AppLogger.getErrorCount();
+  badge.textContent = String(count);
+  badge.hidden = count <= 0;
 }
 
-elements.sessionBridge.addEventListener('submit', async event => {
-  event.preventDefault();
-  const token = elements.sessionToken.value.trim();
-  if (!token) {
-    showToast('请先提供会话令牌');
-    elements.sessionToken.focus();
-    return;
+function initLogPage() {
+  const scriptTab = elements.tabTerminalScript;
+  const systemTab = elements.tabTerminalSystem;
+
+  function switchTab(target) {
+    state.logTab = target === 'system' ? 'system' : 'script';
+    scriptTab?.classList.toggle('active', state.logTab === 'script');
+    systemTab?.classList.toggle('active', state.logTab === 'system');
+    if (elements.outputBox) elements.outputBox.hidden = state.logTab !== 'script';
+    if (elements.systemLogBox) elements.systemLogBox.hidden = state.logTab !== 'system';
+    if (state.logTab === 'system') updateSystemLogView();
   }
-  elements.connectSession.disabled = true;
-  elements.connectSession.textContent = '连接中…';
-  try {
-    await requestJson('/api/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token })
-    });
-    elements.sessionToken.value = '';
-    await loadStatus();
-    await loadDevices();
-    showToast('已连接，令牌已保存');
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    elements.connectSession.disabled = false;
-    elements.connectSession.textContent = '连接';
-  }
-});
 
-elements.refreshDevices.addEventListener('click', async () => {
-  await loadStatus();
-  if (state.tokenConfigured) await loadDevices();
-});
-
-elements.refreshPreview.addEventListener('click', () => {
-  if (!state.devices.length) {
-    showToast('暂无云机');
-    return;
-  }
-  for (const player of state.previewPlayers.values()) player.refresh();
-  requestAllPreviews();
-});
-
-if (elements.stopScriptBtn) {
-  elements.stopScriptBtn.addEventListener('click', stopRunningScript);
-}
-
-if (elements.outputSection && elements.outputToggle) {
-  elements.outputSection.addEventListener('toggle', () => {
-    elements.outputToggle.textContent = elements.outputSection.open ? '收起' : '展开';
+  scriptTab?.addEventListener('click', () => switchTab('script'));
+  systemTab?.addEventListener('click', () => {
+    if (!state.isAdmin) return;
+    switchTab('system');
   });
-}
-
-function initTabs() {
-  const tabsContainer = byId('workbenchTabs');
-  if (!tabsContainer) return;
-  const tabBtns = tabsContainer.querySelectorAll('.tab-btn');
-  const panes = document.querySelectorAll('.tab-pane');
-
-  function switchTab(targetTab) {
-    if (targetTab !== 'flow' && targetTab !== 'ai') targetTab = 'flow';
-    for (const btn of tabBtns) {
-      const active = btn.dataset.tab === targetTab;
-      btn.classList.toggle('active', active);
-    }
-    for (const pane of panes) {
-      const paneId = 'tabPane' + targetTab.charAt(0).toUpperCase() + targetTab.slice(1);
-      const active = pane.id === paneId;
-      pane.classList.toggle('active', active);
-    }
-    try {
-      localStorage.setItem('yunmomo.activeTab', targetTab);
-    } catch {}
-  }
-
-  for (const btn of tabBtns) {
-    btn.addEventListener('click', () => {
-      switchTab(btn.dataset.tab);
-    });
-  }
-
-  let savedTab = 'flow';
-  try {
-    savedTab = localStorage.getItem('yunmomo.activeTab') || 'flow';
-    if (savedTab !== 'flow' && savedTab !== 'ai') savedTab = 'flow';
-  } catch {}
-  switchTab(savedTab);
-}
-
-function initTerminalTabs() {
-  let activeTerminalTab = 'script'; // 'script' | 'system'
-
-  function updateSystemLogView() {
-    if (!elements.systemLogBox) return;
-    const logs = window.AppLogger ? window.AppLogger.getLogs() : [];
-    if (!logs.length) {
-      elements.systemLogBox.textContent = '暂无系统日志。';
-      return;
-    }
-    const lines = logs.map(item => {
-      const d = item.details ? ' ' + (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
-      return `[${item.time}] [${item.level}] [${item.tag}] ${item.message}${d}`;
-    });
-    elements.systemLogBox.textContent = lines.join('\n');
-    elements.systemLogBox.scrollTop = elements.systemLogBox.scrollHeight;
-  }
-
-  function updateBadge() {
-    if (!elements.systemLogBadge || !window.AppLogger) return;
-    const count = window.AppLogger.getErrorCount();
-    elements.systemLogBadge.textContent = String(count);
-    elements.systemLogBadge.style.display = count > 0 ? 'inline-flex' : 'none';
-  }
 
   if (window.AppLogger) {
     window.AppLogger.subscribe(() => {
-      updateBadge();
-      if (activeTerminalTab === 'system') {
-        updateSystemLogView();
-      }
+      updateSystemLogBadge();
+      if (state.logTab === 'system') updateSystemLogView();
     });
-    updateBadge();
+    updateSystemLogBadge();
   }
 
-  if (elements.tabTerminalScript) {
-    elements.tabTerminalScript.addEventListener('click', () => {
-      activeTerminalTab = 'script';
-      elements.tabTerminalScript.classList.add('active');
-      elements.tabTerminalSystem?.classList.remove('active');
-      if (elements.outputBox) elements.outputBox.style.display = 'block';
-      if (elements.systemLogBox) elements.systemLogBox.style.display = 'none';
-    });
-  }
-
-  if (elements.tabTerminalSystem) {
-    elements.tabTerminalSystem.addEventListener('click', () => {
-      const isAdmin = state.currentUser?.role === 'admin';
-      if (!isAdmin) return;
-      activeTerminalTab = 'system';
-      elements.tabTerminalSystem.classList.add('active');
-      elements.tabTerminalScript?.classList.remove('active');
-      if (elements.outputBox) elements.outputBox.style.display = 'none';
-      if (elements.systemLogBox) {
-        elements.systemLogBox.style.display = 'block';
-        updateSystemLogView();
-      }
-    });
-  }
-
-  if (elements.diagReportBtn) {
-    elements.diagReportBtn.addEventListener('click', () => {
-      const report = window.AppLogger?.exportDiagnostics() || '{}';
-      copyToClipboard(report, '已复制完整系统诊断包到剪贴板，可直接发送技术支持排查');
-    });
-  }
-
-  if (elements.clearOutput) {
-    elements.clearOutput.addEventListener('click', () => {
-      if (activeTerminalTab === 'system') {
-        window.AppLogger?.clear();
-        updateSystemLogView();
-        updateBadge();
-        showToast('已清空系统运行日志');
-      } else {
-        if (elements.outputBox) elements.outputBox.textContent = '暂无执行记录。';
-        showToast('已清空脚本执行日志');
-      }
-    });
-  }
-
-  if (elements.copyOutputBtn) {
-    elements.copyOutputBtn.addEventListener('click', () => {
-      if (activeTerminalTab === 'system') {
-        const text = elements.systemLogBox?.textContent || '';
-        if (!text || text === '暂无系统日志。') {
-          showToast('暂无系统日志可复制');
-          return;
-        }
-        copyToClipboard(text, '已复制系统运行日志到剪贴板');
-      } else {
-        const text = elements.outputBox?.textContent || '';
-        if (!text || text === '暂无执行记录。' || text.startsWith('暂无执行记录')) {
-          showToast('暂无执行日志可复制');
-          return;
-        }
-        copyToClipboard(text, '已复制脚本执行日志到剪贴板');
-      }
-    });
-  }
-}
-
-if (elements.stepperRunAllBtn) {
-  elements.stepperRunAllBtn.addEventListener('click', () => {
-    if (!currentDevice()) {
-      showToast('请先选择一台目标云机');
-      return;
-    }
-    const target = currentDevice();
-    const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
-    const targetId = isV2 ? 'flow-all-v2' : 'flow-all';
-    const flowAll = state.scripts.find(s => s.id === targetId) || state.scripts.find(s => s.id === 'flow-all' || s.batch === true);
-    if (!flowAll) {
-      showToast(`未找到全流程自动化脚本 (${isV2 ? 'V2' : 'V3'})`);
-      return;
-    }
-    const card = elements.scriptList.querySelector(`[data-script-id="${flowAll.id}"]`);
-    const btn = card?.querySelector('.run-button');
-    executeScript(flowAll, btn, card);
+  elements.diagReportBtn?.addEventListener('click', () => {
+    const report = window.AppLogger?.exportDiagnostics() || '{}';
+    copyToClipboard(report, '已复制完整系统诊断包到剪贴板，可直接发送技术支持排查');
   });
-}
 
-if (elements.resetStepperBtn) {
-  elements.resetStepperBtn.addEventListener('click', () => {
-    if (!state.selectedDeviceId) {
-      showToast('未选择云手机');
-      return;
+  elements.clearOutput?.addEventListener('click', () => {
+    if (state.logTab === 'system') {
+      window.AppLogger?.clear();
+      updateSystemLogView();
+      updateSystemLogBadge();
+      showToast('已清空系统运行日志');
+    } else {
+      if (elements.outputBox) elements.outputBox.textContent = '暂无执行记录。';
+      showToast('已清空脚本执行日志');
     }
-    resetDeviceProgress(state.selectedDeviceId);
   });
-}
 
-// 卡密兑换与用户状态事件绑定
-if (elements.openRedeemModalBtn) {
-  elements.openRedeemModalBtn.addEventListener('click', () => {
-    if (elements.redeemAlert) elements.redeemAlert.hidden = true;
-    if (elements.redeemCardInput) elements.redeemCardInput.value = '';
-    elements.redeemDialog?.showModal();
+  elements.copyOutputBtn?.addEventListener('click', () => {
+    const box = state.logTab === 'system' ? elements.systemLogBox : elements.outputBox;
+    const text = box?.textContent || '';
+    if (!text || text.startsWith('暂无')) { showToast('暂无日志可复制'); return; }
+    copyToClipboard(text, state.logTab === 'system' ? '已复制系统运行日志到剪贴板' : '已复制脚本执行日志到剪贴板');
   });
-}
 
-if (elements.closeRedeemModalBtn) {
-  elements.closeRedeemModalBtn.addEventListener('click', () => elements.redeemDialog?.close());
-}
-
-if (elements.cancelRedeemBtn) {
-  elements.cancelRedeemBtn.addEventListener('click', () => elements.redeemDialog?.close());
-}
-
-function showPasswordAlert(text, tone) {
-  if (!elements.passwordAlert) return;
-  elements.passwordAlert.textContent = text;
-  elements.passwordAlert.className = `ui-alert ui-alert--${tone === 'success' ? 'ok' : 'danger'}`;
-  elements.passwordAlert.hidden = false;
-}
-
-if (elements.openPasswordModalBtn) {
-  elements.openPasswordModalBtn.addEventListener('click', () => {
-    if (elements.passwordAlert) elements.passwordAlert.hidden = true;
-    [elements.pwdCurrentInput, elements.pwdNewInput, elements.pwdConfirmInput].forEach(input => { if (input) input.value = ''; });
-    elements.passwordDialog?.showModal();
-    elements.pwdCurrentInput?.focus();
-  });
-}
-
-if (elements.closePasswordModalBtn) {
-  elements.closePasswordModalBtn.addEventListener('click', () => elements.passwordDialog?.close());
-}
-
-if (elements.cancelPasswordBtn) {
-  elements.cancelPasswordBtn.addEventListener('click', () => elements.passwordDialog?.close());
-}
-
-if (elements.submitPasswordBtn) {
-  elements.submitPasswordBtn.addEventListener('click', async () => {
-    const currentPassword = elements.pwdCurrentInput?.value || '';
-    const newPassword = elements.pwdNewInput?.value || '';
-    if (newPassword.length < 8) {
-      showPasswordAlert('新密码长度至少需要 8 位');
-      return;
+  elements.stopScriptBtn?.addEventListener('click', () => {
+    if (state.batchRunning) {
+      if (typeof stopTaskBatch === 'function') stopTaskBatch();
+    } else if (state.activeBundleRun) {
+      if (typeof stopRunningBundle === 'function') stopRunningBundle();
+    } else if (typeof stopRunningScript === 'function') {
+      stopRunningScript();
     }
-    if (newPassword !== (elements.pwdConfirmInput?.value || '')) {
-      showPasswordAlert('两次输入的新密码不一致');
-      return;
+  });
+
+  eventBus.addEventListener('task:running', updateStopButton);
+  eventBus.addEventListener('output:changed', updateStopButton);
+}
+
+/* ---------- 设置页 ---------- */
+
+function initSettingsPage() {
+  byId('settingsThemeBtn')?.addEventListener('click', toggleTheme);
+  byId('settingsLogoutBtn')?.addEventListener('click', doLogout);
+  elements.userLogoutBtn?.addEventListener('click', doLogout);
+
+  // 修改密码弹窗
+  const passwordAlert = byId('passwordAlert');
+  function showPasswordAlert(text, tone) {
+    if (!passwordAlert) return;
+    passwordAlert.textContent = text;
+    passwordAlert.className = `dlg-alert ${tone === 'success' ? 'ok' : 'danger'}`;
+    passwordAlert.hidden = false;
+  }
+
+  byId('openPasswordModalBtn')?.addEventListener('click', () => {
+    if (passwordAlert) passwordAlert.hidden = true;
+    for (const id of ['pwdCurrentInput', 'pwdNewInput', 'pwdConfirmInput']) {
+      const node = byId(id);
+      if (node) node.value = '';
     }
-    elements.submitPasswordBtn.disabled = true;
+    byId('passwordDialog')?.showModal();
+    byId('pwdCurrentInput')?.focus();
+  });
+  byId('closePasswordModalBtn')?.addEventListener('click', () => byId('passwordDialog')?.close());
+  byId('cancelPasswordBtn')?.addEventListener('click', () => byId('passwordDialog')?.close());
+  byId('submitPasswordBtn')?.addEventListener('click', async event => {
+    event.preventDefault();
+    const currentPassword = byId('pwdCurrentInput')?.value || '';
+    const newPassword = byId('pwdNewInput')?.value || '';
+    if (newPassword.length < 8) { showPasswordAlert('新密码长度至少需要 8 位'); return; }
+    if (newPassword !== (byId('pwdConfirmInput')?.value || '')) { showPasswordAlert('两次输入的新密码不一致'); return; }
+    const submit = byId('submitPasswordBtn');
+    if (submit) submit.disabled = true;
     try {
       await requestJson('/api/auth/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword })
       });
-      // 服务端已递增令牌版本，本地缓存的旧 token 立刻作废
       localStorage.removeItem('yunmomo.auth_token');
       showPasswordAlert('密码已更新，即将跳转到登录页…', 'success');
       setTimeout(() => { location.href = '/login.html'; }, 1200);
     } catch (err) {
       showPasswordAlert(err.message || '密码修改失败');
-      elements.submitPasswordBtn.disabled = false;
+      if (submit) submit.disabled = false;
+    }
+  });
+
+  // 平台会话（管理员）
+  byId('connectSession')?.addEventListener('click', async event => {
+    event.preventDefault();
+    const input = byId('sessionToken');
+    const token = input?.value.trim();
+    if (!token) { showToast('请先粘贴会话令牌'); input?.focus(); return; }
+    const btn = byId('connectSession');
+    if (btn) btn.disabled = true;
+    try {
+      await requestJson('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      if (input) input.value = '';
+      await loadStatus();
+      await loadDevices();
+      showToast('已连接，令牌已保存');
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      if (btn) btn.disabled = false;
     }
   });
 }
 
-if (elements.userLogoutBtn) {
-  elements.userLogoutBtn.addEventListener('click', async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    location.href = '/login.html';
-  });
+async function doLogout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.href = '/login.html';
 }
 
-if (elements.submitRedeemBtn) {
-  elements.submitRedeemBtn.addEventListener('click', async () => {
-    const cardCode = elements.redeemCardInput.value.trim();
+/* ---------- 兑换卡密 ---------- */
+
+function initRedeemDialog() {
+  const alertBox = byId('redeemAlert');
+  byId('openRedeemModalBtn')?.addEventListener('click', () => {
+    if (alertBox) alertBox.hidden = true;
+    const input = byId('redeemCardInput');
+    if (input) input.value = '';
+    byId('redeemDialog')?.showModal();
+    input?.focus();
+  });
+  byId('closeRedeemModalBtn')?.addEventListener('click', () => byId('redeemDialog')?.close());
+  byId('cancelRedeemBtn')?.addEventListener('click', () => byId('redeemDialog')?.close());
+  byId('submitRedeemBtn')?.addEventListener('click', async () => {
+    const cardCode = byId('redeemCardInput')?.value.trim();
     if (!cardCode) {
-      elements.redeemAlert.textContent = '请输入卡密代码';
-      elements.redeemAlert.className = 'ui-alert ui-alert--danger';
-      elements.redeemAlert.hidden = false;
+      if (alertBox) { alertBox.textContent = '请输入卡密代码'; alertBox.className = 'dlg-alert danger'; alertBox.hidden = false; }
       return;
     }
-    elements.submitRedeemBtn.disabled = true;
-    elements.submitRedeemBtn.textContent = '兑换中…';
+    const submit = byId('submitRedeemBtn');
+    if (submit) { submit.disabled = true; submit.textContent = '兑换中…'; }
     try {
       const res = await fetch('/api/user/redeem', {
         method: 'POST',
@@ -461,101 +406,40 @@ if (elements.submitRedeemBtn) {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || '兑换失败，请联系客服');
-
-      const summary = data.result.summary || (data.result.deviceName ? `已为您分配新云手机 [${data.result.deviceName}]，有效期至 ${new Date(data.result.expireAt).toLocaleString()}` : '权益已成功充值到账！');
-      elements.redeemAlert.textContent = summary;
-      elements.redeemAlert.className = 'ui-alert ui-alert--ok';
-      elements.redeemAlert.hidden = false;
+      const summary = data.result.summary
+        || (data.result.deviceName ? `已为您分配新云手机 [${data.result.deviceName}]，有效期至 ${new Date(data.result.expireAt).toLocaleString()}` : '权益已成功充值到账！');
+      if (alertBox) { alertBox.textContent = summary; alertBox.className = 'dlg-alert ok'; alertBox.hidden = false; }
       setTimeout(async () => {
-        elements.redeemDialog?.close();
+        byId('redeemDialog')?.close();
         await checkAuth();
-        if (data.result.deviceId || data.result.deviceName) {
-          await loadDevices();
-        }
+        if (data.result.deviceId || data.result.deviceName) await loadDevices();
         showToast(`兑换成功: ${summary}`);
       }, 1500);
     } catch (err) {
-      console.warn('[Redeem] Failed:', err.message);
-      elements.redeemAlert.textContent = '兑换失败，请联系客服';
-      elements.redeemAlert.className = 'ui-alert ui-alert--danger';
-      elements.redeemAlert.hidden = false;
+      if (alertBox) { alertBox.textContent = err.message || '兑换失败，请联系客服'; alertBox.className = 'dlg-alert danger'; alertBox.hidden = false; }
     } finally {
-      elements.submitRedeemBtn.disabled = false;
-      elements.submitRedeemBtn.textContent = '立即兑换';
+      if (submit) { submit.disabled = false; submit.textContent = '立即兑换'; }
     }
   });
 }
 
-async function checkAuth() {
-  const isEmbed = location.search.includes('view=admin-embed');
-  try {
-    const savedToken = localStorage.getItem('yunmomo.auth_token');
-    const headers = savedToken ? { 'Authorization': `Bearer ${savedToken}` } : {};
-    const res = await fetch('/api/auth/me', { headers });
-    const data = await res.json();
-    if (!data.ok || !data.user) {
-      if (!isEmbed) location.href = '/login.html';
-      return null;
-    }
-    state.currentUser = data.user;
-    // 角色只允许来自服务端响应，URL 查询串不能作为授权依据
-    const isAdmin = data.user.role === 'admin';
-    if (elements.tabTerminalSystem) {
-      elements.tabTerminalSystem.style.display = isAdmin ? 'inline-flex' : 'none';
-    }
-    if (elements.diagReportBtn) {
-      elements.diagReportBtn.style.display = isAdmin ? 'inline-block' : 'none';
-    }
-    // 系统提示词、连接测试与中枢配置属于全局写入（服务端已限管理员），普通用户不再呈现必然被拒的入口
-    if (!isAdmin) {
-      for (const id of ['btnSaveAiConfig', 'btnTestAiApi', 'btnBrainSaveConfig']) {
-        const node = document.getElementById(id);
-        if (node) node.style.display = 'none';
-      }
-      const promptItem = document.getElementById('aiSystemPrompt')?.closest('.form-item');
-      if (promptItem) promptItem.style.display = 'none';
-    }
-    if (elements.userPill && !isEmbed) {
-      elements.userPill.style.display = 'block';
-      elements.userPill.textContent = `${isAdmin ? '管理员' : '用户'}: ${data.user.email}`;
-    }
-    const zhencanQuotaEl = document.getElementById('topbarZhencanQuota');
-    const zhencanCountEl = document.getElementById('topbarZhencanCount');
-    if (zhencanQuotaEl && !isEmbed) {
-      zhencanQuotaEl.hidden = false;
-      if (isAdmin) {
-        zhencanQuotaEl.className = 'ui-badge';
-        zhencanQuotaEl.textContent = '真参: 管理员无限';
-        zhencanQuotaEl.title = '管理员特权免扣真参配额';
-      } else {
-        const count = parseInt(data.user.zhencanBalance, 10) || 0;
-        if (zhencanCountEl) zhencanCountEl.textContent = String(count);
-        zhencanQuotaEl.className = 'ui-badge' + (count <= 0 ? ' ui-badge--danger' : '');
-        zhencanQuotaEl.textContent = `真参配额: ${count} 套`;
-        zhencanQuotaEl.title = `当前可用真参配额: ${count} 套，导入真参自动核销 1 套，可通过卡密兑换充值`;
-      }
-    }
-    if (elements.openPasswordModalBtn && !isEmbed) {
-      elements.openPasswordModalBtn.style.display = 'inline-flex';
-    }
-    if (elements.userLogoutBtn && !isEmbed) {
-      elements.userLogoutBtn.style.display = 'inline-flex';
-    }
-    if (isAdmin && elements.adminPortalLink && !isEmbed) {
-      elements.adminPortalLink.style.display = 'inline-flex';
-    }
-    return data.user;
-  } catch {
-    if (!isEmbed) location.href = '/login.html';
-    return null;
-  }
-}
+/* ---------- 初始化 ---------- */
 
 async function init() {
   window.AppLogger?.info('Init', '正在启动控制台工作台前端...');
-  initTabs();
-  initTerminalTabs();
+  initTheme();
+  renderShell();
   initBundleModalEvents();
+  initLogPage();
+  initSettingsPage();
+  initRedeemDialog();
+
+  elements.themeToggleBtn?.addEventListener('click', toggleTheme);
+  elements.refreshDevices?.addEventListener('click', async () => {
+    await loadStatus();
+    if (state.tokenConfigured) await loadDevices();
+  });
+
   try {
     await checkAuth();
     window.AppLogger?.info('Auth', `登录用户就绪: ${state.currentUser?.email || '未知'}`);
@@ -566,30 +450,24 @@ async function init() {
       await loadDevices();
       window.AppLogger?.info('Devices', `已同步云机实例 ${state.devices.length} 台`);
     }
-    renderPipelineStepper();
     await loadSharedRuntimeState();
+    if (isEmbedMode) setPage('overview');
+    else setPage('overview');
     window.AppLogger?.info('Init', '控制台工作台初始化全部完成，就绪待命');
   } catch (fatalErr) {
     window.AppLogger?.error('Fatal', '控制台初始化异常中断: ' + fatalErr.message, { stack: fatalErr.stack });
     showToast('控制台初始化异常: ' + fatalErr.message);
-    if (elements.tabTerminalSystem) elements.tabTerminalSystem.click();
   }
 }
 
 setInterval(loadSharedRuntimeState, 1500);
-
-// 云手机操作大屏节点与设备状态后台轮询（每 3 秒自动静默刷新一次，节点变动无感同步，无需手动刷新网页）
 setInterval(() => {
-  if (state.tokenConfigured) {
-    loadDevices(true);
-  }
+  if (state.tokenConfigured) loadDevices(true);
 }, 3000);
+setInterval(updateStopButton, 2000);
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.tokenConfigured) {
-    loadDevices(true);
-  }
+  if (!document.hidden && state.tokenConfigured) loadDevices(true);
 });
 
 init();
-

@@ -3,245 +3,255 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#161a22">
+  <meta name="theme-color" content="#f4f6fa">
   <title>momo全托管</title>
-  <link rel="stylesheet" href="/vendor/open-props.min.css">
   <link rel="stylesheet" href="/tokens.css">
-  <link rel="stylesheet" href="/ui.css">
-  <link rel="stylesheet" href="/console.css">
+  <link rel="stylesheet" href="/console-v3.css">
 </head>
 <body>
-  <div class="app-shell">
-    <!-- 顶部主导航栏 (纯白，50px) -->
-    <header class="topbar">
+  <div class="app" id="appShell">
+    <aside class="sidebar">
       <div class="brand">
-        <span class="brand-title">momo全托管</span>
+        <span class="brand-mark" id="brandMark"></span>
+        <span class="brand-name">momo</span>
       </div>
+      <nav class="nav" id="navMenu" aria-label="主导航"></nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="breadcrumb" id="breadcrumb">工作台</div>
+        <div class="toptools">
+          <span class="quota-badge" id="topbarZhencanQuota" hidden>真参配额</span>
+          <button class="btn sm" id="openRedeemModalBtn" type="button">兑换卡密</button>
+          <button class="icon-btn" id="refreshDevices" type="button" title="刷新设备" aria-label="刷新设备"></button>
+          <button class="icon-btn" id="themeToggleBtn" type="button" title="切换明暗主题" aria-label="切换明暗主题"></button>
+          <span class="top-sep" aria-hidden="true"></span>
+          <span class="user-email" id="userEmail" hidden></span>
+          <a class="btn sm" id="adminPortalLink" href="/admin.html" hidden>管理后台</a>
+          <button class="btn sm flat" id="userLogoutBtn" type="button" hidden>退出</button>
+        </div>
+      </header>
+      <nav class="embed-nav" id="embedNav" aria-label="嵌入导航"></nav>
+      <div class="shared-activity" id="sharedActivity" role="status" aria-live="polite" hidden></div>
 
-      <!-- 集群状态指示 -->
-      <div class="cluster-stats" id="clusterStats">
-        <span class="stat-item">设备数: <strong id="statTotal">--</strong></span>
-        <span class="stat-sep">|</span>
-        <span class="stat-item">在线: <strong class="text-green" id="statOnline">--</strong></span>
-        <span class="stat-sep">|</span>
-        <span class="stat-item">当前目标: <strong class="text-blue" id="statTarget">未选择</strong></span>
-      </div>
-
-      <div class="topbar-tools">
-        <span id="serviceState" hidden><span class="state-text"></span></span>
-        <span class="ui-badge" id="topbarZhencanQuota" hidden>真参配额: <strong id="topbarZhencanCount">0</strong> 套</span>
-        <div class="user-pill" id="userPill" style="display:none;">--</div>
-        <button class="run-button" id="openRedeemModalBtn" type="button">兑换卡密</button>
-        <a class="action-btn" id="adminPortalLink" href="/admin.html" style="display:none;">管理后台</a>
-        <button class="action-btn" id="openPasswordModalBtn" type="button" style="display:none;">改密</button>
-        <button class="action-btn" id="userLogoutBtn" type="button" style="display:none;">退出</button>
-        <button class="action-btn" id="refreshDevices" type="button">刷新设备</button>
-        <details class="session-settings" id="sessionSettings" hidden>
-          <summary>凭据</summary>
-          <form class="session-bridge" id="sessionBridge">
-            <input id="sessionToken" type="text" class="masked-secret" autocomplete="off" placeholder="粘贴 Token" data-lpignore="true">
-            <button class="action-btn" id="connectSession" type="submit">连接</button>
-          </form>
-        </details>
-      </div>
-    </header>
-
-    <div class="shared-activity" id="sharedActivity" role="status" aria-live="polite" hidden></div>
-
-    <!-- 极简双区主工作区：左侧 380px 独占真机大屏，右侧自适应指令工作台 -->
-    <main class="workspace">
-      <!-- 左区：真机大屏专区 -->
-      <section class="preview-panel">
-        <div class="panel-header">
-          <h2 id="previewTitle">云手机操作大屏</h2>
-          <div class="preview-header-tools">
-            <div class="preview-zoom-ctrl" title="拖动放大或缩小云机画面">
-              
-              <input id="previewSize" type="range" min="220" max="650" step="10" value="340" class="zoom-slider" aria-label="云机画面尺寸调节">
-              <span id="previewSizeValue" class="zoom-value">340px</span>
+      <main class="page" id="page">
+        <!-- 1. 总览 -->
+        <section class="page-section" id="page-overview">
+          <div class="page-head">
+            <h1 class="page-title">总览</h1>
+            <div class="actions">
+              <button class="btn" data-goto="devices" type="button">查看设备</button>
+              <button class="btn primary" data-goto="tasks" type="button">管理任务</button>
             </div>
-            <button class="action-btn small" id="refreshPreview" type="button" title="重新获取云手机实时画面">刷新画面</button>
           </div>
-        </div>
-
-        <span id="previewSummary" hidden></span>
-        <span id="previewState" hidden></span>
-
-        <div class="preview-stage">
-          <div class="device-grid" id="deviceGrid">
-            <div class="loading-card">正在连接云机画面…</div>
+          <div class="status-bar" id="statusBar"></div>
+          <div class="overview">
+            <div class="ov-left">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>设备画面</h2>
+                  <div class="segmented" id="viewToggle">
+                    <button class="segment active" data-view="single" type="button" title="单台画面">单台</button>
+                    <button class="segment" data-view="grid" type="button" title="多设备宫格">宫格</button>
+                  </div>
+                </div>
+                <div class="device-toolbar" id="deviceChips"></div>
+                <div class="viewer" id="viewerStage"><div class="viewer-hint">正在连接云机画面…</div></div>
+                <div class="view-bottom">
+                  <div class="device-caption" id="viewerCaption"></div>
+                  <div class="actions" id="viewerActions"></div>
+                </div>
+              </section>
+            </div>
+            <div class="right-col">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>常用任务</h2>
+                  <button class="text-btn" data-goto="tasks" type="button">全部任务</button>
+                </div>
+                <div class="task-list" id="quickTaskList"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>最近活动</h2>
+                  <button class="text-btn" data-goto="logs" type="button">运行日志</button>
+                </div>
+                <div class="activity" id="recentActivity"></div>
+              </section>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- 右区：业务指令与流程工作台 -->
-      <aside class="workbench-panel">
-        <!-- 顶部 Tab 切换 -->
-        <div class="workbench-header">
-          <div class="workbench-tabs" id="workbenchTabs">
-            <button type="button" class="tab-btn active" data-tab="flow">业务脚本与流程</button>
-            <button type="button" class="tab-btn" data-tab="ai">AI 与持续调度</button>
+        <!-- 2. 设备 -->
+        <section class="page-section" id="page-devices" hidden>
+          <div class="page-head">
+            <h1 class="page-title">设备</h1>
+            <div class="actions">
+              <button class="btn" id="deviceRefreshBtn" type="button">刷新状态</button>
+            </div>
           </div>
-          <span id="workbenchTarget" hidden></span>
-        </div>
+          <section class="panel">
+            <div class="table-tools">
+              <input class="input search" id="deviceSearch" type="text" placeholder="搜索设备名称或 ID">
+              <div class="spacer"></div>
+              <span class="hint" id="deviceCount"></span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>设备</th><th>状态</th><th>IP / 代理</th><th>版本</th><th>到期时间</th><th>流程进度</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="deviceTableBody">
+                  <tr><td colspan="7" class="empty">正在加载设备…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
 
-        <div class="workbench-body">
-          <!-- Tab 1: 业务脚本与流程 -->
-          <div class="tab-pane active" id="tabPaneFlow">
-            <!-- 01~08 初始化流水线模块 (单排直观横向平铺) -->
-            <section class="pipeline-box" id="pipelineStepperBox">
-              <div class="pipeline-header">
-                <span class="pipeline-title">初始化全流程 (01~08)</span>
-                <span id="stepperTargetBadge" hidden></span>
-                <div class="pipeline-actions">
-                  <button class="run-button stepper-run-all-btn" id="stepperRunAllBtn" type="button">执行全流程</button>
-                  <button class="reset-button" id="resetStepperBtn" type="button">重置</button>
+        <!-- 3. 任务 -->
+        <section class="page-section" id="page-tasks" hidden>
+          <div class="page-head">
+            <h1 class="page-title">任务</h1>
+            <div class="actions" id="taskHeadActions"></div>
+          </div>
+          <div class="task-layout">
+            <div class="task-col" id="taskLeftCol"></div>
+            <div class="task-col" id="taskRightCol"></div>
+          </div>
+        </section>
+
+        <!-- 4. 消息回复 -->
+        <section class="page-section" id="page-messages" hidden>
+          <div class="page-head">
+            <h1 class="page-title">消息回复</h1>
+            <div class="actions">
+              <span class="badge" id="aiReplyStatusBadge">待命</span>
+            </div>
+          </div>
+          <div class="message-layout">
+            <section class="panel">
+              <div class="panel-head"><h2>回复设置</h2><span class="badge" id="aiSaveBadge">已加载</span></div>
+              <div class="block">
+                <div class="field">
+                  <label for="aiSystemPrompt">回复提示词</label>
+                  <textarea class="input textarea" id="aiSystemPrompt" rows="6" placeholder="设置 AI 回复人设、回复口吻、业务引导话术…"></textarea>
+                </div>
+                <div class="field">
+                  <label for="aiHandoffEnabled">联系方式话术连发（AI 判定意向后连发话术，发完自动拉黑对方）</label>
+                  <select class="select full" id="aiHandoffEnabled">
+                    <option value="off">关闭</option>
+                    <option value="on">开启</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="aiHandoffSegments">话术段落（每段之间空一行，按顺序连发）</label>
+                  <textarea class="input textarea" id="aiHandoffSegments" rows="6" placeholder="第一段话术&#10;&#10;第二段话术&#10;&#10;第三段话术"></textarea>
+                </div>
+                <div class="ai-note" id="aiReplyNote" hidden>回复配置由管理员统一设置，如需调整请联系管理员。</div>
+                <div class="save-row">
+                  <button class="btn" id="btnTestAiApi" type="button" hidden>测试连接</button>
+                  <button class="btn primary" id="btnSaveAiConfig" type="button" hidden>保存配置</button>
                 </div>
               </div>
-
-              <!-- 9个节点直观平铺 (01, 02, 02.1, 03, 04, 05, 06, 07, 08) -->
-              <div class="pipeline-stepper" id="pipelineStepper"></div>
             </section>
-
-            <!-- 脚本分类列表 (V2、V3、MOMO业务) -->
-            <div class="script-list-container">
-              <div class="script-list" id="scriptList">
-                <div class="loading-card">正在加载脚本清单…</div>
+            <section class="panel">
+              <div class="panel-head"><h2>回复策略</h2><span class="badge" id="brainConfigBadge">已加载</span></div>
+              <div class="block">
+                <div class="field">
+                  <label>默认回复方式</label>
+                  <div class="mode-group" id="brainModeGroup">
+                    <button class="mode-btn" data-mode="observe" type="button">只观察</button>
+                    <button class="mode-btn" data-mode="draft" type="button">输入草稿</button>
+                    <button class="mode-btn" data-mode="execute" type="button">自动执行</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="brainPollInterval">巡检心跳 (ms)</label>
+                  <input class="input" type="number" id="brainPollInterval" value="2000" min="500" max="30000" step="500">
+                </div>
+                <div class="inline-setting"><span class="setting-label">新消息自动回复</span><button class="switch" id="brainAutoReply" type="button" role="switch" aria-label="新消息自动回复"></button></div>
+                <div class="inline-setting"><span class="setting-label">空闲打招呼</span><button class="switch" id="brainGreetings" type="button" role="switch" aria-label="空闲打招呼"></button></div>
+                <div class="inline-setting"><span class="setting-label">空闲动态浏览</span><button class="switch" id="brainBrowse" type="button" role="switch" aria-label="空闲动态浏览"></button></div>
+                <div class="ai-note" id="brainNote" hidden>回复策略由管理员统一设置，如需调整请联系管理员。</div>
+                <div class="save-row">
+                  <button class="btn primary" id="btnBrainSaveConfig" type="button" hidden>保存配置</button>
+                </div>
               </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- 5. 运行日志 -->
+        <section class="page-section" id="page-logs" hidden>
+          <div class="page-head">
+            <h1 class="page-title">运行日志</h1>
+            <div class="actions">
+              <button class="btn" id="stopScriptBtn" type="button" hidden>停止脚本</button>
+              <button class="btn" id="diagReportBtn" type="button" hidden title="一键复制系统环境与错误诊断包">诊断报告</button>
+              <button class="btn" id="copyOutputBtn" type="button">复制日志</button>
+              <button class="btn flat" id="clearOutput" type="button">清空</button>
             </div>
           </div>
-
-          <!-- Tab 2: AI 与持续调度 -->
-          <div class="tab-pane" id="tabPaneAi">
-            <div class="config-grid">
-              <!-- AI 自动回复 -->
-              <section class="config-card" id="aiReplyCard">
-                <div class="card-header">
-                  <h3>AI 智能回复设置</h3>
-                  <span class="badge" id="aiReplyStatusBadge">待命</span>
-                </div>
-                <div class="config-form">
-                  <div class="form-item">
-                    <label for="aiSystemPrompt">系统提示词</label>
-                    <textarea id="aiSystemPrompt" rows="6" placeholder="设置 AI 回复人设、回复口吻、业务引导话术…"></textarea>
-                  </div>
-                  <div class="form-item">
-                    <label for="aiHandoffEnabled">联系方式话术连发（AI 判定意向到达后自动执行，发完自动拉黑对方）</label>
-                    <select id="aiHandoffEnabled">
-                      <option value="off" selected>关闭</option>
-                      <option value="on">开启</option>
-                    </select>
-                  </div>
-                  <div class="form-item">
-                    <label for="aiHandoffSegments">话术段落（每段之间空一行，按顺序连发，段间随机间隔 1.5~3 秒）</label>
-                    <textarea id="aiHandoffSegments" rows="6" placeholder="第一段话术&#10;&#10;第二段话术&#10;&#10;第三段话术"></textarea>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-item">
-                      <label for="aiMode">运行模式</label>
-                      <select id="aiMode">
-                        <option value="draft">输入草稿 (不发送)</option>
-                        <option value="execute" selected>直接发送</option>
-                      </select>
-                    </div>
-                    <div class="form-item">
-                      <label for="aiMaxContacts">处理人数</label>
-                      <input type="number" id="aiMaxContacts" value="1" min="1" max="5">
-                    </div>
-                  </div>
-                  <div class="form-item">
-                    <label for="aiContactName">指定联系人</label>
-                    <input type="text" id="aiContactName" placeholder="留空自动扫描未读联系人">
-                  </div>
-                  <div class="form-actions">
-                    <button type="button" class="action-btn" id="btnSaveAiConfig">保存提示词</button>
-                    <button type="button" class="action-btn" id="btnTestAiApi">测试连接</button>
-                    <button type="button" class="run-button" id="btnRunAiReply">执行一次</button>
-                    <button type="button" class="danger-button" id="btnCancelAiReply" hidden>取消</button>
-                  </div>
-                  <div class="result-box" id="aiReplyResultBox" hidden>
-                    <pre id="aiReplyResultPre"></pre>
-                  </div>
-                </div>
-              </section>
-
-              <!-- MOMO 持续调度 -->
-              <section class="config-card" id="momoBrainCard">
-                <div class="card-header">
-                  <h3>持续监听与调度</h3>
-                  <span class="badge" id="brainStatusBadge">待命</span>
-                </div>
-                <div class="config-form">
-                  <div class="form-row">
-                    <div class="form-item">
-                      <label for="brainModeSelect">中枢模式</label>
-                      <select id="brainModeSelect">
-                        <option value="observe" selected>仅观察归档</option>
-                        <option value="draft">输入草稿</option>
-                        <option value="execute">自动执行</option>
-                      </select>
-                    </div>
-                    <div class="form-item">
-                      <label for="brainPollInterval">巡检心跳 (ms)</label>
-                      <input type="number" id="brainPollInterval" value="2000" min="500" max="30000" step="500">
-                    </div>
-                  </div>
-                  <div class="switch-group">
-                    <label class="switch-item">
-                      <input type="checkbox" id="brainAutoReply">
-                      <span>新消息自动回复</span>
-                    </label>
-                    <label class="switch-item">
-                      <input type="checkbox" id="brainGreetings">
-                      <span>空闲打招呼</span>
-                    </label>
-                    <label class="switch-item">
-                      <input type="checkbox" id="brainBrowse">
-                      <span>空闲动态浏览</span>
-                    </label>
-                  </div>
-                  <div class="phase-text" id="brainPhaseDisplay">状态: 待就绪 | 阶段: idle | 互斥锁: 空闲</div>
-                  <div class="form-actions">
-                    <button type="button" class="run-button" id="btnBrainStart">启动调度</button>
-                    <button type="button" class="action-btn" id="btnBrainPause" disabled>暂停</button>
-                    <button type="button" class="action-btn" id="btnBrainResume" disabled>恢复</button>
-                    <button type="button" class="danger-button" id="btnBrainStop" disabled>停止</button>
-                    <button type="button" class="action-btn" id="btnBrainSaveConfig">保存配置</button>
-                  </div>
-                  <div class="result-box">
-                    <pre id="brainEventLogPre">等待启动中枢…</pre>
-                  </div>
-                </div>
-              </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div class="log-tabs">
+                <button class="segment active" id="tabTerminalScript" type="button">业务脚本日志</button>
+                <button class="segment" id="tabTerminalSystem" type="button" hidden>系统运行日志 <span class="log-badge" id="systemLogBadge" hidden>0</span></button>
+              </div>
+              <span class="hint" id="logMeta"></span>
             </div>
+            <pre class="log-box" id="outputBox">暂无执行记录。</pre>
+            <pre class="log-box" id="systemLogBox" hidden>暂无系统日志。</pre>
+          </section>
+        </section>
+
+        <!-- 6. 设置 -->
+        <section class="page-section" id="page-settings" hidden>
+          <div class="page-head"><h1 class="page-title">设置</h1></div>
+          <div class="settings-layout">
+            <section class="panel">
+              <div class="panel-head"><h2>我的账号</h2></div>
+              <div class="block">
+                <div class="setup-row"><span>登录账号</span><b id="settingsEmail">--</b></div>
+                <div class="setup-row"><span>账号类型</span><b id="settingsRole">--</b></div>
+                <div class="setup-row" id="settingsQuotaRow" hidden><span>真参配额</span><b id="settingsQuota">--</b></div>
+                <div class="setup-row"><span>修改密码</span><button class="btn sm" id="openPasswordModalBtn" type="button">修改</button></div>
+                <div class="setup-row"><span>退出登录</span><button class="btn sm flat" id="settingsLogoutBtn" type="button">退出</button></div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h2>外观</h2></div>
+              <div class="block">
+                <div class="setup-row"><span>页面主题</span><button class="btn sm" id="settingsThemeBtn" type="button">切换深色</button></div>
+              </div>
+            </section>
+            <section class="panel" id="sessionPanel" hidden>
+              <div class="panel-head"><h2>平台会话</h2></div>
+              <div class="block">
+                <div class="field">
+                  <label for="sessionToken">平台会话令牌</label>
+                  <input class="input" id="sessionToken" type="text" autocomplete="off" spellcheck="false" data-lpignore="true" placeholder="粘贴 Token">
+                </div>
+                <div class="save-row"><button class="btn primary" id="connectSession" type="submit">连接</button></div>
+                <div class="ai-note">用于导入云机平台网页登录态，仅在未就绪或会话过期时需要（仅管理员）。</div>
+              </div>
+            </section>
+            <section class="panel" id="adminEntryPanel" hidden>
+              <div class="panel-head"><h2>管理</h2></div>
+              <div class="block">
+                <div class="setup-row"><span>管理后台</span><a class="btn sm" href="/admin.html">打开</a></div>
+              </div>
+            </section>
           </div>
-        </div>
-
-        <!-- 底部日志终端：纯白工控日志框，清爽高对比度，支持脚本日志与系统诊断双视图 -->
-        <div class="terminal-container">
-          <div class="terminal-bar">
-            <div class="terminal-tabs">
-              <button type="button" class="terminal-tab-btn active" id="tabTerminalScript">业务脚本日志</button>
-              <button type="button" class="terminal-tab-btn" id="tabTerminalSystem" style="display:none;">
-                系统运行日志
-                <span class="terminal-badge" id="systemLogBadge" style="display:none;">0</span>
-              </button>
-            </div>
-            <div class="terminal-actions">
-              <button class="danger-button" id="stopScriptBtn" type="button" style="display:none;">停止脚本</button>
-              <button class="action-btn small" id="diagReportBtn" type="button" title="一键复制系统环境与错误诊断包" style="display:none;">诊断报告</button>
-              <button class="action-btn small" id="copyOutputBtn" type="button">复制日志</button>
-              <button class="action-btn small" id="clearOutput" type="button">清空</button>
-            </div>
-          </div>
-          <pre class="terminal-box" id="outputBox">暂无执行记录。</pre>
-          <pre class="terminal-box" id="systemLogBox" style="display:none;">暂无系统日志。</pre>
-        </div>
-      </aside>
-    </main>
+        </section>
+      </main>
+    </div>
   </div>
 
-  <!-- 旗舰云手机原画独立控制台 (非模态可拖拽浮窗) -->
+  <!-- 云手机原画独立控制台（可拖拽浮窗，ID 与 manual-control.js 兼容） -->
   <aside class="control-window control-dialog" id="controlDialog" aria-labelledby="controlTitle" hidden>
     <header class="control-heading" id="controlHeading">
       <div class="control-title-wrap">
@@ -250,12 +260,11 @@
         <span id="controlStatus" role="status">正在建立连接…</span>
       </div>
       <div class="control-head-tools">
-        <button class="action-btn small" id="toggleVisionBtn" type="button" title="切换 AI 视觉透视">视觉</button>
-        <button class="action-btn small" id="copyControlIdBtn" type="button" title="复制虚拟机 ID">复制ID</button>
+        <button class="btn sm" id="toggleVisionBtn" type="button" title="切换 AI 视觉透视">视觉</button>
+        <button class="btn sm" id="copyControlIdBtn" type="button" title="复制虚拟机 ID">复制ID</button>
         <button class="control-close-btn" id="closeControl" type="button" title="关闭窗口 (Esc)" aria-label="关闭窗口">×</button>
       </div>
     </header>
-
     <div class="control-body">
       <div class="phone-wrapper">
         <div class="phone-frame">
@@ -268,7 +277,6 @@
               <span>正在获取画面…</span>
             </div>
           </div>
-
           <div class="phone-nav-dock">
             <button class="phone-nav-btn" data-nav="back" type="button">返回</button>
             <button class="phone-nav-btn" data-nav="home" type="button">桌面</button>
@@ -280,132 +288,119 @@
   </aside>
 
   <!-- VPC 代理弹窗 -->
-  <dialog class="vpc-dialog" id="vpcDialog" aria-labelledby="vpcDialogTitle">
-    <div class="vpc-dialog-header">
-      <h3 class="vpc-dialog-title" id="vpcDialogTitle">配置 VPC 静态代理</h3>
-      <button class="action-btn small" id="closeVpcDialogBtn" type="button">×</button>
+  <dialog class="dlg" id="vpcDialog" aria-labelledby="vpcDialogTitle">
+    <div class="dlg-head">
+      <h3 id="vpcDialogTitle">配置 VPC 静态代理</h3>
+      <button class="btn sm" id="closeVpcDialogBtn" type="button">×</button>
     </div>
-    <div class="vpc-dialog-body">
-      <p>请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
-      <textarea id="vpcRawInput" class="vpc-textarea" placeholder="在此粘贴代理信息…" rows="6"></textarea>
+    <p class="dlg-note">请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
+    <div class="dlg-field">
+      <textarea id="vpcRawInput" class="input textarea" placeholder="在此粘贴代理信息…" rows="6"></textarea>
     </div>
-    <div class="vpc-dialog-footer">
-      <button class="action-btn" id="cancelVpcBtn" type="button">取消</button>
-      <button class="run-button" id="confirmVpcBtn" type="button">写入代理</button>
+    <div class="dlg-actions">
+      <button class="btn" id="cancelVpcBtn" type="button">取消</button>
+      <button class="btn primary" id="confirmVpcBtn" type="button">写入代理</button>
     </div>
   </dialog>
 
   <!-- 卡密兑换弹窗 -->
-  <dialog class="redeem-dialog" id="redeemDialog">
+  <dialog class="dlg" id="redeemDialog">
     <div class="dlg-head">
-      <h3 class="dlg-title">兑换卡密激活云机</h3>
-      <button class="action-btn small" id="closeRedeemModalBtn" type="button">×</button>
+      <h3>兑换卡密激活云机</h3>
+      <button class="btn sm" id="closeRedeemModalBtn" type="button">×</button>
     </div>
     <div class="dlg-field">
       <label for="redeemCardInput" class="dlg-label">卡密代码</label>
-      <input id="redeemCardInput" name="user_redeem_card_no_autofill" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="YM-XXXX-XXXX-XXXX-XXXX" class="dlg-input dlg-input--mono">
+      <input id="redeemCardInput" class="input dlg-input" name="user_redeem_card_no_autofill" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="YM-XXXX-XXXX-XXXX-XXXX">
     </div>
-    <div id="redeemAlert" class="dlg-alert"></div>
+    <div id="redeemAlert" class="dlg-alert" hidden></div>
     <div class="dlg-actions">
-      <button class="action-btn" id="cancelRedeemBtn" type="button">取消</button>
-      <button class="run-button" id="submitRedeemBtn" type="button">立即兑换</button>
+      <button class="btn" id="cancelRedeemBtn" type="button">取消</button>
+      <button class="btn primary" id="submitRedeemBtn" type="button">立即兑换</button>
     </div>
   </dialog>
 
   <!-- 修改登录密码弹窗 -->
-  <dialog class="redeem-dialog" id="passwordDialog">
+  <dialog class="dlg" id="passwordDialog">
     <form id="userPasswordForm" autocomplete="off" onsubmit="return false;">
       <input type="text" name="username" autocomplete="username" value="" tabindex="-1" aria-hidden="true" class="sr-only">
       <div class="dlg-head">
-        <h3 class="dlg-title">修改登录密码</h3>
-        <button class="action-btn small" id="closePasswordModalBtn" type="button">×</button>
+        <h3>修改登录密码</h3>
+        <button class="btn sm" id="closePasswordModalBtn" type="button">×</button>
       </div>
       <p class="dlg-note">保存后所有设备上的旧登录状态立即失效，需要用新密码重新登录。</p>
       <div class="dlg-field">
         <label for="pwdCurrentInput" class="dlg-label">当前密码</label>
-        <input id="pwdCurrentInput" type="password" autocomplete="current-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="请输入当前登录密码" class="dlg-input">
+        <input id="pwdCurrentInput" class="input dlg-input" type="password" autocomplete="current-password" data-lpignore="true" placeholder="请输入当前登录密码">
       </div>
       <div class="dlg-field">
         <label for="pwdNewInput" class="dlg-label">新密码</label>
-        <input id="pwdNewInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="至少 8 位" class="dlg-input">
+        <input id="pwdNewInput" class="input dlg-input" type="password" autocomplete="new-password" data-lpignore="true" placeholder="至少 8 位">
       </div>
       <div class="dlg-field">
         <label for="pwdConfirmInput" class="dlg-label">确认新密码</label>
-        <input id="pwdConfirmInput" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="再次输入新密码" class="dlg-input">
+        <input id="pwdConfirmInput" class="input dlg-input" type="password" autocomplete="new-password" data-lpignore="true" placeholder="再次输入新密码">
       </div>
-      <div id="passwordAlert" class="dlg-alert"></div>
+      <div id="passwordAlert" class="dlg-alert" hidden></div>
       <div class="dlg-actions">
-        <button class="action-btn" id="cancelPasswordBtn" type="button">取消</button>
-        <button class="run-button" id="submitPasswordBtn" type="submit">保存新密码</button>
+        <button class="btn" id="cancelPasswordBtn" type="button">取消</button>
+        <button class="btn primary" id="submitPasswordBtn" type="submit">保存新密码</button>
       </div>
     </form>
   </dialog>
 
-  <!-- 原生风格通用模态确认弹窗 (告别丑陋的 window.confirm) -->
-  <dialog class="confirm-dialog" id="userConfirmDialog" aria-labelledby="userConfirmTitle">
-    <div class="confirm-dialog-header">
-      <div class="confirm-dialog-title-row">
-        <div class="confirm-icon-badge" id="userConfirmIcon">!</div>
-        <h3 class="confirm-dialog-title" id="userConfirmTitle">确认操作</h3>
-      </div>
-      <button class="action-btn small" id="userConfirmCloseBtn" type="button" title="关闭">×</button>
+  <!-- 通用确认弹窗 -->
+  <dialog class="dlg" id="userConfirmDialog" aria-labelledby="userConfirmTitle">
+    <div class="dlg-head">
+      <h3 id="userConfirmTitle">确认操作</h3>
+      <button class="btn sm" id="userConfirmCloseBtn" type="button" title="关闭">×</button>
     </div>
-    <div class="confirm-dialog-body" id="userConfirmDesc">
-      确认继续此操作？
-    </div>
-    <div class="confirm-dialog-footer">
-      <button class="action-btn" id="userConfirmCancelBtn" type="button">取消</button>
-      <button class="danger-button" id="userConfirmOkBtn" type="button">确定</button>
+    <div id="userConfirmDesc"></div>
+    <div class="dlg-actions">
+      <button class="btn" id="userConfirmCancelBtn" type="button">取消</button>
+      <button class="btn danger" id="userConfirmOkBtn" type="button">确定</button>
     </div>
   </dialog>
 
-  <!-- 自定义组合脚本模态框 -->
-  <dialog class="bundle-dialog" id="scriptBundleModal" >
+  <!-- 自定义组合脚本弹窗 -->
+  <dialog class="dlg wide" id="scriptBundleModal">
     <div class="dlg-head">
-      <h3 id="bundleModalTitle" class="dlg-title">新建自定义脚本组合</h3>
-      <button class="action-btn small" id="closeBundleModalBtn" type="button">×</button>
+      <h3 id="bundleModalTitle">新建自定义脚本组合</h3>
+      <button class="btn sm" id="closeBundleModalBtn" type="button">×</button>
     </div>
     <form id="bundleForm" onsubmit="return false;">
       <input type="hidden" id="bundleEditId" value="">
       <div class="dlg-field">
-        <label for="bundleNameInput" class="dlg-label">组合脚本名称 <span class="req">*</span></label>
-        <input id="bundleNameInput" type="text" placeholder="如：一键初始化全套流程" required class="dlg-input">
+        <label for="bundleNameInput" class="dlg-label">组合脚本名称 *</label>
+        <input id="bundleNameInput" class="input dlg-input" type="text" placeholder="如：一键初始化全套流程" required>
       </div>
       <div class="dlg-field">
         <label for="bundleDescInput" class="dlg-label">备注（脚本功能说明）</label>
-        <input id="bundleDescInput" type="text" placeholder="如：按顺序自动执行环境重置、证书注入及抓包代理配置" class="dlg-input">
+        <input id="bundleDescInput" class="input dlg-input" type="text" placeholder="按顺序自动执行环境重置、证书注入及抓包代理配置">
       </div>
       <div class="dlg-field dlg-inline">
-        <label class="switch-toggle" style="cursor:pointer;">
+        <label class="choice-text" style="flex-direction:row; align-items:center; cursor:pointer;">
           <input type="checkbox" id="bundleEnabledInput" checked>
-          <span class="switch-slider"></span>
-          <span class="switch-text">在用户侧显示</span>
+          <span class="setting-label">在用户侧显示</span>
         </label>
       </div>
       <div class="dlg-field">
         <label class="dlg-label">配置执行步骤（按顺序依次执行）</label>
-        <!-- 已选步骤列表，支持上移、下移、删除 -->
-        <div id="bundleSelectedSteps" class="dlg-steps">
-          <!-- 动态填充 -->
-        </div>
-        <!-- 添加脚本步骤选择器 -->
-        <div class="dlg-inline">
-          <select id="bundleAvailableScriptsSelect" class="dlg-select">
-            <!-- 动态填充可选脚本 -->
-          </select>
-          <button class="action-btn" id="addStepToBundleBtn" type="button">+ 添加步骤</button>
+        <div id="bundleSelectedSteps" class="dlg-steps"></div>
+        <div class="dlg-actions" style="justify-content:flex-start;">
+          <select id="bundleAvailableScriptsSelect" class="select" style="flex:1;"></select>
+          <button class="btn" id="addStepToBundleBtn" type="button">添加步骤</button>
         </div>
       </div>
       <div class="dlg-actions">
-        <button class="action-btn" id="cancelBundleBtn" type="button">取消</button>
-        <button class="run-button" id="saveBundleBtn" type="button">保存组合</button>
+        <button class="btn" id="cancelBundleBtn" type="button">取消</button>
+        <button class="btn primary" id="saveBundleBtn" type="button">保存组合</button>
       </div>
     </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- 核心交互脚本 -->
   <script src="/logger.js"></script>
   <script src="/video-player.js"></script>
   <script src="/console/core.js"></script>

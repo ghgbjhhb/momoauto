@@ -154,6 +154,126 @@
    accent 用真蓝而不是薰衣草紫；info 用青色，和 accent 明确区分。
    ========================================================================== */
 
+/* ==========================================================================
+   V3 基准补充 —— 控制台 V3 版式新增的字级 / 间距 / 圆角 / 高度令牌。
+   只增不改：v2 组件（admin 页）继续消费上面的同名令牌，互不影响。
+   ========================================================================== */
+
+:root[data-ui="v2"] {
+  --fs-10: 10px;
+  --fs-17: 17px;
+  --fs-18: 18px;
+  --fs-19: 19px;
+  --fs-21: 21px;
+  --fs-22: 22px;
+
+  --fw-700: 700;
+  --fw-800: 800;
+
+  --lh-15: 1.5;
+
+  --sp-3: 3px;
+  --sp-5: 5px;
+  --sp-10: 10px;
+  --sp-14: 14px;
+  --sp-18: 18px;
+  --sp-26: 26px;
+  --sp-28: 28px;
+  --sp-30: 30px;
+
+  --r-10: 10px;
+  --r-12: 12px;
+  --r-16: 16px;
+  --r-24: 24px;
+
+  --h-topbar: 60px;
+  --h-panel-head: 52px;
+  --h-viewer: 480px;
+  --h-brand: 36px;
+  --h-avatar: 34px;
+  --h-chip-sm: 18px;
+  --h-switch: 22px;
+}
+
+/* ==========================================================================
+   V3 调色板 —— momo-ui-v3-preview 定稿色板。
+   仅新增令牌名，不复写任何 v2 既有令牌，admin 等旧页面不受影响。
+   ========================================================================== */
+
+:root[data-ui="v2"] {
+  --bg: #f4f6fa;
+  --side: #ffffff;
+  --top: #ffffff;
+  --card: #ffffff;
+  --soft: #f7f9fc;
+  --soft-2: #eef3fa;
+  --text: #172334;
+  --muted: #687990;
+  --line: #e4eaf1;
+  --line-strong: #d3dce7;
+  --blue: #2666db;
+  --blue-hover: #1d57bb;
+  --blue-light: #eaf2ff;
+  --blue-chip: #90b2ee;
+  --on-accent: #ffffff;
+  --green: #11976b;
+  --green-light: #e8f8f1;
+  --orange: #a96d16;
+  --orange-light: #fff4e4;
+  --red: #c84956;
+  --red-light: #fff0f2;
+  --overlay: rgba(8, 16, 31, 0.52);
+  --overlay-soft: rgba(248, 250, 253, 0.86);
+  --phone-frame: #192230;
+  --phone-bg: #f8f8f9;
+  --phone-line: #ececec;
+
+  --elev-soft: 0 3px 12px rgba(31, 54, 83, 0.035);
+  --elev-pop: 0 20px 70px rgba(0, 0, 0, 0.23);
+  --elev-phone: 0 13px 30px rgba(23, 33, 56, 0.17), 0 0 0 1px rgba(46, 66, 99, 0.3);
+  --elev-mini: 0 5px 11px rgba(20, 34, 54, 0.1);
+  --elev-btn: 0 3px 6px rgba(31, 98, 212, 0.13);
+  --elev-seg: 0 1px 4px rgba(23, 35, 55, 0.12);
+  --elev-toast: 0 9px 30px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-ui="v2"][data-theme="dark"] {
+  --bg: #0e1623;
+  --side: #111b2b;
+  --top: #111b2b;
+  --card: #162235;
+  --soft: #19283d;
+  --soft-2: #20324b;
+  --text: #e8eef9;
+  --muted: #99acc7;
+  --line: #2a3a50;
+  --line-strong: #3e506b;
+  --blue: #659dff;
+  --blue-hover: #85b2ff;
+  --blue-light: #233b61;
+  --blue-chip: #3f639f;
+  --on-accent: #0d1420;
+  --green: #64d7ad;
+  --green-light: #183e39;
+  --orange: #edbd72;
+  --orange-light: #413525;
+  --red: #f39aa5;
+  --red-light: #432733;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --overlay-soft: rgba(13, 20, 32, 0.86);
+  --phone-frame: #2a3a50;
+  --phone-bg: #0d1420;
+  --phone-line: #20324b;
+
+  --elev-soft: 0 2px 16px rgba(0, 0, 0, 0.12);
+  --elev-pop: 0 24px 70px rgba(0, 0, 0, 0.5);
+  --elev-phone: 0 13px 30px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(62, 80, 107, 0.5);
+  --elev-mini: 0 5px 11px rgba(0, 0, 0, 0.3);
+  --elev-btn: 0 3px 6px rgba(0, 0, 0, 0.2);
+  --elev-seg: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --elev-toast: 0 9px 30px rgba(0, 0, 0, 0.4);
+}
+
 :root[data-ui="v2"][data-theme="dark"] {
   --bg-page: #0b0b0d;
   --bg-surface: #17171a;
