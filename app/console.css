@@ -120,21 +120,37 @@ body {
   color: var(--border);
 }
 
-/* 顶栏右侧工具按钮群 */
+/* 顶栏右侧工具按钮群：改密 / 退出 / 刷新等次要操作走 ghost，
+   主操作（兑换卡密）单独用 run-button 承担视觉锚点 */
 .topbar-tools {
   display: flex;
   align-items: center;
   gap: var(--sp-8);
 }
 
+.topbar-tools .action-btn {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
+}
+
+.topbar-tools .action-btn:hover {
+  color: var(--text-1);
+  background: var(--bg-hover);
+  border-color: transparent;
+}
+
+.topbar-tools .action-btn:active {
+  color: var(--text-1);
+}
+
 .user-pill {
-  padding: var(--sp-2) var(--sp-8);
-  border-radius: var(--r-6);
-  font-size: var(--fs-13);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: var(--fw-500);
-  border: 1px solid var(--accent);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: var(--fw-400);
+  font-size: var(--fs-12);
 }
 
 /* --------------------------------------------------------------------------
@@ -230,6 +246,54 @@ body {
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+/* 列表行内的单脚本执行是重复操作，降为描边态；
+   蓝色主操作只保留页面级「执行全流程」「一键执行全部」与空态 CTA */
+.script-actions .run-button {
+  height: var(--h-control);
+  padding: 0 var(--sp-12);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-1);
+}
+
+.script-actions .run-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-3);
+  color: var(--text-1);
+}
+
+.script-actions .run-button:active {
+  background: var(--bg-hover);
+}
+
+/* 行内批量执行仍是该分组的主操作，保持 primary */
+.script-actions .run-button.run-button-hero {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.script-actions .run-button.run-button-hero:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--text-on-accent);
+}
+
+/* 运行中：唯一醒目位，停止用 danger 软底，与「执行中」状态徽章同语言 */
+.script-actions .run-button.run-button-stop,
+.run-button.run-button-stop {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.script-actions .run-button.run-button-stop:hover,
+.run-button.run-button-stop:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--text-on-accent);
 }
 
 .danger-button {
