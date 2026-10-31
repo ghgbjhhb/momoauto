@@ -94,7 +94,6 @@ function bundleSteps(bundle) {
   return (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
 }
 
-
 function renderTasksPage() {
   const left = elements.taskLeftCol;
   const right = elements.taskRightCol;
@@ -117,11 +116,8 @@ function renderTasksPage() {
 
   right.innerHTML = `
     <section class="panel" id="taskDetailPanel"><div class="empty">选择左侧任务查看配置</div></section>
-    <div id="aiRunCardHost"></div>
-    <div id="brainCardHost"></div>
   `;
 
-  byId('stepperRunAllBtn')?.addEventListener('click', runFlowAll);
   byId('taskGroups')?.addEventListener('click', onTaskGroupsClick);
   byId('taskDetailPanel')?.addEventListener('input', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('change', onDetailInput);
@@ -224,25 +220,16 @@ function onDetailInput(event) {
   }
 }
 
-async function runFlowAll() {
-  if (!currentDevice()) { showToast('请先在「设备」页选择目标云机'); return; }
-  const target = currentDevice();
-  const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
-  const flowAll = state.scripts.find(s => s.id === (isV2 ? 'flow-all-v2' : 'flow-all'))
-    || state.scripts.find(s => s.batch === true);
-  if (!flowAll) { showToast('未找到全流程自动化脚本'); return; }
-  await runScriptDirect(flowAll, target.deviceId);
-}
-
 /* ---------- 任务分组列表 ---------- */
 
 function groupScripts(key) {
+  // 分组只认 category：MOMO 脚本（11/16）也带 version: 'v2'，按版本匹配会重复出现在 V2 组
   if (key === 'v2') {
-    return state.scripts.filter(s => (s.category === 'v2' || s.version === 'v2' || s.id.endsWith('-v2')) && !s.batch)
+    return state.scripts.filter(s => s.category === 'v2' && !s.batch)
       .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
   }
   if (key === 'v3') {
-    return state.scripts.filter(s => (s.category === 'v3' || s.version === 'v3' || s.id.endsWith('-v3')) && !s.batch)
+    return state.scripts.filter(s => s.category === 'v3' && !s.batch)
       .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
   }
   if (key === 'momo') {
@@ -265,7 +252,6 @@ function taskCardHtml(script) {
     ${script.order ? `<span class="num">${formatStepOrder(script.order)}</span>` : '<span class="num">组</span>'}
     <span class="task-card-main">
       <span class="task-name">${escapeHtml(scriptTitle(script))}${danger}${hero}${hiddenBadge}</span>
-      <span class="task-sub">${escapeHtml(script.file || '')}</span>
     </span>
     ${visSwitch}${ic('chevron', 15)}
   </div>`;
@@ -308,35 +294,44 @@ function renderTaskGroups() {
   const manage = isScriptManageMode();
   let html = '';
   let visibleCount = 0;
+  const flatCards = [];
 
   for (const group of GROUPS) {
     if (group.key === 'custom') {
       const bundles = Array.isArray(state.bundles) ? state.bundles : [];
       const displayBundles = manage ? bundles : bundles.filter(b => b.enabled !== false);
       if (!manage && (!groupVisible('custom') || !displayBundles.length)) continue;
-      const collapsed = localStorage.getItem('yunmomo.collapse.custom') === 'true';
-      const visSwitch = manage ? `<button class="switch ${groupVisible('custom') ? 'on' : ''}" data-vis-group="custom" type="button" role="switch" title="控制是否在用户侧显示"></button>` : '';
-      html += `<div class="task-group ${collapsed ? 'collapsed' : ''}">
-        <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible('custom') && manage ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra">${visSwitch}<button class="collapse-btn" data-collapse-group="custom" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
-        <div class="task-group-body">${displayBundles.length ? displayBundles.map(bundleCardHtml).join('') : (manage ? '<div class="empty">暂无自定义组合脚本，<button class="btn sm" data-bundle-add type="button">立即添加</button></div>' : '<div class="empty">暂无自定义组合脚本</div>')}</div>
-      </div>`;
       visibleCount += displayBundles.length;
+      if (!manage) {
+        flatCards.push(...displayBundles.map(bundleCardHtml));
+        continue;
+      }
+      const collapsed = localStorage.getItem('yunmomo.collapse.custom') === 'true';
+      html += `<div class="task-group ${collapsed ? 'collapsed' : ''}">
+        <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible('custom') ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra"><button class="switch ${groupVisible('custom') ? 'on' : ''}" data-vis-group="custom" type="button" role="switch" title="控制是否在用户侧显示"></button><button class="collapse-btn" data-collapse-group="custom" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
+        <div class="task-group-body">${displayBundles.length ? displayBundles.map(bundleCardHtml).join('') : '<div class="empty">暂无自定义组合脚本，<button class="btn sm" data-bundle-add type="button">立即添加</button></div>'}</div>
+      </div>`;
       continue;
     }
 
     const scripts = groupScripts(group.key);
     const visibleScripts = manage ? scripts : scripts.filter(scriptVisible);
     if (!manage && (!groupVisible(group.key) || !visibleScripts.length)) continue;
+    visibleCount += visibleScripts.length;
+    if (!manage) {
+      flatCards.push(...visibleScripts.map(taskCardHtml));
+      continue;
+    }
     const collapsed = localStorage.getItem('yunmomo.collapse.' + group.key) === 'true';
-    const visSwitch = manage ? `<button class="switch ${groupVisible(group.key) ? 'on' : ''}" data-vis-group="${group.key}" type="button" role="switch" title="控制是否在用户侧显示"></button>` : '';
     html += `<div class="task-group ${collapsed ? 'collapsed' : ''}">
-      <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible(group.key) && manage ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra">${visSwitch}<button class="collapse-btn" data-collapse-group="${group.key}" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
+      <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible(group.key) ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra"><button class="switch ${groupVisible(group.key) ? 'on' : ''}" data-vis-group="${group.key}" type="button" role="switch" title="控制是否在用户侧显示"></button><button class="collapse-btn" data-collapse-group="${group.key}" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
       <div class="task-group-body">${visibleScripts.map(taskCardHtml).join('')}</div>
     </div>`;
-    visibleCount += visibleScripts.length;
   }
 
-  host.innerHTML = html || '<div class="empty">暂无可用任务</div>';
+  host.innerHTML = manage
+    ? (html || '<div class="empty">暂无可用任务</div>')
+    : (flatCards.length ? flatCards.join('') : '<div class="empty">暂无可用任务</div>');
   const hint = byId('taskCountHint');
   if (hint) hint.textContent = `${visibleCount} 项`;
 }
@@ -361,7 +356,7 @@ async function saveVisibilityConfig({ type, id, visible }) {
 
 function parameterChoiceLabel(field, value) {
   if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
-  if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新', execute: '执行发送', draft: '生成并输入', watch: '挂机模式 (巡查前几页)', drain: '全量模式 (必须翻到底)' })[value] || String(value);
+  if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新', execute: '执行发送', draft: '生成并输入', watch: '挂机模式 (巡查前几页)', drain: '全量模式 (必须翻到底)', ip: '定位到IP所在地', search: '搜索地点穿越' })[value] || String(value);
   if (field.name === 'maxContacts') return ({ xx: '持续运行(无上限)', '1': '1人(单次测试)', '3': '3人', '5': '5人', '10': '10人' })[value] || String(value);
   if (field.name === 'warmupInterval') return ({ default: '默认(25~70分随机)', '0': '立即养号(测试)', '60000': '1分钟后养号', '300000': '5分钟后养号' })[value] || String(value);
   if (field.name === 'greetingsInterval') return ({ '0': '发现招呼立即处理(测试)', '1200000': '20分钟一次', '1800000': '30分钟一次' })[value] || String(value);
@@ -387,8 +382,9 @@ function renderTaskDetail() {
   }
   if (!state.taskScriptId) state.taskScriptId = script.id;
 
-  const isSingleInline = script.parameters?.length === 1 && !script.parameters[0].multiline;
-  const fieldsHtml = (script.parameters || []).map(field => {
+  const params = (script.parameters || []).filter(field => isScriptManageMode() || !field.adminOnly);
+  const isSingleInline = params.length === 1 && !params[0].multiline;
+  const fieldsHtml = params.map(field => {
     const key = script.id + ':' + field.name;
     const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
     if (isSingleInline) return '';
@@ -407,7 +403,7 @@ function renderTaskDetail() {
   }).join('');
 
   const inlineParam = isSingleInline ? (() => {
-    const field = script.parameters[0];
+    const field = params[0];
     const key = script.id + ':' + field.name;
     const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
     if (field.choices) {
@@ -1387,30 +1383,285 @@ async function deleteBundle(bundleId) {
   }
 }
 
-/* ---------- 总览快捷任务 ---------- */
+/* ---------- 总览页业务任务控制中心 ---------- */
 
-function renderQuickTasks() {
-  const host = elements.quickTaskList;
-  if (!host) return;
-  const momo = state.scripts.filter(s => s.category === 'momo' && !s.batch && scriptVisible(s))
-    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).slice(0, 6);
-  if (!momo.length) {
-    host.innerHTML = '<div class="empty">任务加载中…</div>';
-    return;
+let ovTaskFilter = 'all'; // 'all' | 'momo' | 'bundle'
+
+function getOverviewFilteredTasks() {
+  const visibleScripts = state.scripts.filter(s => scriptVisible(s));
+  const visibleBundles = (state.bundles || []).filter(b => b.enabled !== false);
+
+  if (ovTaskFilter === 'momo') {
+    return {
+      scripts: visibleScripts.filter(s => s.category === 'momo' || s.category === 'v2'),
+      bundles: []
+    };
   }
-  host.innerHTML = momo.map(script => `<button class="task-row" data-quick-task="${escapeHtml(script.id)}" type="button">
-    <span class="task-icon">${ic('tasks', 16)}</span>
-    <span class="task-row-body"><b>${escapeHtml(scriptTitle(script))}</b></span>
-    ${ic('chevron', 15)}
-  </button>`).join('');
+  if (ovTaskFilter === 'bundle') {
+    return { scripts: [], bundles: visibleBundles };
+  }
+  return {
+    scripts: visibleScripts,
+    bundles: visibleBundles
+  };
 }
 
-elements.quickTaskList?.addEventListener?.('click', event => {
-  const row = event.target.closest('[data-quick-task]');
-  if (!row) return;
-  state.taskScriptId = row.dataset.quickTask;
-  setPage('tasks');
+function renderOverviewTasks() {
+  const listEl = byId('ovTaskList');
+  const configEl = byId('ovTaskConfig');
+  const runningBadge = byId('ovRunningBadge');
+  if (!listEl) return;
+
+  const currentDev = currentDevice();
+  const currentDevRunning = currentDev ? deviceRunning(currentDev.deviceId) : false;
+  const isRunning = state.batchRunning || Boolean(state.activeRun) || Boolean(state.activeBundleRun) || currentDevRunning;
+  if (runningBadge) runningBadge.hidden = !isRunning;
+
+  const { scripts, bundles } = getOverviewFilteredTasks();
+  if (!scripts.length && !bundles.length) {
+    listEl.innerHTML = '<div class="empty">暂无可用业务任务</div>';
+    if (configEl) configEl.innerHTML = '';
+    return;
+  }
+
+  // 默认选中第一个任务（如果尚未选中）
+  if (!state.taskScriptId && !state.taskBundleId) {
+    if (scripts.length) state.taskScriptId = scripts[0].id;
+    else if (bundles.length) state.taskBundleId = bundles[0].id;
+  }
+
+  // 渲染任务列表
+  const scriptItems = scripts.map(s => {
+    const active = state.taskScriptId === s.id ? 'active' : '';
+    const scriptRunning = isRunning && (state.activeRun?.scriptId === s.id || currentDevRunning);
+    return `
+      <div class="ov-task-card ${active} ${scriptRunning ? 'running' : ''}" data-ov-card="script:${escapeHtml(s.id)}" title="${escapeHtml(s.description || s.title)}">
+        <div class="ov-task-card-left">
+          <span class="ov-task-icon">${ic('tasks', 14)}</span>
+          <span class="ov-task-title">${escapeHtml(scriptTitle(s))}</span>
+          ${s.batch ? '<span class="badge ghost">全流程</span>' : ''}
+          ${scriptRunning ? '<span class="badge run xs">执行中</span>' : ''}
+        </div>
+        <div class="ov-task-card-actions">
+          <button class="btn xs flat" data-ov-select="script:${escapeHtml(s.id)}" type="button" title="展开配置参数">配置</button>
+          ${scriptRunning
+            ? `<button class="btn xs danger" data-ov-stop type="button" title="停止执行">${ic('stop', 12)} 停止</button>`
+            : `<button class="btn xs primary" data-ov-run-direct="script:${escapeHtml(s.id)}" type="button" title="立即执行此任务">${ic('play', 12)} 执行</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const bundleItems = bundles.map(b => {
+    const active = state.taskBundleId === b.id ? 'active' : '';
+    const bRunning = isRunning && state.activeBundleRun?.bundleId === b.id;
+    return `
+      <div class="ov-task-card ${active} ${bRunning ? 'running' : ''}" data-ov-card="bundle:${escapeHtml(b.id)}" title="${escapeHtml(b.description || b.name)}">
+        <div class="ov-task-card-left">
+          <span class="ov-task-icon">${ic('phoneDevice', 14)}</span>
+          <span class="ov-task-title">${escapeHtml(b.name)}</span>
+          <span class="badge ghost">${b.stepIds?.length || 0}步组合</span>
+          ${bRunning ? '<span class="badge run xs">执行中</span>' : ''}
+        </div>
+        <div class="ov-task-card-actions">
+          <button class="btn xs flat" data-ov-select="bundle:${escapeHtml(b.id)}" type="button" title="展开配置参数">配置</button>
+          ${bRunning
+            ? `<button class="btn xs danger" data-ov-stop type="button" title="停止组合执行">${ic('stop', 12)} 停止</button>`
+            : `<button class="btn xs primary" data-ov-run-direct="bundle:${escapeHtml(b.id)}" type="button" title="立即执行此组合">${ic('play', 12)} 执行</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.innerHTML = scriptItems + bundleItems;
+
+  // 渲染底部快速配置与主执行条
+  renderOverviewTaskConfig(configEl, currentDev, isRunning);
+}
+
+function renderOverviewTaskConfig(container, currentDev, isRunning) {
+  if (!container) return;
+  const devLabel = currentDev ? `${deviceIndexLabel(currentDev)} ${currentDev.name}` : '未选择云机';
+  const devId = currentDev ? currentDev.deviceId : '';
+
+  if (state.taskScriptId) {
+    const script = state.scripts.find(s => s.id === state.taskScriptId);
+    if (!script) { container.innerHTML = '<div class="empty">请选择左侧任务</div>'; return; }
+    const params = (script.parameters || []).filter(f => !f.adminOnly);
+
+    const fieldsHtml = params.map(field => {
+      const key = script.id + ':' + field.name;
+      const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+      if (field.choices) {
+        return `
+          <div class="ov-wb-field">
+            <label>${escapeHtml(field.label || field.name)}</label>
+            <select class="select" data-ov-param="${escapeHtml(field.name)}">
+              ${field.choices.map(c => `<option value="${escapeHtml(c)}" ${String(value) === String(c) ? 'selected' : ''}>${escapeHtml(parameterChoiceLabel(field, c))}</option>`).join('')}
+            </select>
+            ${field.description ? `<span class="hint" style="font-size:11px;">${escapeHtml(field.description)}</span>` : ''}
+          </div>
+        `;
+      }
+      return `
+        <div class="ov-wb-field">
+          <label>${escapeHtml(field.label || field.name)}</label>
+          <input class="input" data-ov-param="${escapeHtml(field.name)}" type="text" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.placeholder || '')}">
+          ${field.description ? `<span class="hint" style="font-size:11px;">${escapeHtml(field.description)}</span>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="ov-wb-header">
+        <div class="ov-wb-title-box">
+          <span class="ov-wb-title">${escapeHtml(scriptTitle(script))}</span>
+          <span class="badge ${script.batch ? 'run' : 'ghost'} xs">${script.batch ? '全流程' : '业务任务'}</span>
+        </div>
+        <div class="ov-wb-target">
+          <span class="hint">目标：</span><strong>${escapeHtml(devLabel)}</strong>
+        </div>
+      </div>
+      ${script.description ? `<div class="ov-wb-desc">${escapeHtml(script.description)}</div>` : ''}
+      <div class="ov-wb-fields">
+        ${fieldsHtml || `
+          <div class="ov-wb-empty-fields">
+            <span class="ov-wb-empty-icon">${ic('check', 16)}</span>
+            <span>该任务无需额外配置参数，就绪后可直接执行。</span>
+          </div>
+        `}
+      </div>
+      <div class="ov-wb-footer">
+        ${isRunning
+          ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
+          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行</button>`
+        }
+      </div>
+    `;
+    return;
+  }
+
+  if (state.taskBundleId) {
+    const bundle = state.bundles?.find(b => b.id === state.taskBundleId);
+    if (!bundle) { container.innerHTML = '<div class="empty">请选择左侧任务</div>'; return; }
+    const steps = bundleSteps(bundle);
+    const stepsHtml = steps.map((s, idx) => `
+      <li>${idx + 1}. <strong>${escapeHtml(scriptTitle(s))}</strong> <span class="hint">(${escapeHtml(s.id)})</span></li>
+    `).join('');
+
+    container.innerHTML = `
+      <div class="ov-wb-header">
+        <div class="ov-wb-title-box">
+          <span class="ov-wb-title">${escapeHtml(bundle.name)}</span>
+          <span class="badge run xs">组合流程</span>
+        </div>
+        <div class="ov-wb-target">
+          <span class="hint">目标：</span><strong>${escapeHtml(devLabel)}</strong>
+        </div>
+      </div>
+      ${bundle.description ? `<div class="ov-wb-desc">${escapeHtml(bundle.description)}</div>` : ''}
+      <div class="ov-wb-fields">
+        <div class="ov-wb-steps-box">
+          <div class="hint" style="font-weight:600; margin-bottom:8px;">包含步骤清单 (${steps.length} 步)：</div>
+          <ol class="ov-wb-step-list">
+            ${stepsHtml || '<li class="hint">暂无配置步骤</li>'}
+          </ol>
+        </div>
+      </div>
+      <div class="ov-wb-footer">
+        ${isRunning
+          ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`
+          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行组合</button>`
+        }
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '<div class="empty">选择左侧任务查看配置</div>';
+}
+
+function renderQuickTasks() {
+  renderOverviewTasks();
+}
+window.renderQuickTasks = renderQuickTasks;
+window.renderOverviewTasks = renderOverviewTasks;
+
+// 总览页过滤与操作监听
+byId('ovTaskFilter')?.addEventListener('click', event => {
+  const seg = event.target.closest('[data-ov-filter]');
+  if (!seg) return;
+  ovTaskFilter = seg.dataset.ovFilter;
+  for (const b of byId('ovTaskFilter').querySelectorAll('.segment')) {
+    b.classList.toggle('active', b === seg);
+  }
+  renderOverviewTasks();
 });
+
+byId('overviewTaskPanel')?.addEventListener('click', async event => {
+  const stopBtn = event.target.closest('[data-ov-stop], #ovCfgStopBtn');
+  if (stopBtn) {
+    stopTaskBatch();
+    return;
+  }
+
+  const runDirect = event.target.closest('[data-ov-run-direct]');
+  if (runDirect) {
+    const [type, id] = runDirect.dataset.ovRunDirect.split(':');
+    const dev = currentDevice();
+    if (!dev) { showToast('请先选择目标云机'); return; }
+    if (type === 'script') {
+      const script = state.scripts.find(s => s.id === id);
+      if (script) await runScriptDirect(script, dev.deviceId);
+    } else if (type === 'bundle') {
+      const bundle = state.bundles.find(b => b.id === id);
+      if (bundle) await executeBundle(bundle, dev.deviceId);
+    }
+    renderOverviewTasks();
+    return;
+  }
+
+  const select = event.target.closest('[data-ov-select], [data-ov-card]');
+  if (select) {
+    const raw = select.dataset.ovSelect || select.dataset.ovCard;
+    const [type, id] = raw.split(':');
+    if (type === 'script') {
+      state.taskScriptId = id;
+      state.taskBundleId = '';
+    } else {
+      state.taskBundleId = id;
+      state.taskScriptId = '';
+    }
+    renderOverviewTasks();
+    return;
+  }
+
+  const cfgRun = event.target.closest('#ovCfgRunBtn');
+  if (cfgRun) {
+    const dev = currentDevice();
+    if (!dev) { showToast('请先选择目标云机'); return; }
+    if (state.taskScriptId) {
+      const script = state.scripts.find(s => s.id === state.taskScriptId);
+      if (script) await runScriptDirect(script, dev.deviceId);
+    } else if (state.taskBundleId) {
+      const bundle = state.bundles.find(b => b.id === state.taskBundleId);
+      if (bundle) await executeBundle(bundle, dev.deviceId);
+    }
+    renderOverviewTasks();
+  }
+});
+
+function onOvParamChange(event) {
+  const input = event.target.closest('[data-ov-param]');
+  if (input && state.taskScriptId) {
+    state.taskParamValues[state.taskScriptId + ':' + input.dataset.ovParam] = input.value;
+  }
+}
+
+byId('overviewTaskPanel')?.addEventListener('input', onOvParamChange);
+byId('overviewTaskPanel')?.addEventListener('change', onOvParamChange);
 
 /* ---------- 运行时互斥状态同步 ---------- */
 
@@ -1435,19 +1686,22 @@ window.updateTaskRuntime = updateTaskRuntime;
 
 eventBus.addEventListener('page:changed', event => {
   if (event.detail.page === 'tasks') renderTasksPage();
+  if (event.detail.page === 'overview') renderOverviewTasks();
 });
 
 eventBus.addEventListener('scripts:changed', () => {
   if (state.page === 'tasks') renderTasksPage();
-  if (state.page === 'overview') renderQuickTasks();
+  if (state.page === 'overview') renderOverviewTasks();
 });
 
 eventBus.addEventListener('device:selected', () => {
   if (state.page === 'tasks') renderTaskDetail();
+  if (state.page === 'overview') renderOverviewTasks();
 });
 
 eventBus.addEventListener('runtime:changed', () => {
   if (state.page === 'tasks') updateTaskRuntime();
+  if (state.page === 'overview') renderOverviewTasks();
 });
 
 eventBus.addEventListener('batch:devices', () => {

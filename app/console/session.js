@@ -66,6 +66,7 @@ async function checkAuth() {
     }
 
     if (elements.tabTerminalSystem) elements.tabTerminalSystem.hidden = !state.isAdmin;
+    if (elements.dockTabTerminalSystem) elements.dockTabTerminalSystem.hidden = !state.isAdmin;
     if (elements.diagReportBtn) elements.diagReportBtn.hidden = !state.isAdmin;
     const sessionPanel = byId('sessionPanel');
     if (sessionPanel) sessionPanel.hidden = !state.isAdmin;
@@ -205,49 +206,83 @@ window.loadSharedRuntimeState = loadSharedRuntimeState;
 
 function updateStopButton() {
   const btn = elements.stopScriptBtn;
-  if (!btn) return;
+  const dockBtn = elements.dockStopScriptBtn;
   const busy = Boolean(state.activeRun || state.activeBundleRun || state.batchRunning);
-  btn.hidden = !busy;
-  btn.textContent = state.batchRunning ? '停止批量任务' : '停止脚本';
+  const text = state.batchRunning ? '停止批量任务' : '停止脚本';
+  if (btn) {
+    btn.hidden = !busy;
+    btn.textContent = text;
+  }
+  if (dockBtn) {
+    dockBtn.hidden = !busy;
+    dockBtn.textContent = text;
+  }
+  const pulse = elements.dockPulse;
+  if (pulse) pulse.classList.toggle('running', busy);
 }
 
 function updateSystemLogView() {
-  const box = elements.systemLogBox;
-  if (!box) return;
   const logs = window.AppLogger ? window.AppLogger.getLogs() : [];
-  if (!logs.length) { box.textContent = '暂无系统日志。'; return; }
-  box.textContent = logs.map(item => {
+  const text = !logs.length ? '暂无系统日志。' : logs.map(item => {
     const details = item.details ? ' ' + (typeof item.details === 'string' ? item.details : JSON.stringify(item.details)) : '';
     return `[${item.time}] [${item.level}] [${item.tag}] ${item.message}${details}`;
   }).join('\n');
-  box.scrollTop = box.scrollHeight;
+  const box = elements.systemLogBox;
+  if (box) {
+    box.textContent = text;
+    box.scrollTop = box.scrollHeight;
+  }
+  const dockBox = elements.dockSystemLogBox;
+  if (dockBox) {
+    dockBox.textContent = text;
+    dockBox.scrollTop = dockBox.scrollHeight;
+  }
 }
 
 function updateSystemLogBadge() {
-  const badge = elements.systemLogBadge;
-  if (!badge || !window.AppLogger) return;
+  if (!window.AppLogger) return;
   const count = window.AppLogger.getErrorCount();
-  badge.textContent = String(count);
-  badge.hidden = count <= 0;
+  const countStr = String(count);
+  const isHidden = count <= 0;
+  const badge = elements.systemLogBadge;
+  if (badge) {
+    badge.textContent = countStr;
+    badge.hidden = isHidden;
+  }
+  const dockBadge = elements.dockSystemLogBadge;
+  if (dockBadge) {
+    dockBadge.textContent = countStr;
+    dockBadge.hidden = isHidden;
+  }
+  const miniBadge = elements.dockMiniBadge;
+  if (miniBadge) {
+    miniBadge.textContent = countStr;
+    miniBadge.hidden = isHidden;
+  }
+}
+
+function switchLogTab(target) {
+  state.logTab = target === 'system' ? 'system' : 'script';
+  const isScript = state.logTab === 'script';
+  elements.tabTerminalScript?.classList.toggle('active', isScript);
+  elements.tabTerminalSystem?.classList.toggle('active', !isScript);
+  elements.dockTabTerminalScript?.classList.toggle('active', isScript);
+  elements.dockTabTerminalSystem?.classList.toggle('active', !isScript);
+  if (elements.outputBox) elements.outputBox.hidden = !isScript;
+  if (elements.systemLogBox) elements.systemLogBox.hidden = isScript;
+  if (elements.dockOutputBox) elements.dockOutputBox.hidden = !isScript;
+  if (elements.dockSystemLogBox) elements.dockSystemLogBox.hidden = isScript;
+  if (state.logTab === 'system') updateSystemLogView();
 }
 
 function initLogPage() {
   const scriptTab = elements.tabTerminalScript;
   const systemTab = elements.tabTerminalSystem;
 
-  function switchTab(target) {
-    state.logTab = target === 'system' ? 'system' : 'script';
-    scriptTab?.classList.toggle('active', state.logTab === 'script');
-    systemTab?.classList.toggle('active', state.logTab === 'system');
-    if (elements.outputBox) elements.outputBox.hidden = state.logTab !== 'script';
-    if (elements.systemLogBox) elements.systemLogBox.hidden = state.logTab !== 'system';
-    if (state.logTab === 'system') updateSystemLogView();
-  }
-
-  scriptTab?.addEventListener('click', () => switchTab('script'));
+  scriptTab?.addEventListener('click', () => switchLogTab('script'));
   systemTab?.addEventListener('click', () => {
     if (!state.isAdmin) return;
-    switchTab('system');
+    switchLogTab('system');
   });
 
   if (window.AppLogger) {
@@ -271,6 +306,7 @@ function initLogPage() {
       showToast('已清空系统运行日志');
     } else {
       if (elements.outputBox) elements.outputBox.textContent = '暂无执行记录。';
+      if (elements.dockOutputBox) elements.dockOutputBox.textContent = '暂无执行记录。';
       showToast('已清空脚本执行日志');
     }
   });
@@ -294,6 +330,77 @@ function initLogPage() {
 
   eventBus.addEventListener('task:running', updateStopButton);
   eventBus.addEventListener('output:changed', updateStopButton);
+}
+
+function initOverviewLogDock() {
+  const dock = elements.overviewLogDock;
+  if (!dock) return;
+
+  let isCollapsed = true;
+  try {
+    const saved = localStorage.getItem('yunmomo.overviewLogDock.collapsed');
+    if (saved === 'false') isCollapsed = false;
+  } catch {}
+  dock.classList.toggle('collapsed', isCollapsed);
+
+  function setDockCollapsed(val) {
+    dock.classList.toggle('collapsed', val);
+    try { localStorage.setItem('yunmomo.overviewLogDock.collapsed', String(val)); } catch {}
+    if (!val) {
+      if (elements.dockOutputBox) elements.dockOutputBox.scrollTop = elements.dockOutputBox.scrollHeight;
+      if (elements.dockSystemLogBox) elements.dockSystemLogBox.scrollTop = elements.dockSystemLogBox.scrollHeight;
+    }
+  }
+
+  elements.dockBar?.addEventListener('click', () => setDockCollapsed(false));
+  elements.dockExpandBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setDockCollapsed(false);
+  });
+  elements.dockCollapseBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setDockCollapsed(true);
+  });
+
+  elements.dockTabTerminalScript?.addEventListener('click', () => switchLogTab('script'));
+  elements.dockTabTerminalSystem?.addEventListener('click', () => {
+    if (!state.isAdmin) return;
+    switchLogTab('system');
+  });
+
+  elements.dockClearOutput?.addEventListener('click', () => {
+    if (state.logTab === 'system') {
+      window.AppLogger?.clear();
+      updateSystemLogView();
+      updateSystemLogBadge();
+      showToast('已清空系统运行日志');
+    } else {
+      if (elements.outputBox) elements.outputBox.textContent = '暂无执行记录。';
+      if (elements.dockOutputBox) elements.dockOutputBox.textContent = '暂无执行记录。';
+      showToast('已清空脚本执行日志');
+    }
+  });
+
+  elements.dockCopyOutputBtn?.addEventListener('click', () => {
+    const box = state.logTab === 'system' ? (elements.dockSystemLogBox || elements.systemLogBox) : (elements.dockOutputBox || elements.outputBox);
+    const text = box?.textContent || '';
+    if (!text || text.startsWith('暂无')) { showToast('暂无日志可复制'); return; }
+    copyToClipboard(text, state.logTab === 'system' ? '已复制系统运行日志到剪贴板' : '已复制脚本执行日志到剪贴板');
+  });
+
+  elements.dockStopScriptBtn?.addEventListener('click', () => {
+    if (state.batchRunning) {
+      if (typeof stopTaskBatch === 'function') stopTaskBatch();
+    } else if (state.activeBundleRun) {
+      if (typeof stopRunningBundle === 'function') stopRunningBundle();
+    } else if (typeof stopRunningScript === 'function') {
+      stopRunningScript();
+    }
+  });
+
+  if (elements.outputBox && elements.dockOutputBox && elements.outputBox.textContent !== '暂无执行记录。') {
+    elements.dockOutputBox.textContent = elements.outputBox.textContent;
+  }
 }
 
 /* ---------- 设置页 ---------- */
@@ -431,6 +538,7 @@ async function init() {
   renderShell();
   initBundleModalEvents();
   initLogPage();
+  initOverviewLogDock();
   initSettingsPage();
   initRedeemDialog();
 

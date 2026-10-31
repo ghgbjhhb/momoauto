@@ -96,7 +96,7 @@ async function handler(request, response) {
       json(response, 405, { ok: false, error: '只支持 GET 和 POST' });
       return;
     }
-    await staticFile(response, url.pathname);
+    await staticFile(request, response, url.pathname);
   } catch (error) {
     const message = redact(error?.message || error);
     const status = errorStatus({ message, status: error?.status });

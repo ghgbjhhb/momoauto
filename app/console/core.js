@@ -3,6 +3,10 @@
 // V3 控制台核心：外壳（侧栏/顶栏/路由/主题）、全局状态、API 与通用组件。
 // 页面数据逻辑分布在 devices.js / scripts.js / ai-reply.js / momo-brain.js / session.js。
 
+// 构建标记：改动前端后递增，用于确认浏览器加载的是否为新版（控制台输出 + window.YunMomoConsoleBuild）
+window.YunMomoConsoleBuild = '20261031-3';
+console.info(`[yunmomo-console] build ${window.YunMomoConsoleBuild}`);
+
 // 全局防御：封杀浏览器原生 alert / confirm / prompt
 window.alert = function (message) {
   if (typeof showToast === 'function') showToast(String(message));
@@ -262,10 +266,16 @@ function writeOutput(title, lines, meta = {}) {
   if (logFile && !cleanLines.some(l => l.includes(logFile))) {
     cleanLines.push(`[原始日志] ${logFile}`);
   }
+  const text = header + '\n' + cleanLines.join('\n');
   const box = elements.outputBox;
   if (box) {
-    box.textContent = header + '\n' + cleanLines.join('\n');
+    box.textContent = text;
     box.scrollTop = box.scrollHeight;
+  }
+  const dockBox = elements.dockOutputBox;
+  if (dockBox) {
+    dockBox.textContent = text;
+    dockBox.scrollTop = dockBox.scrollHeight;
   }
   state.lastOutput = { at, title, runId, logFile };
   state.logFeed = [{ at, title, runId }, ...state.logFeed].slice(0, 12);
@@ -276,10 +286,19 @@ window.writeOutput = writeOutput;
 
 function updateLogMeta() {
   const meta = elements.logMeta;
-  if (!meta) return;
+  const dockMeta = elements.dockLogMeta;
+  const dockMiniHint = elements.dockMiniHint;
   const last = state.lastOutput;
-  if (!last) { meta.textContent = ''; return; }
-  meta.textContent = `最近: ${last.title}` + (last.runId ? ` · 调用ID ${last.runId}` : '') + (last.logFile ? ` · ${last.logFile}` : '');
+  if (!last) {
+    if (meta) meta.textContent = '';
+    if (dockMeta) dockMeta.textContent = '';
+    if (dockMiniHint) dockMiniHint.textContent = '暂无执行记录';
+    return;
+  }
+  const text = `最近: ${last.title}` + (last.runId ? ` · 调用ID ${last.runId}` : '') + (last.logFile ? ` · ${last.logFile}` : '');
+  if (meta) meta.textContent = text;
+  if (dockMeta) dockMeta.textContent = text;
+  if (dockMiniHint) dockMiniHint.textContent = last.title || '最近执行';
 }
 
 /* ---------- 设备基础判断 ---------- */

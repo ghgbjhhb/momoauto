@@ -40,7 +40,7 @@ function renderStatusBadges(force = false) {
   lastStatusSnapshot = snapshot;
   renderStatusBar();
   renderDeviceChips();
-  if (state.view === 'single') renderViewerCaption();
+  if (state.view === 'single') { renderViewerCaption(); updateDeviceMeta(device); }
   if (state.page === 'devices') renderDeviceTable();
 }
 
@@ -150,16 +150,16 @@ function renderSingleViewer() {
   if (!frame || stage.dataset.viewerDevice !== id) {
     stage.dataset.viewerDevice = id;
     stage.innerHTML = `
-      <button class="btn icon-only viewer-nav prev" data-viewer-nav="-1" type="button" aria-label="上一台">${ic('left')}</button>
       <div class="phone-stage">
-        <div class="device-frame"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
+        <div class="device-frame" style="aspect-ratio: 9/16;"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
         <div class="viewer-hint" hidden>正在连接画面…</div>
         <div class="offline-cover" hidden>设备离线</div>
       </div>
-      <button class="btn icon-only viewer-nav next" data-viewer-nav="1" type="button" aria-label="下一台">${ic('chevron')}</button>
     `;
     frame = stage.querySelector('.device-frame');
   }
+
+  updateDeviceMeta(device);
 
   const canvas = frame.querySelector('canvas');
   const hint = stage.querySelector('.viewer-hint');
@@ -170,11 +170,56 @@ function renderSingleViewer() {
     state.previewRetry.delete(id);
     if (hint) { hint.textContent = '正在连接画面…'; hint.hidden = false; }
     createPreviewPlayer(device, canvas, hint, cover);
-  } else if (cover) {
-    cover.hidden = hasLiveFrame(state.previewPlayers.get(id));
+  } else if (hasLiveFrame(state.previewPlayers.get(id))) {
+    // 直播流仍在出帧：即使平台声明离线也以画面实测为准，不遮挡
+    if (cover) cover.hidden = true;
+    if (hint) hint.hidden = true;
+  } else if (!isOnline(device)) {
+    // 平台明确回报离线且无直播帧时才显示「设备离线」遮罩，与徽章状态同口径
+    if (cover) cover.hidden = false;
+    if (hint) hint.hidden = true;
+  } else if (hint) {
+    // 在线但直播流短暂断帧（画面静止/切回页面后解码器重建），watchdog 正在要关键帧自动恢复
+    if (cover) cover.hidden = true;
+    hint.textContent = '画面恢复中…';
+    hint.hidden = false;
   }
   renderViewerCaption();
 }
+
+function updateDeviceMeta(device, stats = null) {
+  const metaEl = byId('ovDeviceMeta');
+  if (!metaEl || !device) return;
+  const nameEl = byId('metaDevName');
+  if (nameEl) nameEl.textContent = `${deviceIndexLabel(device)} ${device.name}`;
+
+  const ipEl = byId('metaDevIp');
+  if (ipEl) {
+    ipEl.textContent = device.currentIp || '局域网';
+    ipEl.title = `当前 IP / 代理: ${device.currentIp || '自动分配'}`;
+  }
+
+  const resEl = byId('metaDevRes');
+  if (resEl) {
+    resEl.textContent = stats?.width && stats?.height ? `${stats.width}×${stats.height}` : '720×1280';
+  }
+
+  const copyBtn = byId('metaCopyIdBtn');
+  if (copyBtn) {
+    copyBtn.innerHTML = ic('copy', 12);
+    copyBtn.onclick = () => copyToClipboard(device.deviceId, `已复制虚拟机 ID: ${device.deviceId}`);
+  }
+
+  const manualBtn = byId('metaManualBtn');
+  if (manualBtn) {
+    manualBtn.innerHTML = `${ic('maximize', 12)} 手动控制`;
+    manualBtn.onclick = () => {
+      if (typeof window.openManualControl === 'function') window.openManualControl(device);
+      else showToast('控制台组件加载中，请稍候');
+    };
+  }
+}
+window.updateDeviceMeta = updateDeviceMeta;
 
 function createPreviewPlayer(device, canvas, hint, cover) {
   const id = device.deviceId;
@@ -182,12 +227,21 @@ function createPreviewPlayer(device, canvas, hint, cover) {
   const player = new CloudVideoPlayer({
     canvas,
     deviceId: id,
-    onFrame() {
+    onFrame(stats) {
       markHealth(true);
       canvas.hidden = false;
       if (hint) hint.hidden = true;
       if (cover) cover.hidden = true;
       renderStatusBadges();
+
+      const stage = elements.viewerStage;
+      const currentFrame = stage?.querySelector('.device-frame');
+      const w = stats?.width || canvas.width;
+      const h = stats?.height || canvas.height;
+      if (w && h && currentFrame) {
+        currentFrame.style.aspectRatio = `${w} / ${h}`;
+        updateDeviceMeta(device, { width: w, height: h });
+      }
     },
     onMessage(message) {
       if (message.type === 'error' && hint) { hint.hidden = false; hint.textContent = message.message; }
@@ -438,6 +492,25 @@ elements.viewerStage?.addEventListener?.('click', event => {
     const index = state.devices.findIndex(d => d.deviceId === state.selectedDeviceId);
     const next = state.devices[(index + Number(nav.dataset.viewerNav) + state.devices.length) % state.devices.length];
     selectDevice(next.deviceId);
+    return;
+  }
+  const switchBtn = event.target.closest('[data-switch-device]');
+  if (switchBtn) { selectDevice(switchBtn.dataset.switchDevice); return; }
+
+  const actionBtn = event.target.closest('[data-vd-action]');
+  if (actionBtn) {
+    const action = actionBtn.dataset.vdAction;
+    const device = currentDevice();
+    if (action === 'manual' && device) {
+      if (typeof window.openManualControl === 'function') window.openManualControl(device);
+      else showToast('控制台组件加载中，请稍候');
+    } else if (action === 'copy-id' && device) {
+      copyToClipboard(device.deviceId, `已复制虚拟机 ID: ${device.deviceId}`);
+    } else if (action === 'refresh-stream' && device) {
+      closeAllPlayers();
+      renderSingleViewer();
+      showToast('正在重新连接画面…');
+    }
   }
 });
 

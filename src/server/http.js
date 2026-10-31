@@ -1,10 +1,25 @@
 'use strict';
 
 const path = require('node:path');
-const { readFile } = require('node:fs/promises');
+const { readFile, stat } = require('node:fs/promises');
 const { URL } = require('node:url');
 const { appendLogLine } = require('../automation/log-file');
 const { PROJECT_ROOT, APP_ROOT, MAX_BODY_BYTES, activeToken } = require('./context');
+
+// 内网穿透入口，默认关闭：YUNMOMO_PUBLIC_ORIGINS=https://example.com:14318（逗号分隔多个）。
+// 命中入口的请求仍要求 Origin 与该入口完全同源，loopback 的校验语义不变。
+const PUBLIC_ENTRIES = String(process.env.YUNMOMO_PUBLIC_ORIGINS || '')
+  .split(',')
+  .map((item) => {
+    try {
+      const url = new URL(item.trim());
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+      return { origin: url.origin, authority: url.host.toLowerCase(), socket: `${url.protocol === 'https:' ? 'wss' : 'ws'}://${url.host.toLowerCase()}` };
+    } catch {
+      return null;
+    }
+  })
+  .filter(Boolean);
 
 const MIME_TYPES = Object.freeze({
   '.css': 'text/css; charset=utf-8',
@@ -27,7 +42,8 @@ const SECURITY_HEADERS = {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "media-src 'self' blob: data:",
-    "connect-src 'self' ws://127.0.0.1:* ws://localhost:* wss://127.0.0.1:* wss://localhost:*",
+    "connect-src 'self' ws://127.0.0.1:* ws://localhost:* wss://127.0.0.1:* wss://localhost:*" +
+      PUBLIC_ENTRIES.map((entry) => ` ${entry.socket}`).join(''),
     "font-src 'self' data:",
     "object-src 'none'",
     "base-uri 'self'",
@@ -76,7 +92,7 @@ async function readJsonBody(request, limit = MAX_BODY_BYTES) {
   });
 }
 
-async function staticFile(response, pathname) {
+async function staticFile(request, response, pathname) {
   let requested = pathname === '/' ? 'index.html' : pathname.slice(1);
   if (pathname === '/login' || pathname === '/login/') requested = 'login.html';
   if (pathname === '/admin' || pathname === '/admin/' || (pathname.startsWith('/admin/') && !path.extname(pathname))) requested = 'admin.html';
@@ -90,10 +106,19 @@ async function staticFile(response, pathname) {
     return;
   }
   try {
-    const data = await readFile(file);
+    const [data, stats] = await Promise.all([readFile(file), stat(file)]);
+    // no-cache 必须配 ETag 才有可靠的刷新校验：文件变更后 ETag 随 mtime 变化，
+    // 浏览器强刷/普通刷新都会拿到 200 新内容，未变更时 304 省流量。
+    const etag = `"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
+    if (request.headers['if-none-match'] === etag) {
+      response.writeHead(304, { 'Cache-Control': 'no-cache', ...SECURITY_HEADERS });
+      response.end();
+      return;
+    }
     response.writeHead(200, {
       'Content-Type': MIME_TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-cache',
+      ETag: etag,
       ...SECURITY_HEADERS
     });
     response.end(data);
@@ -116,8 +141,11 @@ function errorStatus(error) {
 function allowedRequest(request) {
   try {
     const host = new URL('http://' + request.headers.host);
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(host.hostname) || host.username || host.password) return false;
-    return !request.headers.origin || new URL(request.headers.origin).origin === host.origin;
+    if (host.username || host.password) return false;
+    const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(host.hostname);
+    const entry = PUBLIC_ENTRIES.find((item) => item.authority === host.host.toLowerCase());
+    if (!loopback && !entry) return false;
+    return !request.headers.origin || new URL(request.headers.origin).origin === (entry ? entry.origin : host.origin);
   } catch { return false; }
 }
 

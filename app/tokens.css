@@ -188,7 +188,7 @@
 
   --h-topbar: 60px;
   --h-panel-head: 52px;
-  --h-viewer: 480px;
+  --h-viewer: clamp(520px, 62vh, 660px);
   --h-brand: 36px;
   --h-avatar: 34px;
   --h-chip-sm: 18px;
