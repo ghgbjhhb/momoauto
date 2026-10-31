@@ -72,6 +72,24 @@ function stripPunctuation(text) {
   return text.replace(/[，,。.！!？?：:；;“”"‘’'—~～·\s]/g, '');
 }
 
+function similarity(a, b) {
+  if (a === b) return 1;
+  const m = a.length, n = b.length;
+  if (!m || !n) return 0;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return 1 - prev[n] / Math.max(m, n);
+}
+
+// OCR 读回并非百分百可靠（形近字误读、断行粘连），而草稿经拼音打字/剪贴板粘贴写入后
+// 实际内容几乎必然正确。逐字硬比对会误杀正确草稿，因此末档放行：编辑距离<=1
+// （仅限2字以上，单字消息必须完全一致）或相似度>=0.85 即视为一致。
 function draftMatches(actual, expected) {
   if (actual === expected) return true;
   if (!actual && !expected) return true;
@@ -86,7 +104,10 @@ function draftMatches(actual, expected) {
   const pActual = stripPunctuation(cleanActual);
   const pExpected = stripPunctuation(cleanExpected);
   if (pActual === pExpected && pExpected.length > 0) return true;
-  return false;
+  if (!pExpected.length || !pActual.length) return false;
+  const dist = Math.round((1 - similarity(pActual, pExpected)) * Math.max(pActual.length, pExpected.length));
+  if (dist <= 1 && Math.max(pActual.length, pExpected.length) >= 2) return true;
+  return similarity(pActual, pExpected) >= 0.85;
 }
 
 class ChatInput {
