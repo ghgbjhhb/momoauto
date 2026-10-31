@@ -118,7 +118,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
       { name: 'maxContacts', label: '处理人数上限', choices: ['xx', '1', '3', '5', '10'], defaultValue: 'xx' },
       { name: 'maxGreetings', label: '招呼处理单次上限', choices: ['3', '5', '10'], defaultValue: '5' },
       { name: 'warmupInterval', label: '首页养号间隔', choices: ['default', '0', '60000', '300000'], defaultValue: 'default' },
-      { name: 'greetingsInterval', label: '招呼处理间隔', choices: ['0', '1200000', '1800000'], defaultValue: '0' }
+      { name: 'greetingsInterval', label: '招呼处理间隔', choices: ['0', '1200000', '1800000'], defaultValue: '1800000' }
     ]
   },
   {
