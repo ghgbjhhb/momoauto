@@ -5,43 +5,43 @@
       "id": "wechat",
       "role": "home_anchor",
       "file": "home-wechat.png",
-      "referenceWidth": 400,
-      "referenceHeight": 720
+      "referenceWidth": 720,
+      "referenceHeight": 1280
     },
     {
       "id": "alipay",
       "role": "home_anchor",
       "file": "home-alipay.png",
-      "referenceWidth": 400,
-      "referenceHeight": 720
+      "referenceWidth": 720,
+      "referenceHeight": 1280
     },
     {
       "id": "momo_blue",
       "role": "app_icon",
       "file": "momo-blue.png",
-      "referenceWidth": 400,
-      "referenceHeight": 720
+      "referenceWidth": 720,
+      "referenceHeight": 1280
     },
     {
       "id": "dock_browser",
       "role": "dock_anchor",
       "file": "dock-browser.png",
-      "referenceWidth": 400,
-      "referenceHeight": 720
+      "referenceWidth": 720,
+      "referenceHeight": 1280
     },
     {
       "id": "dock_settings",
       "role": "dock_anchor",
       "file": "dock-settings.png",
-      "referenceWidth": 400,
-      "referenceHeight": 720
+      "referenceWidth": 720,
+      "referenceHeight": 1280
     },
     {
       "id": "dock_files",
       "role": "dock_anchor",
       "file": "dock-files.png",
-      "referenceWidth": 400,
-      "referenceHeight": 720
+      "referenceWidth": 720,
+      "referenceHeight": 1280
     }
   ]
 }
