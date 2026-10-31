@@ -55,15 +55,6 @@ function setStepState(deviceId, order, status) {
   if (!state.deviceProgress[deviceId]) state.deviceProgress[deviceId] = {};
   state.deviceProgress[deviceId][order] = status;
   saveDeviceProgress();
-  if (state.page === 'tasks') renderPipeline();
-}
-
-function resetDeviceProgress(deviceId) {
-  if (!deviceId) return;
-  delete state.deviceProgress[deviceId];
-  saveDeviceProgress();
-  renderPipeline();
-  showToast('已重置该云手机的流程执行记录');
 }
 
 function scriptTitle(script) {
@@ -105,15 +96,6 @@ function renderTasksPage() {
 
   left.innerHTML = `
     <section class="panel">
-      <div class="panel-head"><h2>初始化流程</h2><span class="badge" id="pipelineTargetBadge">未选择目标</span></div>
-      <div class="pipeline-row" id="pipelineRow"></div>
-      <div class="details-footer" style="border-top:1px solid var(--line); margin-top:0;">
-        <span class="footer-note">节点按当前目标云机的版本自动适配 V2 / V3</span>
-        <button class="btn" id="resetStepperBtn" type="button">重置记录</button>
-        <button class="btn primary" id="stepperRunAllBtn" type="button">${ic('play', 15)} 执行全流程</button>
-      </div>
-    </section>
-    <section class="panel">
       <div class="panel-head"><h2>任务列表</h2><span class="hint" id="taskCountHint"></span></div>
       <div id="taskGroups"></div>
     </section>
@@ -125,34 +107,15 @@ function renderTasksPage() {
     <div id="brainCardHost"></div>
   `;
 
-  byId('resetStepperBtn')?.addEventListener('click', () => {
-    if (!state.selectedDeviceId) { showToast('未选择云手机'); return; }
-    resetDeviceProgress(state.selectedDeviceId);
-  });
   byId('stepperRunAllBtn')?.addEventListener('click', runFlowAll);
   byId('taskGroups')?.addEventListener('click', onTaskGroupsClick);
   byId('taskDetailPanel')?.addEventListener('input', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('change', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('click', onDetailClick);
 
-  renderPipeline();
   renderTaskGroups();
   renderTaskDetail();
-  byId('pipelineRow')?.addEventListener('click', onPipelineClick);
   eventBus.dispatchEvent(new CustomEvent('tasks:rendered'));
-}
-
-function onPipelineClick(event) {
-  const step = event.target.closest('[data-step-order]');
-  if (!step) return;
-  const target = currentDevice();
-  if (!target) { showToast('请先在「设备」页选择目标云机'); return; }
-  const order = Number(step.dataset.stepOrder);
-  const isV2 = String(target.sdkVersion || '').toLowerCase() === 'v2';
-  const script = state.scripts.find(s => s.order === order && (s.category === (isV2 ? 'v2' : 'v3') || s.id.endsWith('-' + (isV2 ? 'v2' : 'v3'))))
-    || state.scripts.find(s => s.order === order);
-  if (!script) { showToast(`未找到步骤 ${order} 对应的执行脚本`); return; }
-  runScriptDirect(script, target.deviceId);
 }
 
 function onTaskGroupsClick(event) {
@@ -224,39 +187,6 @@ function onDetailInput(event) {
   const input = event.target.closest('[data-task-param]');
   if (input && state.taskScriptId) {
     state.taskParamValues[state.taskScriptId + ':' + input.dataset.taskParam] = input.value;
-  }
-}
-
-/* ---------- 流水线 ---------- */
-
-function renderPipeline() {
-  const row = byId('pipelineRow');
-  if (!row) return;
-  const target = currentDevice();
-  const badge = byId('pipelineTargetBadge');
-  if (badge) {
-    if (target) {
-      const ver = String(target.sdkVersion || '').toUpperCase();
-      badge.textContent = `${deviceIndexLabel(target)} ${target.name}` + (ver ? ` · ${ver}` : '');
-      badge.title = `目标云机: ${deviceLabel(target)}`;
-    } else {
-      badge.textContent = '未选择目标';
-    }
-  }
-  const isV2 = String(target?.sdkVersion || '').toLowerCase() === 'v2';
-  const visibleSteps = STEPS_META.filter(step => isV2 ? step.order !== 8 : step.order !== 2.1);
-  row.innerHTML = visibleSteps.map(step => {
-    const status = target ? getStepState(target.deviceId, step.order) : 'idle';
-    const mark = status === 'completed' ? '✓' : status === 'failed' ? '✗' : '';
-    return `<button class="step-node ${status}" data-step-order="${step.order}" type="button" title="${escapeHtml(step.full)}（${STATUS_LABELS[status] || status}，点击单独执行）">
-      <span class="num">${formatStepOrder(step.order)}</span>${escapeHtml(step.name)}${mark ? `<b>${mark}</b>` : ''}
-    </button>`;
-  }).join('');
-
-  const runAll = byId('stepperRunAllBtn');
-  if (runAll) {
-    runAll.textContent = isV2 ? '执行全流程 (V2)' : '执行全流程 (V3)';
-    runAll.prepend(ic('play', 15));
   }
 }
 
@@ -1179,7 +1109,7 @@ eventBus.addEventListener('scripts:changed', () => {
 });
 
 eventBus.addEventListener('device:selected', () => {
-  if (state.page === 'tasks') { renderPipeline(); renderTaskDetail(); }
+  if (state.page === 'tasks') renderTaskDetail();
 });
 
 eventBus.addEventListener('runtime:changed', () => {
