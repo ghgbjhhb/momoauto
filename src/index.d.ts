@@ -255,14 +255,14 @@ export interface CoordinateToolOptions extends ReplyOptions {
   dryRun?: boolean; coordinateSpace?: PixelSize; offset?: {x?: number; y?: number}; jitterPx?: number;
 }
 export interface ClickToolOptions extends CoordinateToolOptions {
-  button?: 'left'; count?: 1 | 2 | 3; holdMs?: number | {min: number; max: number}; intervalMs?: number;
+  button?: 'left'; count?: 1 | 2 | 3; holdMs?: number; intervalMs?: number;
 }
 export interface ClickToolData {
   coordinateSpace: PixelSize; screenSize: PixelSize; button: 'left'; count: number;
   intervalMs: number; durationMs: number; clicks: Array<{x: number; y: number; holdMs: number}>;
 }
 export interface RegionClickOptions extends ReplyOptions {
-  dryRun?: boolean; coordinateSpace?: PixelSize; holdMs?: number | {min: number; max: number};
+  dryRun?: boolean; coordinateSpace?: PixelSize; holdMs?: number;
   /** Central rectangle width/height relative to the inset target, defaults to .4. */
   centerFraction?: number;
   /** Probability of sampling the central rectangle; remaining probability samples only the outer ring. */

@@ -112,7 +112,7 @@ async function sendContact(host, contact, options, ctx) {
         checkControl();
         if (performance.now() - frame.observedAt > 3000) fail('STALE_TARGET', 'Target expired in the control queue; no click was sent');
         return clickPlan(x, y, { coordinateSpace: { width: frame.shot.width, height: frame.shot.height },
-          holdMs: { min: 65, max: 105 }, jitterPx }, screen);
+          jitterPx }, screen);
       }, ctx, 'click');
     } finally { ctx.data = report; }
   }

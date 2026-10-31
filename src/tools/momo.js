@@ -134,7 +134,7 @@ async function openMomo(host, options, ctx) {
     const w = initial.width;
     const h = initial.height;
     const coordinateSpace = { width: w, height: h };
-    await action('click', screen => clickPlan(Math.round(w * 0.903), Math.round(h * 0.207), { coordinateSpace, holdMs: 80, jitterPx: 0 }, screen));
+    await action('click', screen => clickPlan(Math.round(w * 0.903), Math.round(h * 0.207), { coordinateSpace, jitterPx: 0 }, screen));
     record('app_update_dismissed', { x: Math.round(w * 0.903), y: Math.round(h * 0.207) });
     await ctx.sleep(settings.settleMs ?? 600);
     const afterDismiss = await observe();
@@ -184,14 +184,14 @@ async function openMomo(host, options, ctx) {
     }
     record('icon_selected', { box: observation.icons[0].box, confidence: observation.icons[0].confidence });
     report.iconClickAttempted = true;
-    await action('click', screen => clickPlan((x1 + x2) / 2, (y1 + y2) / 2, { coordinateSpace, holdMs: 80, jitterPx: 0 }, screen));
+    await action('click', screen => clickPlan((x1 + x2) / 2, (y1 + y2) / 2, { coordinateSpace, jitterPx: 0 }, screen));
     report.iconClickSent = true;
     let result = await ready(null, settings.launchTimeoutMs);
     if (!result.matched && isUpdateBlocked(result.observation)) {
       const w = result.observation.width;
       const h = result.observation.height;
       const coordinateSpace = { width: w, height: h };
-      await action('click', screen => clickPlan(Math.round(w * 0.903), Math.round(h * 0.207), { coordinateSpace, holdMs: 80, jitterPx: 0 }, screen));
+      await action('click', screen => clickPlan(Math.round(w * 0.903), Math.round(h * 0.207), { coordinateSpace, jitterPx: 0 }, screen));
       record('app_update_dismissed', { x: Math.round(w * 0.903), y: Math.round(h * 0.207) });
       await ctx.sleep(settings.settleMs ?? 600);
       result = await ready(null, settings.launchTimeoutMs);

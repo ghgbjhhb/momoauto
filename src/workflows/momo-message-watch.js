@@ -589,10 +589,8 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
         clickBox[2] = Math.round(obs.width * 0.65);
       }
       await log('INFO', `点击联系人 [${peerName}] 进入聊天 (避开头像，点击区域: [${clickBox.join(', ')}])`);
-      // holdMs 对齐人手点击时长（120ms）：云机注入对超短按压（默认 40~91ms）偶发不响应
       await tools.clickRegion(clickBox, {
         coordinateSpace: { width: obs.width, height: obs.height },
-        holdMs: 120,
       });
       await sleep(1000, signal).catch(() => {});
 
@@ -616,7 +614,6 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
         // 补点一次：点击未响应偶发存在，立即重发同一动作而不是回外层盲目循环
         await tools.clickRegion(clickBox, {
           coordinateSpace: { width: obs.width, height: obs.height },
-          holdMs: 120,
           jitterPx: 6,
         });
         await sleep(1000, signal).catch(() => {});

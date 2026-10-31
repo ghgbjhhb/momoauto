@@ -155,7 +155,8 @@ function clickPlan(pointOrX, optionsOrY = {}, maybeOptions = {}, maybeScreenSize
   const strokes = [];
   let durationMs = 0;
   for (let index = 0; index < clicks; index++) {
-    const holdMs = options.holdMs === undefined ? randomInt(40, 91) : number(options.holdMs, 'holdMs', 1, 120000);
+    // 云机注入管线会偶发丢弃超短按压（40~91ms 档实测丢事件），默认对齐人手点击时长。
+    const holdMs = options.holdMs === undefined ? randomInt(110, 140) : number(options.holdMs, 'holdMs', 1, 120000);
     strokes.push({ points: [mapped], holdMs });
     durationMs += holdMs + (index < clicks - 1 ? intervalMs : 0);
   }

@@ -170,7 +170,7 @@ async function blockPeer(host, options, ctx) {
       await host._executeGesture(control, screen => {
         checkControl(); fresh();
         return clickPlan(target.x, target.y, { coordinateSpace: { width: frame.shot.width, height: frame.shot.height },
-          holdMs: 80, jitterPx: 1 }, screen);
+          jitterPx: 1 }, screen);
       }, ctx, 'click');
       report[role + 'ClickSent'] = true; record(role + '_clicked');
     } finally { ctx.data = report; }
