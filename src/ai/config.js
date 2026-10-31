@@ -89,15 +89,19 @@ function normalizeSettings(parsed) {
     settings.activeProviderId = settings.providers[0].id;
   }
 
-  // 话术配置归一化：handoffEnabled 布尔化；handoffSegments 接受数组或空行分段文本，统一存为去空后的字符串数组
+  // 话术配置归一化：统一存为去空后的字符串数组。段内换行必须拆开——打字模块禁止
+  // Enter（聊天框按 Enter 会直接发出半截话），/stream 通道 Shift+Enter 丢 metaState
+  // 也会退化成 Enter，单条消息无法换行，拆行后随连发逐段发送
   settings.handoffEnabled = settings.handoffEnabled === true || settings.handoffEnabled === 'true' || settings.handoffEnabled === 'on';
-  if (Array.isArray(settings.handoffSegments)) {
-    settings.handoffSegments = settings.handoffSegments.map(s => String(s ?? '').trim()).filter(Boolean);
-  } else if (typeof settings.handoffSegments === 'string') {
-    settings.handoffSegments = settings.handoffSegments.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-  } else {
-    settings.handoffSegments = [];
-  }
+  const rawSegments = Array.isArray(settings.handoffSegments)
+    ? settings.handoffSegments
+    : typeof settings.handoffSegments === 'string'
+      ? settings.handoffSegments.split(/\n\s*\n/)
+      : [];
+  settings.handoffSegments = rawSegments
+    .flatMap(s => String(s ?? '').split(/\r?\n/))
+    .map(s => s.trim())
+    .filter(Boolean);
 
   const active = settings.providers.find(p => p.id === settings.activeProviderId) || settings.providers[0];
   if (active) {
