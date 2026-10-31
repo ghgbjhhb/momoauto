@@ -50,9 +50,9 @@ const DEFAULT_VERIFY_CODE = '';
 // 抢号轮询（对齐网页端抓包行为）：每秒请求 1 次，最长 60 次，有号立即返回停止
 const PHONE_POLL_INTERVAL_MS = 1000;
 const PHONE_POLL_MAX_ATTEMPTS = 60;
-// 查码轮询（对齐网页端抓包行为）：每 5 秒查询一次玄武平台，最长 24 次（约 2 分钟）
+// 查码轮询（对齐网页端抓包行为）：每 5 秒查询一次玄武平台，最长 60 次（5 分钟，与网页取号会话有效期一致）
 const SMS_POLL_INTERVAL_MS = 5000;
-const SMS_POLL_MAX_ATTEMPTS = 24;
+const SMS_POLL_MAX_ATTEMPTS = 60;
 
 function formatLogTime() {
   const d = new Date();

@@ -317,7 +317,7 @@ class XuanwuClient {
 
   // 6. 带轮询查码（对齐网页端机制：每 5 秒查询一次该号码的验证码，最长 maxAttempts 次）
   //    data.status: 1=已接收 0=未接收；C3054=正在获取(继续等)；C3051/C3055=会话失效(立即抛出，需重新抢号)
-  async getSmsWithPolling(sessionId, phoneNumber, { maxAttempts = 24, intervalMs = 5000, onPoll = null } = {}) {
+  async getSmsWithPolling(sessionId, phoneNumber, { maxAttempts = 60, intervalMs = 5000, onPoll = null } = {}) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       let res = null;
       let pollStatus = null;
