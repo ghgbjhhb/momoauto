@@ -1136,7 +1136,7 @@ function renderQuickTasks() {
   }
   host.innerHTML = momo.map(script => `<button class="task-row" data-quick-task="${escapeHtml(script.id)}" type="button">
     <span class="task-icon">${ic('tasks', 16)}</span>
-    <span class="task-row-body"><b>${escapeHtml(scriptTitle(script))}</b><small>${escapeHtml(script.file || '')}</small></span>
+    <span class="task-row-body"><b>${escapeHtml(scriptTitle(script))}</b></span>
     ${ic('chevron', 15)}
   </button>`).join('');
 }
