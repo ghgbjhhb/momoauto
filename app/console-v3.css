@@ -429,7 +429,6 @@ body:has(#page-overview:not([hidden])) .page {
   height: 100%;
   min-height: 0;
   flex: none;
-  width: fit-content;
   overflow: hidden;
 }
 
@@ -443,23 +442,23 @@ body:has(#page-overview:not([hidden])) .page {
   overflow: hidden;
 }
 
-/* 面板整体宽度 100% 严格由内部云机物理画面宽度决定，零多余黑边 */
+/* 严格按 720x1280 默认锁定比例占位：没加载时稳固占位，绝不坍塌或乱跳 */
 .ov-device-panel {
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  width: fit-content;
-  min-width: 0;
+  width: clamp(300px, calc((100vh - 154px) * 0.5625), 480px);
+  min-width: 300px;
+  max-width: 480px;
   overflow: hidden;
   flex: none;
 }
 
-/* 关键：顶栏与底栏不向外撑宽面板，完全自适应充满画面的自然宽度 */
+/* 顶栏与底栏 100% 充满面板 */
 .ov-device-panel .panel-head,
 .ov-device-panel .ov-device-meta {
-  width: 0;
-  min-width: 100%;
+  width: 100%;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -535,10 +534,10 @@ body:has(#page-overview:not([hidden])) .page {
   flex: 1;
   min-height: 0;
   height: auto;
-  width: fit-content;
+  width: 100%;
   display: flex;
-  align-items: stretch;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   position: relative;
   padding: 0;
   overflow: hidden;
@@ -549,14 +548,14 @@ body:has(#page-overview:not([hidden])) .page {
 .phone-stage {
   position: relative;
   display: flex;
-  align-items: stretch;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   height: 100%;
-  width: fit-content;
-  flex: none;
+  width: 100%;
+  flex: 1;
 }
 
-/* 严格按照真实物理分辨率比例（720 / 1280），100% 原生无挤压 */
+/* 严格锁定 720 / 1280 默认物理比例，固定不变 */
 .device-frame {
   height: 100%;
   width: auto;
@@ -567,7 +566,9 @@ body:has(#page-overview:not([hidden])) .page {
   background: #000000;
   position: relative;
   overflow: hidden;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
 }
 

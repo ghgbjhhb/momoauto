@@ -137,7 +137,24 @@ function renderSingleViewer() {
 
   if (!device) {
     stage.dataset.viewerDevice = '';
-    stage.innerHTML = `<div class="viewer-hint">${state.tokenConfigured ? '暂无云机，请先兑换卡密' : '尚未连接云机平台'}</div>`;
+    let frame = stage.querySelector('.device-frame');
+    if (!frame) {
+      stage.innerHTML = `
+        <div class="phone-stage">
+          <div class="device-frame" style="aspect-ratio: 720 / 1280;"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
+          <div class="viewer-hint">${state.tokenConfigured ? '暂无云机，请先兑换卡密' : '尚未连接云机平台'}</div>
+          <div class="offline-cover" hidden>设备离线</div>
+        </div>
+      `;
+    } else {
+      const hint = stage.querySelector('.viewer-hint');
+      if (hint) {
+        hint.textContent = state.tokenConfigured ? '暂无云机，请先兑换卡密' : '尚未连接云机平台';
+        hint.hidden = false;
+      }
+      const canvas = frame.querySelector('canvas');
+      if (canvas) canvas.hidden = true;
+    }
     renderViewerCaption();
     return;
   }
@@ -241,10 +258,6 @@ function createPreviewPlayer(device, canvas, hint, cover) {
 
       const w = stats?.width || canvas.width || 720;
       const h = stats?.height || canvas.height || 1280;
-      const currentFrame = elements.viewerStage?.querySelector('.device-frame');
-      if (currentFrame && w && h) {
-        currentFrame.style.aspectRatio = `${w} / ${h}`;
-      }
       updateDeviceMeta(device, { width: w, height: h });
     },
     onMessage(message) {

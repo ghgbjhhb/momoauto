@@ -50,7 +50,13 @@
                     <button class="segment" data-view="grid" type="button" title="多设备宫格">宫格</button>
                   </div>
                 </div>
-                <div class="viewer" id="viewerStage"><div class="viewer-hint">正在连接云机画面…</div></div>
+                <div class="viewer" id="viewerStage">
+                  <div class="phone-stage">
+                    <div class="device-frame" style="aspect-ratio: 720 / 1280;"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
+                    <div class="viewer-hint">正在连接云机画面…</div>
+                    <div class="offline-cover" hidden>设备离线</div>
+                  </div>
+                </div>
                 <!-- 紧凑单行：标签 + 小字，零浪费空间 -->
                 <div class="ov-device-meta" id="ovDeviceMeta">
                   <div class="meta-tags">
