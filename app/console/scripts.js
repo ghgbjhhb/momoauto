@@ -1481,8 +1481,49 @@ function renderOverviewTasks() {
   renderOverviewTaskConfig(configEl, currentDev, isRunning);
 }
 
-function renderOverviewTaskConfig(container, currentDev, isRunning) {
+function updateOverviewWorkbenchFooter(currentDev, isRunning) {
+  const container = byId('ovTaskConfig');
   if (!container) return;
+
+  const devLabel = currentDev ? `${deviceIndexLabel(currentDev)} ${currentDev.name}` : '未选择云机';
+  const targetStrong = container.querySelector('.ov-wb-target strong');
+  if (targetStrong && targetStrong.textContent !== devLabel) {
+    targetStrong.textContent = devLabel;
+  }
+
+  const footer = container.querySelector('.ov-wb-footer');
+  if (!footer) return;
+
+  const isBundle = Boolean(state.taskBundleId);
+  if (isRunning) {
+    if (!footer.querySelector('#ovCfgStopBtn')) {
+      footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+    }
+  } else {
+    const runBtn = footer.querySelector('#ovCfgRunBtn');
+    if (!runBtn) {
+      footer.innerHTML = `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}</button>`;
+    } else {
+      runBtn.disabled = !currentDev;
+      const expectedText = `${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}`;
+      if (runBtn.innerHTML !== expectedText) {
+        runBtn.innerHTML = expectedText;
+      }
+    }
+  }
+}
+
+function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild = false) {
+  if (!container) return;
+  const currentTaskId = state.taskScriptId ? ('script:' + state.taskScriptId) : (state.taskBundleId ? ('bundle:' + state.taskBundleId) : '');
+
+  // 缓存守护：同一个任务已渲染时，只就地更新底部按钮和目标云机，绝对不重建输入框 DOM（保护输入焦点）
+  if (!forceRebuild && container.dataset.renderedTask === currentTaskId && currentTaskId) {
+    updateOverviewWorkbenchFooter(currentDev, isRunning);
+    return;
+  }
+
+  container.dataset.renderedTask = currentTaskId;
   const devLabel = currentDev ? `${deviceIndexLabel(currentDev)} ${currentDev.name}` : '未选择云机';
   const devId = currentDev ? currentDev.deviceId : '';
 
@@ -1583,6 +1624,50 @@ function renderOverviewTaskConfig(container, currentDev, isRunning) {
   container.innerHTML = '<div class="empty">选择左侧任务查看配置</div>';
 }
 
+function updateOverviewRuntime() {
+  const currentDev = currentDevice();
+  const currentDevRunning = currentDev ? deviceRunning(currentDev.deviceId) : false;
+  const isRunning = state.batchRunning || Boolean(state.activeRun) || Boolean(state.activeBundleRun) || currentDevRunning;
+
+  const runningBadge = byId('ovRunningBadge');
+  if (runningBadge) runningBadge.hidden = !isRunning;
+
+  // 就地更新左侧卡片类名与操作按钮，不重绘整个列表
+  const listEl = byId('ovTaskList');
+  if (listEl) {
+    for (const card of listEl.querySelectorAll('.ov-task-card')) {
+      const raw = card.dataset.ovCard;
+      if (!raw) continue;
+      const [type, id] = raw.split(':');
+      let running = false;
+      if (type === 'script') {
+        running = isRunning && (state.activeRun?.scriptId === id || currentDevRunning);
+      } else if (type === 'bundle') {
+        running = isRunning && state.activeBundleRun?.bundleId === id;
+      }
+      card.classList.toggle('running', running);
+      const actionBox = card.querySelector('.ov-task-card-actions');
+      if (actionBox) {
+        const hasStop = Boolean(actionBox.querySelector('[data-ov-stop]'));
+        if (running && !hasStop) {
+          actionBox.innerHTML = `
+            <button class="btn xs flat" data-ov-select="${escapeHtml(raw)}" type="button" title="查看配置参数">配置</button>
+            <button class="btn xs danger" data-ov-stop type="button" title="停止执行">${ic('stop', 12)} 停止</button>
+          `;
+        } else if (!running && hasStop) {
+          actionBox.innerHTML = `
+            <button class="btn xs flat" data-ov-select="${escapeHtml(raw)}" type="button" title="查看配置参数">配置</button>
+            <button class="btn xs primary" data-ov-run-direct="${escapeHtml(raw)}" type="button" title="立即执行">${ic('play', 12)} 执行</button>
+          `;
+        }
+      }
+    }
+  }
+
+  // 就地更新右侧工作台按钮状态，绝不触碰正在输入的输入框表单
+  updateOverviewWorkbenchFooter(currentDev, isRunning);
+}
+
 function renderQuickTasks() {
   renderOverviewTasks();
 }
@@ -1619,7 +1704,7 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
       const bundle = state.bundles.find(b => b.id === id);
       if (bundle) await executeBundle(bundle, dev.deviceId);
     }
-    renderOverviewTasks();
+    updateOverviewRuntime();
     return;
   }
 
@@ -1627,6 +1712,7 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
   if (select) {
     const raw = select.dataset.ovSelect || select.dataset.ovCard;
     const [type, id] = raw.split(':');
+    const changed = (type === 'script' && state.taskScriptId !== id) || (type === 'bundle' && state.taskBundleId !== id);
     if (type === 'script') {
       state.taskScriptId = id;
       state.taskBundleId = '';
@@ -1634,7 +1720,21 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
       state.taskBundleId = id;
       state.taskScriptId = '';
     }
-    renderOverviewTasks();
+    // 切换卡片高亮选中态
+    const listEl = byId('ovTaskList');
+    if (listEl) {
+      for (const card of listEl.querySelectorAll('.ov-task-card')) {
+        card.classList.toggle('active', card.dataset.ovCard === raw);
+      }
+    }
+    // 若任务变化，重新渲染右侧工作台；若点击当前已选中的任务，则保持焦点不动
+    if (changed) {
+      const configEl = byId('ovTaskConfig');
+      const currentDev = currentDevice();
+      const currentDevRunning = currentDev ? deviceRunning(currentDev.deviceId) : false;
+      const isRunning = state.batchRunning || Boolean(state.activeRun) || Boolean(state.activeBundleRun) || currentDevRunning;
+      renderOverviewTaskConfig(configEl, currentDev, isRunning, true);
+    }
     return;
   }
 
@@ -1649,7 +1749,7 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
       const bundle = state.bundles.find(b => b.id === state.taskBundleId);
       if (bundle) await executeBundle(bundle, dev.deviceId);
     }
-    renderOverviewTasks();
+    updateOverviewRuntime();
   }
 });
 
@@ -1696,12 +1796,12 @@ eventBus.addEventListener('scripts:changed', () => {
 
 eventBus.addEventListener('device:selected', () => {
   if (state.page === 'tasks') renderTaskDetail();
-  if (state.page === 'overview') renderOverviewTasks();
+  if (state.page === 'overview') updateOverviewRuntime();
 });
 
 eventBus.addEventListener('runtime:changed', () => {
   if (state.page === 'tasks') updateTaskRuntime();
-  if (state.page === 'overview') renderOverviewTasks();
+  if (state.page === 'overview') updateOverviewRuntime();
 });
 
 eventBus.addEventListener('batch:devices', () => {
