@@ -4,7 +4,7 @@
  * 女生网名随机生成桥 (调用 python_workers/nickname/girl_username_generator.py)
  *
  * Python 脚本仅用标准库离线生成；Node 侧每次运行一次性子进程消费（-I 隔离 + -X utf8），
- * 输出每行一个网名。失败时由调用方决定回退策略（login-momo 回退默认网名）。
+ * 输出每行一个网名。生成失败一律抛出错误由调用方中断流程，不回退固定网名。
  */
 
 const { execFile } = require('node:child_process');
@@ -68,4 +68,23 @@ async function generateGirlNickname(options = {}) {
   return name;
 }
 
-module.exports = { generateGirlNickname, generateGirlNicknames };
+// 未指定网名时的默认取值：留空即随机
+const AUTO_NICKNAME = '随机生成';
+// 命中这些关键字同样走随机生成
+const AUTO_NICKNAME_KEYWORDS = new Set([AUTO_NICKNAME, '随机', '自动生成', '自动']);
+
+/**
+ * 解析网名设置：留空或命中随机关键字 → 离线随机生成；显式指定则原样使用。
+ * 生成失败直接抛出，严禁回退固定网名（固定名会造成人设重名）。
+ * @param {string} [setting] 用户/环境变量传入的网名
+ * @param {object} [options]
+ * @param {string} [options.style='混合'] 生成风格
+ * @returns {Promise<{nickname: string, generated: boolean}>} generated 表示本次取值来自随机生成
+ */
+async function resolveGirlNickname(setting, { style = '混合' } = {}) {
+  const raw = String(setting ?? '').trim();
+  if (raw && !AUTO_NICKNAME_KEYWORDS.has(raw)) return { nickname: raw, generated: false };
+  return { nickname: await generateGirlNickname({ style }), generated: true };
+}
+
+module.exports = { generateGirlNickname, generateGirlNicknames, resolveGirlNickname, AUTO_NICKNAME, AUTO_NICKNAME_KEYWORDS };

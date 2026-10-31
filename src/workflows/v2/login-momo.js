@@ -11,7 +11,7 @@
  *    - 若弹出「用户使用协议」提示框：定位并点击蓝底「同意」按钮；
  * 3. 丫丫授权：调用丫丫登录工作流（复扫模式 relogin 或 direct），在历史订单中精准检索并点击复扫；
  * 4. 资料完善与头像配置（第二阶段已无缝合并）：
- *    - 选择女生 -> 清空微信旧网名并填入新女名（默认“菲菲菲”） -> 拟人仿真滑动生日滚轮并确定 -> 下一步；
+ *    - 选择女生 -> 清空微信旧网名并填入新女名（默认随机生成） -> 拟人仿真滑动生日滚轮并确定 -> 下一步；
  *    - 点击头像热区 -> 监听下载网速（<500KB/s自动记录并关闭代理恢复直连） -> 授权前云盘随机挑选2张图片传输至手机 -> 点击权限允许；
  *    - 自动选择相册第一张头像图片 -> 若弹出素材包更新提示自动点确认 -> 裁切图片确认 -> 滤镜美化页面出现完成时先加回原有代理，再点击完成；
  *    - 返回头像页后点击底部的「进入陌陌」；
@@ -26,7 +26,7 @@ const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
 const { logAuthBudget, recordAuthStart } = require('../../automation/auth-session');
-const { generateGirlNickname } = require('../../automation/nickname-generator');
+const { resolveGirlNickname } = require('../../automation/nickname-generator');
 const { SmsService } = require('../../server/sms/service');
 
 const {
@@ -50,12 +50,6 @@ const DEFAULT_POLL_MS = 700;
 const DEFAULT_TARGET_TIME = '16:05';
 // 默认使用【直接一键授权模式 (direct)】；若遇到超时(>8分钟)或服务端提示“请重新授权”，脚本会自动触发【历史复扫模式 (relogin)】自愈
 const DEFAULT_YAYA_MODE = 'direct';
-// 兜底女网名仅作随机生成失败时使用；正常每次运行由 python_workers/nickname 离线生成
-const DEFAULT_NICKNAME = '菲菲菲';
-// 未指定网名时的取值，命中 AUTO_NICKNAME_KEYWORDS 即走离线生成器
-const AUTO_NICKNAME = '随机生成';
-// 命中这些关键字时触发随机网名生成
-const AUTO_NICKNAME_KEYWORDS = new Set([AUTO_NICKNAME, '随机', '自动生成', '自动']);
 
 function formatLogTime() {
   const d = new Date();
@@ -416,7 +410,7 @@ async function recoverViaRescan(client, resolvedDeviceId, options, ctx) {
     const { runSetupProfile } = require('./setup-profile');
     await runSetupProfile(client, resolvedDeviceId, {
       ...options,
-      nickname: nickname || DEFAULT_NICKNAME,
+      nickname,
       phone,
       control,
       worker,
@@ -444,21 +438,11 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
   const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
-  // 网名解析：留空或 '随机生成' 等关键字 → 调用离线生成器 (python_workers/nickname)；
-  // 生成失败回退默认网名；显式指定则原样使用。
-  const nicknameSetting = String(options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME ?? '').trim() || AUTO_NICKNAME;
-  let nickname;
-  if (AUTO_NICKNAME_KEYWORDS.has(nicknameSetting)) {
-    try {
-      nickname = await generateGirlNickname({ style: '混合' });
-      log.console(`[人设网名] 已随机生成女生网名: "${nickname}"`);
-    } catch (err) {
-      nickname = DEFAULT_NICKNAME;
-      log.console(`[人设网名] ⚠️ 随机生成失败 (${err.message})，回退默认网名 "${DEFAULT_NICKNAME}"`);
-    }
-  } else {
-    nickname = nicknameSetting;
-  }
+  // 网名解析：留空即随机生成（显式指定则原样使用）；生成失败直接中断，不回退固定网名。
+  const { nickname, generated } = await resolveGirlNickname(
+    options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME
+  );
+  log.console(`[人设网名] ${generated ? '已随机生成' : '使用指定'}女生网名: "${nickname}"`);
   const modeLabel = yayaMode === 'relogin' ? '历史复扫' : '直接授权';
 
   await log.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, targetTime, yayaMode, nickname });
@@ -1025,7 +1009,7 @@ function parseCliArgs(argv) {
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
     yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE,
-    nickname: process.env.YUNMOMO_MOMO_NICKNAME || AUTO_NICKNAME,
+    nickname: process.env.YUNMOMO_MOMO_NICKNAME || '',
     phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '',
     verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990',

@@ -8,7 +8,7 @@
  *    - 无论停留在 性别页、资料页、头像上传页、下载弹窗、权限弹窗、相册页、裁切页、滤镜页、或手机绑定页，均可自愈断点续跑；
  *    - 若界面出现「手机号相关参数错误」或风控异常，立即截图熔断报错，严禁盲目推进；
  * 2. 昵称与生日：
- *    - 女生全等精准匹配；双向彻底清空微信旧昵称；写入女网名（默认“菲菲菲”）；
+ *    - 女生全等精准匹配；双向彻底清空微信旧昵称；写入女生网名（默认随机生成）；
  *    - TAB 唤起生日滚轮，三列拟人仿真滑动，点击确定保存；
  * 3. 头像与素材包网速检测与持续等待：
  *    - 点击头像上传圆形热区；
@@ -36,6 +36,7 @@ const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
 const { logAuthBudget } = require('../../automation/auth-session');
+const { resolveGirlNickname } = require('../../automation/nickname-generator');
 const protocol = require('../../protocol');
 
 const {
@@ -49,8 +50,6 @@ const {
 
 const DEFAULT_DEVICE_ID = '2002637309737881601';
 const DEFAULT_POLL_MS = 700;
-// TODO: 当前内置默认女姓名“菲菲菲”，方便后续随时接入外部词库动态生成网名
-const DEFAULT_NICKNAME = '菲菲菲';
 
 function formatLogTime() {
   const d = new Date();
@@ -269,8 +268,11 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
   const resolvedDeviceId = deviceIdOf(target);
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
-  // TODO: 当前内置女姓名“菲菲菲”，方便后续随时接入外部词库动态生成网名
-  const nickname = String(options.nickname || process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME).trim();
+  // 网名解析：留空即随机生成（显式指定则原样使用）；生成失败直接中断，不回退固定网名。
+  const { nickname, generated } = await resolveGirlNickname(
+    options.nickname || process.env.YUNMOMO_MOMO_NICKNAME
+  );
+  log.console(`[人设网名] ${generated ? '已随机生成' : '使用指定'}女生网名: "${nickname}"`);
 
   await log.file('Setup profile task initialized', { deviceName, resolvedDeviceId, nickname });
 
@@ -932,7 +934,7 @@ function parseCliArgs(argv) {
   const opts = {
     execute: argv.includes('--execute'),
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
-    nickname: process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME,
+    nickname: process.env.YUNMOMO_MOMO_NICKNAME || '',
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
