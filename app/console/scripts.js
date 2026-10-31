@@ -1392,6 +1392,8 @@ let ovTaskFilter = 'all'; // 'all' | 'momo' | 'bundle'
 
 function isScriptVisibleForOverview(script) {
   if (!script) return false;
+  // 过滤内置批处理/全流程脚本（flow-all-v2 / flow-all），保持与任务列表完全一致
+  if (script.batch || script.id.startsWith('flow-all')) return false;
   // 单个脚本显隐开关：关了就不在总览显示
   if (!scriptVisible(script)) return false;
   // 所属分组显隐开关：所属组关了也不在总览显示

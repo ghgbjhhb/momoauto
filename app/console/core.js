@@ -4,7 +4,7 @@
 // 页面数据逻辑分布在 devices.js / scripts.js / ai-reply.js / momo-brain.js / session.js。
 
 // 构建标记：改动前端后递增，用于确认浏览器加载的是否为新版（控制台输出 + window.YunMomoConsoleBuild）
-window.YunMomoConsoleBuild = '20261031-3';
+window.YunMomoConsoleBuild = '20261101-1';
 console.info(`[yunmomo-console] build ${window.YunMomoConsoleBuild}`);
 
 // 全局防御：封杀浏览器原生 alert / confirm / prompt
@@ -20,6 +20,13 @@ window.prompt = function (message, defaultValue) { return defaultValue || ''; };
 
 const isEmbedMode = location.search.includes('view=admin-embed');
 document.body.classList.toggle('embed', isEmbedMode);
+
+function getPageFromUrl() {
+  const hash = String(location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
+  if (['tasks', 'messages', 'logs', 'settings'].includes(hash)) return hash;
+  return 'overview';
+}
+window.getPageFromUrl = getPageFromUrl;
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -41,7 +48,7 @@ const state = {
     try { return localStorage.getItem('yunmomo.nav.devicesExpanded') !== 'false'; } catch { return true; }
   })(),
   pageId: createPageId(),
-  page: 'overview',
+  page: isEmbedMode ? 'overview' : getPageFromUrl(),
   view: 'single',
   theme: 'light',
   devices: [],
