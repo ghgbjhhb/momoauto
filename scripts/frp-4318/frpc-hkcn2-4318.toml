@@ -1,0 +1,28 @@
+# frpc · 本机 4318 控制台 → hkcn2-1（与 8188 那条隧道互不影响，独立服务端）
+# 路径全部相对本目录：必须由同目录的 启动4318穿透.bat 或 npm run tunnel:start 拉起（会先切到本目录）
+serverAddr = "hkcn2-1.5913286.cc"
+serverPort = 7000
+loginFailExit = false
+
+transport.tcpMux = true
+transport.heartbeatInterval = 10
+transport.heartbeatTimeout = 90
+
+# 自建 CA 双向证书认证：私钥只留在各自机器上，服务端无 token
+transport.tls.enable = true
+transport.tls.certFile = "pki/frpc.crt"
+transport.tls.keyFile = "pki/frpc.key"
+transport.tls.trustedCaFile = "pki/ca.crt"
+transport.tls.serverName = "hkcn2-1.5913286.cc"
+
+log.to = "frpc-4318.log"
+log.level = "info"
+log.maxDays = 3
+
+[[proxies]]
+name = "4318-momo-console"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 4318
+remotePort = 18001
+transport.useCompression = true
