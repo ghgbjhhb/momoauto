@@ -157,30 +157,6 @@
                 </div>
               </div>
             </section>
-            <section class="panel">
-              <div class="panel-head"><h2>回复策略</h2><span class="badge" id="brainConfigBadge">已加载</span></div>
-              <div class="block">
-                <div class="field">
-                  <label>默认回复方式</label>
-                  <div class="mode-group" id="brainModeGroup">
-                    <button class="mode-btn" data-mode="observe" type="button">只观察</button>
-                    <button class="mode-btn" data-mode="draft" type="button">输入草稿</button>
-                    <button class="mode-btn" data-mode="execute" type="button">自动执行</button>
-                  </div>
-                </div>
-                <div class="field">
-                  <label for="brainPollInterval">巡检心跳 (ms)</label>
-                  <input class="input" type="number" id="brainPollInterval" value="2000" min="500" max="30000" step="500">
-                </div>
-                <div class="inline-setting"><span class="setting-label">新消息自动回复</span><button class="switch" id="brainAutoReply" type="button" role="switch" aria-label="新消息自动回复"></button></div>
-                <div class="inline-setting"><span class="setting-label">空闲打招呼</span><button class="switch" id="brainGreetings" type="button" role="switch" aria-label="空闲打招呼"></button></div>
-                <div class="inline-setting"><span class="setting-label">空闲动态浏览</span><button class="switch" id="brainBrowse" type="button" role="switch" aria-label="空闲动态浏览"></button></div>
-                <div class="ai-note" id="brainNote" hidden>回复策略由管理员统一设置，如需调整请联系管理员。</div>
-                <div class="save-row">
-                  <button class="btn primary" id="btnBrainSaveConfig" type="button" hidden>保存配置</button>
-                </div>
-              </div>
-            </section>
           </div>
         </section>
 
@@ -409,6 +385,5 @@
   <script src="/console/session.js"></script>
   <script src="/manual-control.js"></script>
   <script src="/ai-reply.js"></script>
-  <script src="/momo-brain.js"></script>
 </body>
 </html>
