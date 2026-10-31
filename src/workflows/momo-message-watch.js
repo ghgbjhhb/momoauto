@@ -478,6 +478,7 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
   let lastScreenSignature = ''; // 用于检测是否触底
   let consecutiveBottomHits = 0;
   let consecutiveOffListHits = 0;
+  const skippedPeers = new Set(); // 本次运行内进入失败的联系人：跳过防止对同一目标无限重试
 
   // 1. 获取设备单写互斥锁
   const watchRunId = options.runId || 'watch_' + Date.now();
@@ -564,7 +565,7 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
       await log('INFO', `跳过 ${unreadableUnread.length} 个纯emoji/符号名联系人（名字OCR不可读，按规则不自动处理）`);
     }
 
-    const unreadCandidate = candidates.find(c => c.hasUnread);
+    const unreadCandidate = candidates.find(c => c.hasUnread && !skippedPeers.has(c.peerName));
 
     // 5. 发现未读联系人 -> 执行对话流程
     if (unreadCandidate) {
@@ -588,14 +589,16 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
         clickBox[2] = Math.round(obs.width * 0.65);
       }
       await log('INFO', `点击联系人 [${peerName}] 进入聊天 (避开头像，点击区域: [${clickBox.join(', ')}])`);
+      // holdMs 对齐人手点击时长（120ms）：云机注入对超短按压（默认 40~91ms）偶发不响应
       await tools.clickRegion(clickBox, {
         coordinateSpace: { width: obs.width, height: obs.height },
+        holdMs: 120,
       });
       await sleep(1000, signal).catch(() => {});
 
       // 5.2 验证是否成功进入聊天详情页
-      const detailObs = await observePage({ tools, control, deviceId, pool }, { signal, timeoutMs: 8000 }).catch(() => null);
-      const inChat = detailObs?.ok && (detailObs.page === 'chat_detail' || detailObs.evidence?.pageRaw?.sub_page === 'chat_detail');
+      let detailObs = await observePage({ tools, control, deviceId, pool }, { signal, timeoutMs: 8000 }).catch(() => null);
+      let inChat = detailObs?.ok && (detailObs.page === 'chat_detail' || detailObs.evidence?.pageRaw?.sub_page === 'chat_detail');
 
       if (!inChat) {
         await log('WARN', `未能进入 [${peerName}] 聊天详情页 (当前: ${detailObs?.page || '未知'})`);
@@ -607,7 +610,30 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
             targetBox: detailObs?.targets?.backBtn,
             observation: detailObs,
           });
+          await sleep(800, signal).catch(() => {});
         }
+
+        // 补点一次：点击未响应偶发存在，立即重发同一动作而不是回外层盲目循环
+        await tools.clickRegion(clickBox, {
+          coordinateSpace: { width: obs.width, height: obs.height },
+          holdMs: 120,
+          jitterPx: 6,
+        });
+        await sleep(1000, signal).catch(() => {});
+        detailObs = await observePage({ tools, control, deviceId, pool }, { signal, timeoutMs: 8000 }).catch(() => null);
+        inChat = detailObs?.ok && (detailObs.page === 'chat_detail' || detailObs.evidence?.pageRaw?.sub_page === 'chat_detail');
+      }
+
+      if (!inChat) {
+        await log('WARN', `[${peerName}] 补点后仍未进入聊天详情页 (当前: ${detailObs?.page || '未知'})，本次运行内跳过该联系人`);
+        if (detailObs?.page !== 'message_list') {
+          await exitChatDetailToMessageList(tools, control, obs.width, obs.height, {
+            signal,
+            targetBox: detailObs?.targets?.backBtn,
+            observation: detailObs,
+          });
+        }
+        skippedPeers.add(peerName);
         continue;
       }
 
