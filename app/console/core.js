@@ -442,6 +442,29 @@ function renderShell() {
 function setPage(page) {
   if (!NAVS.some(x => x[0] === page)) page = 'overview';
   state.page = page;
+
+  if (page === 'devices') {
+    // 点击导航「设备」：直接定位到总览工作台并展开左侧设备列表
+    for (const section of document.querySelectorAll('.page-section')) {
+      section.hidden = section.id !== 'page-overview';
+    }
+    renderShell();
+    if (typeof window.openDeviceSidebar === 'function') {
+      window.openDeviceSidebar();
+    }
+    eventBus.dispatchEvent(new CustomEvent('page:changed', { detail: { page: 'devices' } }));
+    return;
+  }
+
+  if (page === 'overview') {
+    for (const section of document.querySelectorAll('.page-section')) {
+      section.hidden = section.id !== 'page-overview';
+    }
+    renderShell();
+    eventBus.dispatchEvent(new CustomEvent('page:changed', { detail: { page: 'overview' } }));
+    return;
+  }
+
   for (const section of document.querySelectorAll('.page-section')) {
     section.hidden = section.id !== 'page-' + page;
   }
