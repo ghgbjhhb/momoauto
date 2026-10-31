@@ -26,7 +26,7 @@ $env:YUNMOMO_UDID = '<目标 udid>'
 npm run check:live
 ~~~
 
-check:live 检查设备列表、截图及视频通道初始元数据，不点击手机、不重置设备、不上传文件；建立通道时会发送视频参数。普通 npm test 不需要登录，也不访问真实云机。
+check:live 检查设备列表、截图及视频通道初始元数据，不点击手机、不重置设备、不上传文件；建立通道时会发送视频参数。
 
 如果使用 .env：复制 .env.example 后填入自己的配置；Node.js 20.6+ 可运行 node --env-file=.env examples/basic.js。SDK 本身只读取环境变量，不自动加载 .env。令牌失效后更新环境变量，并新建 client/control。
 

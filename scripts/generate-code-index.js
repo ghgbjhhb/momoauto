@@ -432,13 +432,7 @@ npm run flow:01 -- --execute
 npm run flow:all -- --execute
 \`\`\`
 
-### 3. 本地测试套件
-\`\`\`powershell
-# 运行完整自动化测试套件（测试数量随源码变化）
-npm test
-\`\`\`
-
-### 4. 刷新本索引
+### 3. 刷新本索引
 \`\`\`powershell
 node scripts/generate-code-index.js
 \`\`\`

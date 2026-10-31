@@ -32,7 +32,6 @@
 - `npm run app` — 启动本地控制台（4318 端口）
 - `npm run index` — 重新生成代码符号索引
 - `npm run flow:NN` — 业务脚本（01~16）；`npm run timing:report` — 慢步骤报告
-- `npm test` — 不登录、不访问真实云机
 
 ## 工程守则
 
