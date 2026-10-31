@@ -429,6 +429,7 @@ body:has(#page-overview:not([hidden])) .page {
   height: 100%;
   min-height: 0;
   flex: none;
+  width: fit-content;
   overflow: hidden;
 }
 
@@ -442,15 +443,30 @@ body:has(#page-overview:not([hidden])) .page {
   overflow: hidden;
 }
 
+/* 面板整体宽度 100% 严格由内部云机物理画面宽度决定，零多余黑边 */
 .ov-device-panel {
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  width: clamp(280px, calc((100vh - 140px) * 0.5625), 340px);
-  min-width: 280px;
-  max-width: 360px;
+  width: fit-content;
+  min-width: 0;
   overflow: hidden;
+  flex: none;
+}
+
+/* 关键：顶栏与底栏不向外撑宽面板，完全自适应充满画面的自然宽度 */
+.ov-device-panel .panel-head,
+.ov-device-panel .ov-device-meta {
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.ov-device-panel .panel-head {
+  padding: var(--sp-8) var(--sp-10);
+  gap: var(--sp-6);
   flex: none;
 }
 
@@ -465,41 +481,50 @@ body:has(#page-overview:not([hidden])) .page {
 .panel-head-left {
   display: flex;
   align-items: center;
-  gap: var(--sp-12);
+  gap: var(--sp-8);
   min-width: 0;
   flex: 1;
+  overflow: hidden;
+}
+
+.panel-head-left h2 {
+  font-size: var(--fs-13);
+  white-space: nowrap;
+  flex: none;
 }
 
 .device-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--sp-6);
+  gap: var(--sp-4);
   overflow-x: auto;
   padding: 0;
   border: 0;
   scrollbar-width: none;
+  min-width: 0;
+  flex: 1;
 }
 .device-toolbar::-webkit-scrollbar { display: none; }
 
 .device-chip {
   flex: none;
-  height: 28px;
+  height: 26px;
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-6);
-  padding: 0 var(--sp-10);
+  padding: 0 var(--sp-8);
   background: var(--card);
   color: var(--muted);
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  gap: var(--sp-6);
+  gap: var(--sp-4);
   cursor: pointer;
   transition: border-color var(--dur-2), background-color var(--dur-2), color var(--dur-2);
 }
 
-.device-chip b { color: var(--text); font-weight: var(--fw-600); font-size: var(--fs-12); white-space: nowrap; }
-.device-chip small { font-size: var(--fs-11); white-space: nowrap; }
+.device-chip b { color: var(--text); font-weight: var(--fw-600); font-size: var(--fs-11); white-space: nowrap; }
+.device-chip small { font-size: var(--fs-10); white-space: nowrap; }
 .device-chip.selected { border-color: var(--blue-chip); background: var(--blue-light); }
 .device-chip.selected b { color: var(--blue); }
 .device-chip.down small { color: var(--red); }
@@ -510,46 +535,46 @@ body:has(#page-overview:not([hidden])) .page {
   flex: 1;
   min-height: 0;
   height: auto;
-  width: 100%;
+  width: fit-content;
   display: flex;
   align-items: stretch;
-  justify-content: stretch;
+  justify-content: flex-start;
   position: relative;
   padding: 0;
   overflow: hidden;
 }
 
-.viewer.grid { align-items: stretch; padding: var(--sp-8); }
+.viewer.grid { align-items: stretch; padding: var(--sp-8); width: 100%; }
 
 .phone-stage {
   position: relative;
   display: flex;
   align-items: stretch;
-  justify-content: stretch;
+  justify-content: flex-start;
   height: 100%;
-  width: 100%;
-  flex: 1;
+  width: fit-content;
+  flex: none;
 }
 
+/* 严格按照真实物理分辨率比例（720 / 1280），100% 原生无挤压 */
 .device-frame {
   height: 100%;
-  width: 100%;
+  width: auto;
   max-width: 100%;
+  aspect-ratio: 720 / 1280;
   border: none;
   border-radius: 0;
   background: #000000;
   position: relative;
   overflow: hidden;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  flex: 1;
+  display: block;
+  flex: none;
 }
 
 .device-frame canvas, .device-frame img {
   width: 100%;
   height: 100%;
-  object-fit: fill;
+  object-fit: contain; /* 严格像素对齐，正圆绝不变形 */
   display: block;
 }
 
@@ -558,8 +583,8 @@ body:has(#page-overview:not([hidden])) .page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-8);
-  padding: 0 var(--sp-10);
+  gap: var(--sp-6);
+  padding: 0 var(--sp-8);
   background: var(--card);
   border-top: 1px solid var(--line);
   font-size: var(--fs-11);
