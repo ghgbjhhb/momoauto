@@ -127,11 +127,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     category: 'momo',
     version: 'v2',
     parameters: [
-      { name: 'yayaMode', label: '丫丫授权模式', choices: ['direct', 'relogin'], defaultValue: 'direct', adminOnly: true },
-      { name: 'targetTime', label: '丫丫复扫订单时间', defaultValue: '16:05', placeholder: '如 16:05，匹配历史订单', adminOnly: true },
-      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' },
-      { name: 'phoneNumber', label: '绑定手机号', defaultValue: '17306728814', placeholder: '输入待绑定的 11 位手机号（默认17306728814）' },
-      { name: 'verifyCode', label: '短信验证码', defaultValue: '', placeholder: '留空表示自动获取并等待输入；输入 6 位验证码直接提交' }
+      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' }
     ]
   },
   {
