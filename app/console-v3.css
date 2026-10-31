@@ -712,6 +712,26 @@ body:has(#page-overview:not([hidden])) .page {
 .task-layout { display: grid; grid-template-columns: minmax(280px, 0.78fr) minmax(520px, 1.22fr); gap: var(--sp-14); align-items: start; }
 .task-col { display: flex; flex-direction: column; gap: var(--sp-14); min-width: 0; }
 
+#taskLeftCol .panel {
+  max-height: calc(100vh - 160px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#taskGroups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+#taskRightCol .panel {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
 .task-group-head {
   display: flex;
   align-items: center;
@@ -1386,6 +1406,7 @@ body:has(#page-overview:not([hidden])) .page {
 
 @media (max-width: 1000px) {
   .task-layout { grid-template-columns: minmax(0, 1fr); }
+  #taskLeftCol .panel, #taskRightCol .panel { max-height: none; }
 }
 
 @media (max-width: 870px) {
