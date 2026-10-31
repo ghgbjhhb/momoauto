@@ -110,7 +110,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
-    id: 'flow-15', order: 15, title: 'MOMO监听中枢',
+    id: 'flow-15', order: 15, title: '自动挂机回复',
     file: 'flows/momo/15-momo监听中枢.js', args: [], requiresDevice: true,
     category: 'momo',
     parameters: [
