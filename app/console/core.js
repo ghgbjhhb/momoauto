@@ -492,9 +492,17 @@ function renderShell() {
   if (brandMark) brandMark.innerHTML = ic('phone', 20);
 }
 
-function setPage(page) {
+function setPage(page, { updateHash = true } = {}) {
   if (!NAVS.some(x => x[0] === page)) page = 'overview';
   state.page = page;
+
+  if (updateHash && !isEmbedMode) {
+    const targetHash = page === 'overview' ? '#overview' : '#' + page;
+    if (location.hash !== targetHash) {
+      try { history.replaceState(null, '', targetHash); }
+      catch { location.hash = targetHash; }
+    }
+  }
 
   if (page === 'devices' || page === 'overview') {
     // 聚焦总览实时操控与任务工作台
@@ -513,6 +521,14 @@ function setPage(page) {
   eventBus.dispatchEvent(new CustomEvent('page:changed', { detail: { page } }));
 }
 window.setPage = setPage;
+
+window.addEventListener('hashchange', () => {
+  if (isEmbedMode) return;
+  const target = getPageFromUrl();
+  if (target !== state.page) {
+    setPage(target, { updateHash: false });
+  }
+});
 
 function applyTheme(theme) {
   state.theme = theme === 'dark' ? 'dark' : 'light';

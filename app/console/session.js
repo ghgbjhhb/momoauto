@@ -559,8 +559,9 @@ async function init() {
       window.AppLogger?.info('Devices', `已同步云机实例 ${state.devices.length} 台`);
     }
     await loadSharedRuntimeState();
-    if (isEmbedMode) setPage('overview');
-    else setPage('overview');
+    const initialPage = isEmbedMode ? 'overview' : (typeof getPageFromUrl === 'function' ? getPageFromUrl() : 'overview');
+    setPage(initialPage, { updateHash: true });
+
     window.AppLogger?.info('Init', '控制台工作台初始化全部完成，就绪待命');
   } catch (fatalErr) {
     window.AppLogger?.error('Fatal', '控制台初始化异常中断: ' + fatalErr.message, { stack: fatalErr.stack });
