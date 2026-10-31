@@ -20,6 +20,7 @@ const { ACTION } = require('./protocol');
 
 const FATAL_CLOSE_CODES = new Set([4003, 4004, 4005]);
 const POINTER_ID_MOUSE = -1;
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function inputError(code, message) {
   const error = new Error(message);
@@ -42,6 +43,9 @@ class StreamInput extends EventEmitter {
     // 厂商服务端会丢弃「down→up 两帧无位移」的静止 tap（官方网页端人手点击天然带微移动），
     // 因此 DOWN 后若无 MOVE 帧则在 UP 前补一个 1~2px 的人手抖动。
     this._pendingDown = null;
+    // 通道暖连期间的输入请求排队（保持顺序，就绪后按序映射发送），
+    // 避免流程首个动作与连接建立竞态导致响亮失败。
+    this._pendingRequests = [];
   }
 
   buildUrl() {
@@ -100,6 +104,7 @@ class StreamInput extends EventEmitter {
         this._settleConnect = null;
         settle();
       }
+      this._drainRequests();
       this.emit('meta', { width: frame.width, height: frame.height });
     } else if (frame.type === 'status') {
       this.emit('status', frame);
@@ -113,11 +118,30 @@ class StreamInput extends EventEmitter {
   }
 
   _requireReady() {
-    if (!this.open) {
+    if (!this.open || !this.videoWidth || !this.videoHeight) {
       throw inputError('INPUT_STREAM_NOT_READY', '输入通道未就绪（可能被其他 master 占用或连接中断），动作未下发');
     }
-    if (!this.videoWidth || !this.videoHeight) {
-      throw inputError('INPUT_STREAM_NOT_READY', '输入通道未收到视频尺寸 meta，动作未下发');
+  }
+
+  _enqueueRequest(request) {
+    if (this._pendingRequests.length >= 64) {
+      this._pendingRequests = [];
+      throw inputError('INPUT_STREAM_NOT_READY', '输入通道排队溢出，动作未下发');
+    }
+    this._pendingRequests.push(request);
+    this.ensureConnected().catch(error => {
+      this._pendingRequests = [];
+      this._connectError = error;
+      this.emit('connect-error', error);
+    });
+    return this;
+  }
+
+  _drainRequests() {
+    while (this._pendingRequests.length && this.open && this.videoWidth) {
+      const request = this._pendingRequests.shift();
+      if (request.kind === 'touch') this.sendTouch(request.action, request.x, request.y, request.options);
+      else this.sendKey(request.keycode, request.action);
     }
   }
 
@@ -127,7 +151,7 @@ class StreamInput extends EventEmitter {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > sourceWidth - 1 || y > sourceHeight - 1) {
       throw inputError('COORDINATE_OUT_OF_BOUNDS', '坐标超出源空间');
     }
-    this._requireReady();
+    if (!this.open || !this.videoWidth) return this._enqueueRequest({ kind: 'touch', action, x, y, options });
     const mappedX = Math.min(this.videoWidth - 1, Math.max(0, Math.round(x * this.videoWidth / sourceWidth)));
     const mappedY = Math.min(this.videoHeight - 1, Math.max(0, Math.round(y * this.videoHeight / sourceHeight)));
     // 字段取值与官方网页查看器一致：move pressure 0.5，up buttons 0
@@ -152,15 +176,29 @@ class StreamInput extends EventEmitter {
   }
 
   sendKey(keycode, action) {
-    this._requireReady();
+    if (!this.open || !this.videoWidth) return this._enqueueRequest({ kind: 'key', keycode, action });
     this.ws.send(JSON.stringify({ op: 'key', keycode, action }));
     return this;
   }
 
   flush() {
     if (!this.open) return Promise.reject(inputError('INPUT_STREAM_NOT_READY', '输入通道未就绪'));
-    return new Promise((resolve, reject) => this.ws.ping(Buffer.alloc(0), undefined,
-      error => error ? reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道写入失败')) : resolve(this)));
+    if (!this._pendingRequests.length) {
+      return new Promise((resolve, reject) => this.ws.ping(Buffer.alloc(0), undefined,
+        error => error ? reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道写入失败')) : resolve(this)));
+    }
+    // 排队帧尚未落地：等通道就绪并排空后再确认，超时则响亮失败。
+    const deadline = Date.now() + 5000;
+    const attempt = () => {
+      if (!this.open) return Promise.reject(inputError('INPUT_STREAM_NOT_READY', '输入通道未就绪，排队动作未下发'));
+      if (!this._pendingRequests.length) {
+        return new Promise((resolve, reject) => this.ws.ping(Buffer.alloc(0), undefined,
+          error => error ? reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道写入失败')) : resolve(this)));
+      }
+      if (Date.now() >= deadline) return Promise.reject(inputError('INPUT_STREAM_NOT_READY', '输入通道排队超时，动作未下发'));
+      return sleep(100).then(attempt);
+    };
+    return attempt();
   }
 
   close() {
@@ -168,6 +206,8 @@ class StreamInput extends EventEmitter {
     this.ws = null;
     this._connecting = null;
     this.videoWidth = this.videoHeight = null;
+    this._pendingRequests = [];
+    this._pendingDown = null;
     if (!ws || ws.readyState === WebSocket.CLOSED) return Promise.resolve();
     return new Promise(resolve => {
       const timer = setTimeout(() => { ws.terminate(); resolve(); }, 1000);

@@ -344,6 +344,12 @@ async function gesture(control, planner, ctx, operation) {
   return pending;
 }
 
+// clickRegion 允许的参数全集：COMMON 手势参数 + 采样/连点/按压时长。
+// 此白名单若缺失，_runMeasured 的 keys() 校验会对任何非空 options 抛 TypeError，
+// 且 tools 层把异常包成 ok:false 的返回值——点按静默失效且极难察觉。
+const REGION_CLICK_OPTIONS = Object.freeze([...COMMON_GESTURE_OPTIONS,
+  'centerFraction', 'centerProbability', 'insetPx', 'clicks', 'intervalMs', 'holdMs']);
+
 module.exports = {
   chance,
   sampleWeightedBox,
@@ -355,5 +361,6 @@ module.exports = {
   checkControl,
   gesture,
   COMMON: COMMON_GESTURE_OPTIONS,
-  COMMON_GESTURE_OPTIONS
+  COMMON_GESTURE_OPTIONS,
+  REGION_CLICK_OPTIONS
 };
