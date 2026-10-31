@@ -705,9 +705,6 @@ async function syncMomoContacts(host, options, ctx) {
     report.totalMessagesCollected = messages.length;
     report.totalMessagesAlreadyStored = initialExistingCount;
     report.totalMessagesInDatabase = finalInDatabase;
-    // 「非文字气泡或表情」计数：区分真人图片/语音消息与纯系统卡片会话（跨帧重复不除重，只作 0/非0 判断）
-    report.currentContact.nonTextBubbles = report.frames
-      .reduce((sum, frame) => sum + (frame.ignored ?? []).filter(item => item.reason === '非文字气泡或表情').length, 0);
     report.currentContact.messagesCollected = messages.length;
 
     report.details.push({

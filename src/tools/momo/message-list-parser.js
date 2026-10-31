@@ -15,6 +15,7 @@ const SYSTEM_CARD_NAMES = new Set([
   '订阅内容',
   '系统消息',
   '官方小秘书',
+  '陌陌',
   '陌陌团队',
   '安全中心',
   '超级抢车位',
@@ -345,6 +346,7 @@ function scanMessageListCandidates(ocrData, listData, pageData, options = {}) {
     msgTopTabBox: parsed.msgTopTabBox,
     candidates: validCandidates,
     totalFound: validCandidates.length,
+    unreadableNames: parsed.unreadableNames ?? [],
     timestamp: Date.now()
   };
 }
