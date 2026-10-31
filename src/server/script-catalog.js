@@ -122,7 +122,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     ]
   },
   {
-    id: 'flow-16', order: 16, title: '陌陌一键上号全流程 (授权/资料完善/手机绑定)',
+    id: 'flow-16', order: 16, title: '陌陌一键上号',
     file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
     version: 'v2',
