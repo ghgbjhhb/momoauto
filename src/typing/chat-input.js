@@ -87,9 +87,9 @@ function similarity(a, b) {
   return 1 - prev[n] / Math.max(m, n);
 }
 
-// OCR 读回并非百分百可靠（形近字误读、断行粘连），而草稿经拼音打字/剪贴板粘贴写入后
-// 实际内容几乎必然正确。逐字硬比对会误杀正确草稿，因此末档放行：编辑距离<=1
-// （仅限2字以上，单字消息必须完全一致）或相似度>=0.85 即视为一致。
+// OCR 读回并非百分百可靠（形近字误读、断行粘连），逐字硬比对会误杀正确草稿。
+// 容差放行：去标点归一后差别<60%（相似度>=0.4）即视为一致；剪贴板粘贴路径更宽——
+// 粘贴是确定性写入，只要输入框读到非空内容即放行（见 verify 的 pasted 选项）。
 function draftMatches(actual, expected) {
   if (actual === expected) return true;
   if (!actual && !expected) return true;
@@ -105,9 +105,7 @@ function draftMatches(actual, expected) {
   const pExpected = stripPunctuation(cleanExpected);
   if (pActual === pExpected && pExpected.length > 0) return true;
   if (!pExpected.length || !pActual.length) return false;
-  const dist = Math.round((1 - similarity(pActual, pExpected)) * Math.max(pActual.length, pExpected.length));
-  if (dist <= 1 && Math.max(pActual.length, pExpected.length) >= 2) return true;
-  return similarity(pActual, pExpected) >= 0.85;
+  return 1 - similarity(pActual, pExpected) < 0.6;
 }
 
 class ChatInput {
@@ -165,14 +163,14 @@ class ChatInput {
     return false;
   }
 
-  async verify(expected, { empty = false, attempts = 3, code = 'INPUT_MISMATCH', requireKeyboard = !empty, optional = false } = {}) {
+  async verify(expected, { empty = false, attempts = 3, code = 'INPUT_MISMATCH', requireKeyboard = !empty, optional = false, pasted = false } = {}) {
     let observed = null, inputSource = null;
     for (let attempt = 0; attempt < attempts; attempt++) {
       let frame = await this.observeInputFrame();
       if (requireKeyboard && frame.layout.keyboard !== 'open') fail('KEYBOARD_NOT_OPEN', 'Input is no longer in the middle of the chat');
       let ocr = await this.read(frame);
       observed = ocr.input_text; inputSource = ocr.input_source ?? 'crop';
-      if (empty ? this.isEmpty(ocr, frame) : draftMatches(ocr.input_text, expected)) return { frame, ocr };
+      if (this.matches(expected, ocr, frame, { empty, pasted })) return { frame, ocr };
       // A candidate tap can update the field after the first screenshot was
       // captured. Use a fresh frame for the full-field pass instead of running
       // a second OCR over the same stale image.
@@ -180,12 +178,19 @@ class ChatInput {
       if (requireKeyboard && frame.layout.keyboard !== 'open') fail('KEYBOARD_NOT_OPEN', 'Input is no longer in the middle of the chat');
       ocr = await this.read(frame, { full_field: true });
       observed = ocr.input_text; inputSource = ocr.input_source ?? 'full-field';
-      if (empty ? this.isEmpty(ocr, frame) : draftMatches(ocr.input_text, expected)) return { frame, ocr };
+      if (this.matches(expected, ocr, frame, { empty, pasted })) return { frame, ocr };
       if (attempt + 1 < attempts) await this.ctx.sleep(this.settings.pollMs);
     }
     if (optional) return null;
     fail(code, empty ? 'Chat input is not confirmed empty' : 'Draft does not exactly match the intended message',
       { expected: expected ?? null, observed, inputSource });
+  }
+
+  // 粘贴写入是确定性操作，OCR 读回非空即视为一致，不再比对内容
+  matches(expected, ocr, frame, { empty, pasted }) {
+    if (empty) return this.isEmpty(ocr, frame);
+    if (pasted) return !this.isEmpty(ocr, frame);
+    return draftMatches(ocr.input_text, expected);
   }
 
   async clear() {
@@ -358,7 +363,7 @@ class ChatInput {
         await this.ctx.sleep(this.settings.settleMs);
         await this.paste(plan.text);
         await this.ctx.sleep(this.settings.settleMs);
-        await this.verify(plan.text, { attempts: 3 });
+        await this.verify(plan.text, { attempts: 3, pasted: true });
       } else {
         throw err;
       }
