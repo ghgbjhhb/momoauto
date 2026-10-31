@@ -81,6 +81,20 @@ function currentTaskScript() {
   return visible.find(s => s.id === state.taskScriptId) || null;
 }
 
+function currentTaskBundle() {
+  if (!state.taskBundleId) return null;
+  const bundles = Array.isArray(state.bundles) ? state.bundles : [];
+  const bundle = bundles.find(item => item.id === state.taskBundleId);
+  if (!bundle) return null;
+  if (!isScriptManageMode() && (bundle.enabled === false || !groupVisible('custom'))) return null;
+  return bundle;
+}
+
+function bundleSteps(bundle) {
+  return (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
+}
+
+
 function renderTasksPage() {
   const left = elements.taskLeftCol;
   const right = elements.taskRightCol;
@@ -167,13 +181,23 @@ function onTaskGroupsClick(event) {
   }
   const bundleRun = event.target.closest('[data-bundle-run]');
   if (bundleRun) {
+    if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return; }
     const bundle = state.bundles.find(item => item.id === bundleRun.dataset.bundleRun);
     if (bundle) executeBundle(bundle);
+    return;
+  }
+  const bundleSelect = event.target.closest('[data-bundle-select]');
+  if (bundleSelect) {
+    state.taskBundleId = bundleSelect.dataset.bundleSelect;
+    state.taskScriptId = '';
+    renderTaskGroups();
+    renderTaskDetail();
     return;
   }
   const card = event.target.closest('[data-task-select]');
   if (card) {
     state.taskScriptId = card.dataset.taskSelect;
+    state.taskBundleId = '';
     renderTaskGroups();
     renderTaskDetail();
   }
@@ -192,6 +216,11 @@ function onDetailInput(event) {
   const input = event.target.closest('[data-task-param]');
   if (input && state.taskScriptId) {
     state.taskParamValues[state.taskScriptId + ':' + input.dataset.taskParam] = input.value;
+  }
+  const bundleParam = event.target.closest('[data-bundle-run-param]');
+  if (bundleParam && state.taskBundleId) {
+    state.bundleParamValues = state.bundleParamValues || {};
+    state.bundleParamValues[bundleRunParamKey(state.taskBundleId, ...bundleParam.dataset.bundleRunParam.split(':'))] = bundleParam.value;
   }
 }
 
@@ -261,7 +290,7 @@ function bundleCardHtml(bundle) {
       <button class="btn sm" data-bundle-edit="${escapeHtml(bundle.id)}" type="button">编辑</button>
       <button class="btn sm flat" data-bundle-delete="${escapeHtml(bundle.id)}" type="button">删除</button>
     </span>` : '';
-  return `<div class="task-card" data-bundle-card="${escapeHtml(bundle.id)}" style="cursor:default;">
+  return `<div class="task-card ${state.taskBundleId === bundle.id ? 'active' : ''}" data-bundle-select="${escapeHtml(bundle.id)}" role="button" tabindex="0">
     <span class="num">组</span>
     <span class="task-card-main">
       <span class="task-name">${escapeHtml(bundle.name)}${manage && !enabled ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span>
@@ -346,6 +375,11 @@ function parameterChoiceLabel(field, value) {
 function renderTaskDetail() {
   const panel = byId('taskDetailPanel');
   if (!panel) return;
+  const bundle = currentTaskBundle();
+  if (bundle) {
+    renderBundleDetail(panel, bundle);
+    return;
+  }
   const script = currentTaskScript();
   if (!script) {
     panel.innerHTML = '<div class="empty">暂无可执行任务</div>';
@@ -409,6 +443,141 @@ function renderTaskDetail() {
   updateTaskRuntime();
 }
 
+/* ---------- 组合脚本详情（所有步骤参数集中配置） ---------- */
+
+function bundleRunParamKey(bundleId, stepIndex, fieldName) {
+  return `${bundleId}:${stepIndex}:${fieldName}`;
+}
+
+function bundleRunFieldHtml(bundle, script, stepIndex, field) {
+  state.bundleParamValues = state.bundleParamValues || {};
+  const key = bundleRunParamKey(bundle.id, stepIndex, field.name);
+  const saved = bundle.stepOptions?.[stepIndex]?.[field.name];
+  const value = state.bundleParamValues[key] ?? saved ?? field.defaultValue ?? '';
+  const attrs = `data-bundle-run-param="${stepIndex}:${escapeHtml(field.name)}" ${field.required ? 'required' : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} placeholder="${escapeHtml(field.placeholder || '')}"`;
+  if (field.choices) {
+    return `<div class="field"><label for="brun-${stepIndex}-${field.name}">${escapeHtml(field.label)}</label>
+      <select class="select" id="brun-${stepIndex}-${field.name}" ${attrs}>
+        ${field.choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(value) === String(choice) ? 'selected' : ''}>${escapeHtml(parameterChoiceLabel(field, choice))}</option>`).join('')}
+      </select></div>`;
+  }
+  if (field.multiline) {
+    return `<div class="field"><label for="brun-${stepIndex}-${field.name}">${escapeHtml(field.label)}</label>
+      <textarea class="input textarea" id="brun-${stepIndex}-${field.name}" ${attrs}>${escapeHtml(value)}</textarea></div>`;
+  }
+  return `<div class="field"><label for="brun-${stepIndex}-${field.name}">${escapeHtml(field.label)}</label>
+    <input class="input" id="brun-${stepIndex}-${field.name}" type="text" value="${escapeHtml(value)}" autocomplete="off" spellcheck="false" ${attrs}></div>`;
+}
+
+function renderBundleDetail(panel, bundle) {
+  const steps = bundleSteps(bundle);
+  // 仅展示需要设置参数的步骤，无参脚本不占面板；编号保留组合中的原始顺序
+  const stepsHtml = steps.map((script, i) => {
+    const fields = (script.parameters || []).map(field => bundleRunFieldHtml(bundle, script, i, field)).join('');
+    if (!fields) return '';
+    return `<div class="bundle-detail-step">
+      <div class="bundle-detail-step-head"><span class="num">${i + 1}</span><span>${escapeHtml(scriptTitle(script))}</span></div>
+      ${fields}
+    </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="section-line">
+      <h3>任务配置</h3>
+      <span class="badge ${state.batchRunning ? 'run' : ''}" id="detailRunBadge">${state.batchRunning ? '执行中' : '待命'}</span>
+    </div>
+    <div class="details">
+      <div class="details-heading">
+        <h2>${escapeHtml(bundle.name)}</h2>
+      </div>
+      ${bundle.description ? `<div class="selection-summary">${escapeHtml(bundle.description)}</div>` : ''}
+      ${stepsHtml || (steps.length ? '<div class="empty">此组合内的脚本均无需参数，选择设备后可直接执行</div>' : '<div class="empty">此组合未包含有效脚本步骤</div>')}
+      ${renderDevicePicker()}
+      ${renderBatchResults()}
+      <div class="details-footer">
+        <span class="footer-note" id="detailNote"></span>
+        ${state.batchRunning
+          ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
+          : `<button class="btn primary" id="bundleRunBtn" type="button">${ic('play', 15)} 执行组合 (<span id="batchCount">0</span> 台)</button>`}
+      </div>
+    </div>
+  `;
+  updateBatchCount();
+  updateTaskRuntime();
+}
+
+// 以面板 DOM 实际值为准收集各步骤参数（空值删除，回退脚本默认行为），并校验必填
+function collectBundleRunOptions(bundle) {
+  const options = bundleSteps(bundle).map((_, i) => ({ ...(bundle.stepOptions?.[i] || {}) }));
+  const panel = byId('taskDetailPanel');
+  if (panel) {
+    for (const input of panel.querySelectorAll('[data-bundle-run-param]')) {
+      const raw = input.dataset.bundleRunParam || '';
+      const colon = raw.indexOf(':');
+      const index = Number(raw.slice(0, colon));
+      const name = raw.slice(colon + 1);
+      if (!Number.isInteger(index) || index < 0 || !name || !options[index]) continue;
+      const value = String(input.value ?? '').trim();
+      if (input.required && !value) {
+        input.focus?.();
+        throw new Error(`步骤 ${index + 1} 的「${input.closest('.field')?.querySelector('label')?.textContent || name}」为必填项`);
+      }
+      if (value) options[index][name] = value;
+      else delete options[index][name];
+    }
+  }
+  return options;
+}
+
+async function startBundleBatch() {
+  const bundle = currentTaskBundle();
+  if (!bundle) return;
+  if (state.batchRunning) { showToast('任务正在执行中'); return; }
+  if (state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本结束'); return; }
+  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
+  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
+
+  let stepOptions;
+  try {
+    stepOptions = collectBundleRunOptions(bundle);
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
+  const ids = state.batchDevices.filter(id => state.devices.some(d => d.deviceId === id));
+  if (!ids.length) { showToast('请先勾选至少一台可执行设备'); return; }
+
+  state.batchRunning = true;
+  state.batchStopRequested = false;
+  state.batchResults = ids.map(id => ({ deviceId: id, status: 'pending' }));
+  renderTaskDetail();
+  eventBus.dispatchEvent(new CustomEvent('task:running', { detail: { bundleId: bundle.id } }));
+
+  for (let i = 0; i < ids.length; i++) {
+    if (state.batchStopRequested) {
+      state.batchResults[i].status = 'skipped';
+      continue;
+    }
+    state.batchResults[i].status = 'running';
+    renderBatchResultsOnly();
+    const result = await executeBundle(bundle, ids[i], stepOptions);
+    const record = state.batchResults[i];
+    if (record) {
+      record.status = result?.cancelled ? 'cancelled' : result?.ok ? 'ok' : 'failed';
+      record.message = result?.message || '';
+    }
+    renderBatchResultsOnly();
+    if (result?.cancelled) state.batchStopRequested = true;
+    if (typeof loadDevices === 'function') loadDevices(true);
+  }
+
+  state.batchRunning = false;
+  renderTaskDetail();
+  loadSharedRuntimeState();
+  const ok = state.batchResults.filter(r => r.status === 'ok').length;
+  showToast(`组合任务结束：${ok}/${state.batchResults.length} 台成功`);
+}
+
 function renderDevicePicker() {
   if (!state.devices.length) return '<div class="selection-summary">暂无设备，请先在「设备」页确认</div>';
   // 平台在线状态可能滞后（离线设备仍可能可操作），与旧版一致不按在线状态禁选
@@ -454,12 +623,18 @@ function updateBatchCount() {
   const count = byId('batchCount');
   if (!count) return;
   const script = currentTaskScript();
+  const bundle = currentTaskBundle();
   const usable = state.batchDevices.filter(id => state.devices.some(d => d.deviceId === id));
   count.textContent = String(usable.length);
   const note = byId('detailNote');
-  if (note) note.textContent = script?.requiresDevice
-    ? '按选择顺序逐台执行，同一时刻只占用一台设备'
-    : '该任务不依赖设备';
+  if (!note) return;
+  if (bundle) {
+    note.textContent = '组合内步骤按顺序串行执行，多台设备逐台运行';
+  } else {
+    note.textContent = script?.requiresDevice
+      ? '并发运行'
+      : '该任务不依赖设备';
+  }
 }
 
 function resolveBatchDevices(script) {
@@ -508,6 +683,10 @@ async function onDetailClick(event) {
     return;
   }
 
+  if (event.target.closest('#bundleRunBtn')) {
+    await startBundleBatch();
+    return;
+  }
   if (event.target.closest('#batchRunBtn')) {
     await startTaskBatch();
     return;
@@ -531,6 +710,7 @@ async function onDetailClick(event) {
   }
   const bundleRun = event.target.closest('[data-bundle-run]');
   if (bundleRun) {
+    if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return; }
     const bundle = state.bundles.find(b => b.id === bundleRun.dataset.bundleRun);
     if (bundle) await executeBundle(bundle);
     return;
@@ -621,7 +801,8 @@ function stopTaskBatch() {
   if (!state.batchRunning) return;
   state.batchStopRequested = true;
   showToast('正在停止当前设备上的脚本…');
-  stopRunningScript();
+  if (state.activeBundleRun) stopRunningBundle();
+  else stopRunningScript();
 }
 
 function renderBatchResultsOnly() {
@@ -815,33 +996,37 @@ async function executeSingleStep(script, targetId, options = {}) {
   return runScriptOnDevice(script, targetId, options);
 }
 
-async function executeBundle(bundle) {
-  if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return; }
-  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
-  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
-  const targetId = state.selectedDeviceId;
+async function executeBundle(bundle, targetId = null, stepOptions = null) {
+  if (state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return { ok: false, message: '已有脚本在执行' }; }
+  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return { ok: false, message: '手动操作中' }; }
+  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return { ok: false, message: '未连接云机平台' }; }
+  const deviceId = targetId || state.selectedDeviceId;
   const steps = (bundle.stepIds || []).map((id, i) => {
     const script = state.scripts.find(s => s.id === id);
-    return script ? { script, options: { ...(bundle.stepOptions?.[i] || {}) } } : null;
+    // stepOptions 为详情面板收集的最终参数（已含清空语义），未提供时回退组合保存值
+    const options = Array.isArray(stepOptions) ? { ...(stepOptions[i] || {}) } : { ...(bundle.stepOptions?.[i] || {}) };
+    return script ? { script, options } : null;
   }).filter(Boolean);
-  if (!steps.length) { showToast('此组合未包含有效脚本步骤'); return; }
-  if (steps.some(step => step.script.requiresDevice) && !targetId) { showToast('此组合需要操作云机，请先选择目标云机'); return; }
+  if (!steps.length) { showToast('此组合未包含有效脚本步骤'); return { ok: false, message: '组合未包含有效步骤' }; }
+  if (steps.some(step => step.script.requiresDevice) && !deviceId) { showToast('此组合需要操作云机，请先选择目标云机'); return { ok: false, message: '未选择目标云机' }; }
 
   // 含「设置 VPC 代理」的步骤统一在组合开始前补一次代理数据输入，避免执行中途被打断
   const vpcSteps = steps.filter(step => isVpcProxyScript(step.script)
     && step.options.action !== 'show' && step.options.action !== 'close' && !step.options.vpcData);
   if (vpcSteps.length) {
     const vpcData = await promptVpcProxyDialog();
-    if (!vpcData) return;
+    if (!vpcData) return { ok: false, cancelled: true, message: '已取消代理数据输入' };
     for (const step of vpcSteps) step.options.vpcData = vpcData;
   }
 
   const bundleRunState = { bundleId: bundle.id, stopped: false };
   state.activeBundleRun = bundleRunState;
   const total = steps.length;
+  let ok = true;
+  let cancelled = false;
   writeOutput(`【开始执行组合脚本】: ${bundle.name}`, [
     `功能备注：${bundle.description || '无'}`,
-    `目标设备：${targetId ? deviceLabel(currentDevice()) : '无需设备'}`,
+    `目标设备：${deviceId ? deviceLabel(state.devices.find(d => d.deviceId === deviceId)) : '无需设备'}`,
     ...steps.map((step, i) => `  ${i + 1}. ${step.script.title}${describeStepOptions(step)}`)
   ]);
 
@@ -850,29 +1035,36 @@ async function executeBundle(bundle) {
       if (bundleRunState.stopped) {
         writeOutput(`【组合脚本人为中断】: ${bundle.name}`, ['用户已主动停止组合脚本，剩余步骤已取消。']);
         showToast('组合脚本已停止');
+        ok = false;
+        cancelled = true;
         break;
       }
       const step = steps[i];
       const script = step.script;
       if (script.destructive) {
-        const confirmed = await confirmDestructive(script, step.options, [targetId]);
+        const confirmed = await confirmDestructive(script, step.options, [deviceId]);
         if (!confirmed) {
           writeOutput(`【组合脚本取消】: 步骤 ${i + 1} (${script.title}) 为破坏性操作，已按确认弹窗取消。`, ['组合脚本后续步骤已终止。']);
           showToast(`步骤 ${i + 1} (${script.title}) 未确认执行，组合已停止`);
+          ok = false;
+          cancelled = true;
           break;
         }
         step.options.resetConfirmed = true;
       }
       writeOutput(`▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [`正在运行子脚本 ${script.id}...`]);
-      const stepRes = await executeSingleStep(script, targetId, step.options);
+      const stepRes = await executeSingleStep(script, deviceId, step.options);
       if (bundleRunState.stopped || stepRes.cancelled) {
         writeOutput(`【组合脚本中断】: 步骤 ${i + 1} (${script.title}) 已停止。`, ['终止后续执行。']);
         showToast(`组合脚本已在步骤 ${i + 1} 停止`);
+        ok = false;
+        cancelled = true;
         break;
       }
       if (!stepRes.ok) {
         writeOutput(`【组合脚本失败中断】: 步骤 ${i + 1} (${script.title}) 执行未达成`, ['组合脚本后续步骤已自动熔断中止。']);
         showToast(`步骤 ${i + 1} (${script.title}) 执行失败，组合已中断`);
+        ok = false;
         break;
       }
       writeOutput(`✓ [步骤 ${i + 1}/${total}] 成功达成: ${script.title}`, [`耗时: ${stepRes.durationMs ? (stepRes.durationMs / 1000).toFixed(1) + 's' : '--'}`]);
@@ -886,11 +1078,13 @@ async function executeBundle(bundle) {
   } catch (err) {
     writeOutput(`【组合脚本异常失败】: ${bundle.name}`, [err.message]);
     showToast('组合脚本异常: ' + err.message);
+    ok = false;
   } finally {
     state.activeBundleRun = null;
     loadSharedRuntimeState();
     if (typeof requestAllPreviews === 'function') requestAllPreviews();
   }
+  return { ok, cancelled };
 }
 
 function describeStepOptions(step) {

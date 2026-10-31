@@ -776,6 +776,10 @@ select.select { min-width: 120px; }
 .bundle-param-full { grid-column: 1 / -1; }
 .bundle-step-opts { font-weight: var(--fw-600); margin-left: var(--sp-2); }
 .bundle-step-actions { display: flex; gap: var(--sp-4); }
+.bundle-detail-step { border: 1px solid var(--line); border-radius: var(--r-8); padding: var(--sp-10) var(--sp-12); margin-bottom: var(--sp-10); }
+.bundle-detail-step-head { display: flex; align-items: center; gap: var(--sp-6); font-weight: var(--fw-600); font-size: var(--fs-12); margin-bottom: var(--sp-8); }
+.bundle-detail-step .field { margin-bottom: var(--sp-10); }
+.bundle-detail-step .field:last-child { margin-bottom: 0; }
 
 .btn-icon {
   width: var(--h-control);
