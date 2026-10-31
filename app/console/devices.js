@@ -156,7 +156,7 @@ function renderSingleViewer() {
     stage.dataset.viewerDevice = id;
     stage.innerHTML = `
       <div class="phone-stage">
-        <div class="device-frame" style="aspect-ratio: 9/16;"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
+        <div class="device-frame"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
         <div class="viewer-hint" hidden>正在连接画面…</div>
         <div class="offline-cover" hidden>设备离线</div>
       </div>
@@ -239,12 +239,9 @@ function createPreviewPlayer(device, canvas, hint, cover) {
       if (cover) cover.hidden = true;
       renderStatusBadges();
 
-      const stage = elements.viewerStage;
-      const currentFrame = stage?.querySelector('.device-frame');
       const w = stats?.width || canvas.width;
       const h = stats?.height || canvas.height;
-      if (w && h && currentFrame) {
-        currentFrame.style.aspectRatio = `${w} / ${h}`;
+      if (w && h) {
         updateDeviceMeta(device, { width: w, height: h });
       }
     },

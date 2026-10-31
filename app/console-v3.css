@@ -447,10 +447,11 @@ body:has(#page-overview:not([hidden])) .page {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  width: fit-content;
-  max-width: 440px;
+  width: clamp(280px, calc((100vh - 140px) * 0.5625), 340px);
   min-width: 280px;
+  max-width: 360px;
   overflow: hidden;
+  flex: none;
 }
 
 .ov-task-panel {
@@ -505,15 +506,16 @@ body:has(#page-overview:not([hidden])) .page {
 .device-chip.running small { color: var(--green); }
 
 .viewer {
-  background: #080d16;
+  background: #000000;
   flex: 1;
   min-height: 0;
   height: auto;
+  width: 100%;
   display: flex;
   align-items: stretch;
-  justify-content: flex-start; /* 靠左排列，不居中，零多余留白 */
+  justify-content: stretch;
   position: relative;
-  padding: 0; /* 消除内边距产生的黑边 */
+  padding: 0;
   overflow: hidden;
 }
 
@@ -523,7 +525,7 @@ body:has(#page-overview:not([hidden])) .page {
   position: relative;
   display: flex;
   align-items: stretch;
-  justify-content: flex-start;
+  justify-content: stretch;
   height: 100%;
   width: 100%;
   flex: 1;
@@ -531,9 +533,8 @@ body:has(#page-overview:not([hidden])) .page {
 
 .device-frame {
   height: 100%;
-  width: auto;
+  width: 100%;
   max-width: 100%;
-  aspect-ratio: 9 / 16;
   border: none;
   border-radius: 0;
   background: #000000;
@@ -541,8 +542,8 @@ body:has(#page-overview:not([hidden])) .page {
   overflow: hidden;
   display: flex;
   align-items: stretch;
-  justify-content: flex-start;
-  flex: none;
+  justify-content: center;
+  flex: 1;
 }
 
 .device-frame canvas, .device-frame img {
