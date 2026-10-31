@@ -17,6 +17,8 @@ Node 侧通过 src/automation/nickname-generator.js 桥接调用（-I 隔离模�
 
 import argparse
 import random
+import re
+from string import Formatter
 
 # 每个词库都经过语义分类，不能把所有汉字、词语无差别混合。
 WORDS = {
@@ -95,106 +97,323 @@ WORDS = {
     "land_place": "南山 山谷 山间 林间 花田".split(),
     "land_action": "听风 等雨 看花 散步 写诗".split(),
     "literary_image": "远山 旧梦 花影 月色 微光 风声 星光 云影 树影 春光".split(),
+    "soft_journal_tail": "日记 手记 小札 碎碎念 晚安 小窝".split(),
+    "gentle_verb": "发光 盛开 散步 吹风 长大 看海".split(),
+    "gentle_time": "今晚 明天 周末 春日 午后 夏日 清晨".split(),
+    "gentle_wish": "早点睡 去散步 看日落 晒太阳 看海 赏花 写信 吹晚风".split(),
+    "literary_tail": "来信 手记 诗集 备忘录 随笔 小札".split(),
+
+    "cool_short": """
+        北岛 北岸 雾屿 深蓝 灰白 无声 晚舟 白夜 雾眠 寂川
+        冷月 深海 南渡 寒枝 夜航 无岸 迟暮 落潮 霜序
+        听雪 静川 青灰 暮雪 空山 白昼 秋岚
+    """.split(),
+    "cool_pair_weather": "雾 雨 月 夜".split(),
+    "fall_weather": "雨 雪 月".split(),
+    "fall_place": "北岸 南枝 旧城 山谷 林间 山巅".split(),
+    "cool_item": "回音 旧信 微光 回忆 倒影 余温 日落 月色 风声 海风 白噪音 梦境 晚安 沉默 星光".split(),
+    "cool_place": "北岸 南枝 孤岛 深海 林间 山谷 旧城 海面".split(),
+    "cool_scene": "雾中 雨夜 雪后 夜里 月下 海边 林间".split(),
+    "cool_action": "听雨 看海 等雪 独行 失眠 写信 沉默".split(),
+    "cool_tail": "无声 未眠 不语 来信 有雾 入夜".split(),
+    "cool_color": "深蓝 浅灰 雾白 冷白 青黑 银灰".split(),
+
+    "fun_food": "薯条 布丁 奶茶 芝士 饭团 麻薯 甜筒 香菜 土豆 草莓".split(),
+    "fun_fate": "跑路了 失踪了 逃跑了 罢工了 掉线了 睡着了".split(),
+    "fun_activity": "上班 上学 起床 出门 洗头 营业 社交 早起".split(),
+    "fun_status": "摸鱼中 发呆中 加载中 装睡中 充电中 失眠中 放空中 思考人生".split(),
+    "fun_creature": "困困小猫 暴躁小熊 迷路企鹅 摆烂小狗 偷懒海豹 发呆小羊".split(),
+    "fun_nickname": """
+        人类观察员 摸鱼选手 睡觉冠军 熬夜选手 低电量少女
+        奶茶品鉴员 赖床研究员 不想营业本人 快乐废物
+        头脑空空星人 拖延症患者 小猫代理人
+    """.split(),
+    "fun_excuse": "我只是路过 我什么都不知道 我要下班 我还没睡醒 不是本人 我很忙但没事干".split(),
+    "fun_adv": "偷偷 正在 还在 一直在 又在".split(),
+    "fun_verb": "摸鱼 发呆 偷懒 装睡 赖床 吃零食 看热闹".split(),
+
+    "retro_short": """
+        晚棠 南笺 青禾 知意 初棠 云笺 青黛 如许 书瑶
+        晚照 予棠 清词 见欢 枝意 旧梦 竹眠 南音
+        砚秋 听澜 念初 令仪 余欢 栖月 昭昭
+    """.split(),
+    "retro_flower": "海棠 玉兰 山茶 栀子 桃花 梨花 桂花".split(),
+    "retro_scene": "月下 江南 庭前 雨巷 山间 旧巷".split(),
+    "retro_action": "听雨 赏月 看花 煮茶 等风 写诗".split(),
+    "retro_tail": "小记 旧事 来信 手札 花笺 随笔".split(),
+    "retro_place": "庭前 江南 旧巷 长街 山间 院里 雨巷 城南".split(),
+
+    "english": "momo coco nana lulu luna yuki kiki yoyo nino mimi riri may mia ella aria yuna milo lumi noah nini soso lily".split(),
+    "english_tail": "daily notes diary here little mood days".split(),
+    "en_digits": "07 11 17 21 27 77 99".split(),
+    "en_cn_tail": "日记 小窝 碎碎念 日常 来信".split(),
+    "minimal_word": "阿梨 初七 木木 小也 北北 小满 七喜 一一 妮妮 小鱼 无恙 见月 小鹿 可可 七喜 柒柒 小九 阿宁 予安 星野 子沐 南枝 苏苏 暖暖 玖玖 安安".split(),
+    "minimal_single": "梨 柚 沐 七 九 夏 宁 棠 南 栀 鹿 禾 枝 冉 安 乔 予".split(),
+    "minimal_digit": "7 9 11 17 77 99".split(),
+    "mature_short": "简宁 未央 如初 知安 南知 南音 若宁 听澜 晚宁 见素 予安 清欢 安然 亦舒 沉香 迟夏 梧桐 初晴 暮青 微澜 晚亭 予清 清禾 知微 林听 望舒".split(),
+    "mature_tail": "慢生活 日常 手记 小记 生活志 随笔 碎碎念".split(),
+    "mature_mood": "顺其自然 随遇而安 慢慢来 刚刚好 不慌不忙 一切随缘 保持热爱 慢一点也好".split(),
+    "mature_scene": "一杯清茶 半盏清欢 人间烟火 山间晚风 午后阳光 雨后晴天 四时有序".split(),
+    "mature_theme": "生活 时光 日子 日落 晚风 花开 四季".split(),
+    "mature_place": "路上 海边 山间 城市里 小院里".split(),
+    "mature_act": "散步 看展 看书 听雨 喝茶 看日落".split(),
+    "game_short": "别抢我蓝 摸鱼上分中 今天不排位 辅助不背锅 只会奶队友 不想开麦 打野别抓我 泉水散步员 队友别急 我先苟一下".split(),
+    "game_action": "开麦 排位 上分 打野 补刀 开团 带节奏".split(),
+    "game_role": "辅助 中单 法师 射手 奶妈 打野".split(),
+    "game_state": "在线 等队友 蹲草里 偷偷上分 加载中 挂机喝水 练英雄".split(),
 }
 
-# 词库加载时去重（保持原顺序），避免重复词抬高某些组合的命中率。
-WORDS = {key: list(dict.fromkeys(values)) for key, values in WORDS.items()}
+# 删除词库里的重复词（保留先后顺序）。
+for _key, _items in WORDS.items():
+    WORDS[_key] = list(dict.fromkeys(_items))
 
-# 模板按风格域分组：{槽位} 从对应词库随机取词。
-# 命名原则：口语自然、长度 2~9 字、避免生硬拼接。
-TEMPLATES = {
+# (权重, 模板)。少量直出简短昵称，更多用符合中文口语的组合句式。
+# 注意：风格单独分库，避免“奶茶月光温柔酱”这种机械拼接。
+RULES = {
     "日常": [
-        "{nick}",
-        "{nick}{casual_tail}",
-        "{nick}的{casual_object}",
-        "{casual_manner}{casual_state}的{nick}",
-        "在{casual_location}{casual_state}",
-        "今天也想{casual_wish}",
-        "{small_nickname}{warm_suffix}",
-        "{first_name}{casual_tail}",
+        (35, "{nick}"), (14, "{first_name}"),
+        (10, "是{nick}呀"), (8, "这里是{nick}"),
+        (9, "{nick}{casual_tail}"), (6, "{nick}的{casual_object}"),
+        (8, "{nick}{casual_manner}{casual_state}"),
+        (7, "{nick}今天想{casual_wish}"),
+        (5, "{nick}在{casual_location}"),
+        (5, "{small_nickname}{warm_suffix}"),
     ],
     "甜美": [
-        "{cute_prefix}{food}",
-        "{food}{cute_suffix}",
-        "{cute_pet}{cute_pet_action}中",
-        "{sugar_level}{food_drink}",
-        "{drink}",
-        "{cute_pet}和{food}",
-        "{cute_prefix}的{cute_pet}",
-        "{cute_mood}",
+        (16, "{food}"), (9, "{drink}"),
+        (10, "{cute_prefix}{food}"),
+        (13, "{food}{cute_suffix}"),
+        (9, "{cute_pet}{cute_suffix}"),
+        (12, "{cute_pet}在{cute_pet_action}"),
+        (10, "{nick}{cute_mood}"),
+        (10, "{sugar_level}{food_drink}"),
+        (8, "{food}和{food_drink}"),
+        (5, "{cute_prefix}{cute_pet}"),
     ],
     "温柔": [
-        "{gentle_short}",
-        "{gently_thing}与{soft_object}",
-        "{soft_verb}{soft_object}",
-        "{night_time}的{night_object}",
-        "{day_time}的{day_object}",
-        "{slow_adverb}{slow_action}的{gentle_short}",
-        "{warm_season}的{nature}",
-        "{slow_adverb}{slow_action}",
+        (27, "{gentle_short}"),
+        (10, "{season}来信"),
+        (8, "{nature}来信"),
+        (11, "{soft_verb}{soft_object}"),
+        (9, "{day_time}的{day_object}"),
+        (9, "{night_time}的{night_object}"),
+        (10, "{slow_adverb}{slow_action}"),
+        (9, "{season}有{gently_thing}"),
+        (7, "把{soft_object}装进口袋"),
+        (12, "{nick}的{gently_thing}"),
+        (10, "{gentle_short}的{soft_journal_tail}"),
+        (7, "{gentle_time}想{gentle_wish}"),
+        (9, "{gentle_short}呀"),
     ],
     "文艺": [
-        "{literary_short}",
-        "{letter_to}来信",
-        "{literary_image}",
-        "{literary_pair_a}{literary_pair_b}",
-        "{literary_image}与{literary_image}",
-        "{night_time}{literary_image}",
-        "{sea_place}{sea_action}",
-        "{land_place}{land_action}",
-        "{season}的{literary_image}",
+        (22, "{literary_short}"),
+        (12, "{literary_subject}{literary_tail}"),
+        (10, "写给{letter_to}的信"),
+        (10, "{journal_subject}手记"),
+        (10, "{literary_pair_a}与{literary_pair_b}"),
+        (9, "在{sea_place}{sea_action}"),
+        (9, "在{land_place}{land_action}"),
+        (8, "{warm_season}的{day_object}"),
+        (8, "{letter_to}的慢日记"),
+        (8, "关于{literary_subject}"),
+        (12, "{literary_short}的{literary_tail}"),
+        (9, "{nick}的{literary_tail}"),
+        (9, "{literary_subject}寄来{soft_object}"),
+        (8, "{literary_image}落在{far_place}"),
+        (10, "{far_place}的{literary_image}"),
+    ],
+    "清冷": [
+        (31, "{cool_short}"),
+        (12, "{fall_weather}落{fall_place}"),
+        (9, "{cool_scene}{cool_action}"),
+        (11, "{cool_place}{cool_tail}"),
+        (8, "{cool_color}来信"),
+        (7, "{cool_pair_weather}与{cool_place}"),
+        (8, "{cool_scene}未眠"),
+        (8, "{cool_place}的夜"),
+        (13, "{cool_short}的{cool_item}"),
+        (12, "{cool_place}的{cool_item}"),
+        (10, "{night_time}的{cool_item}"),
+        (9, "{cool_color}的{cool_item}"),
+        (8, "{cool_short}{cool_tail}"),
+    ],
+    "搞怪": [
+        (17, "{fun_nickname}"),
+        (16, "今天不想{fun_activity}"),
+        (10, "{nick}不想{fun_activity}"),
+        (13, "{fun_food}{fun_fate}"),
+        (11, "{fun_creature}"),
+        (12, "{fun_status}"),
+        (8, "{fun_excuse}"),
+        (10, "{fun_adv}{fun_verb}"),
+        (7, "{nick}{fun_status}"),
+    ],
+    "复古": [
+        (30, "{retro_short}"),
+        (14, "{retro_flower}{retro_tail}"),
+        (13, "{retro_scene}{retro_action}"),
+        (11, "{retro_flower}未眠"),
+        (10, "{retro_scene}来信"),
+        (9, "{retro_flower}与月"),
+        (12, "{retro_short}{retro_tail}"),
+        (12, "{retro_short}的{retro_tail}"),
+        (10, "{retro_short}与{retro_flower}"),
+        (10, "{retro_flower}落{retro_place}"),
+        (7, "{retro_scene}的{retro_flower}"),
+        (8, "{retro_short}在{retro_place}"),
+        (7, "{first_name}的{retro_tail}"),
+    ],
+    "英文": [
+        (37, "{english}"),
+        (13, "{english}_{en_digits}"),
+        (10, "{english}.{en_digits}"),
+        (12, "little.{english}"),
+        (12, "{english}.{english_tail}"),
+        (10, "{english}{en_cn_tail}"),
+        (12, "{english}_{english}"),
+        (12, "{english}.{english}"),
+        (6, "{english}{en_digits}"),
+        (4, "{english}.{english_tail}.{en_digits}"),
+    ],
+    "极简": [
+        (50, "{minimal_word}"),
+        (14, "{minimal_single}"),
+        (10, "阿{minimal_single}"),
+        (9, "小{minimal_single}"),
+        (7, "{minimal_single}{minimal_single}"),
+        (6, "{minimal_word}{minimal_digit}"),
+        (4, "{minimal_word}_"),
+    ],
+    "成熟": [
+        (27, "{mature_short}"),
+        (18, "{mature_mood}"),
+        (14, "{mature_scene}"),
+        (15, "{mature_short}的{mature_tail}"),
+        (11, "{mature_theme}刚刚好"),
+        (10, "{mature_short}与{mature_theme}"),
+        (9, "{mature_scene}手记"),
+        (8, "{mature_short}{mature_tail}"),
+        (8, "{mature_short}慢慢来"),
+        (9, "{mature_short}在{mature_place}"),
+        (9, "{mature_short}今天{mature_act}"),
+    ],
+    "游戏": [
+        (22, "{game_short}"),
+        (15, "{nick}不想{game_action}"),
+        (15, "{nick}{game_state}"),
+        (12, "{nick}只会{game_role}"),
+        (11, "今天不想{game_action}"),
+        (10, "{game_role}不背锅"),
+        (8, "{game_role}正在{game_action}"),
     ],
 }
-# 混合 = 四个风格域全部参与。
-TEMPLATES["混合"] = [t for style in ("日常", "甜美", "温柔", "文艺") for t in TEMPLATES[style]]
 
-STYLE_ORDER = ["日常", "甜美", "温柔", "文艺", "混合"]
+# 混合模式：尽量接近社交平台常见昵称的分布，而非各风格等概率。
+STYLE_WEIGHTS = {
+    "日常": 30,
+    "甜美": 17,
+    "温柔": 13,
+    "文艺": 9,
+    "清冷": 7,
+    "搞怪": 8,
+    "复古": 4,
+    "英文": 3,
+    "极简": 3,
+    "成熟": 3,
+    "游戏": 3,
+}
+
+ALIASES = {
+    "mix": "混合", "all": "混合", "random": "混合",
+    "daily": "日常", "cute": "甜美", "gentle": "温柔",
+    "literary": "文艺", "cool": "清冷", "funny": "搞怪",
+    "retro": "复古", "english": "英文", "minimal": "极简", "mature": "成熟", "gaming": "游戏",
+}
+
+_FORMATTER = Formatter()
+_RULE_FIELDS = {
+    template: tuple(field for _, field, _, _ in _FORMATTER.parse(template) if field)
+    for rules in RULES.values()
+    for _, template in rules
+}
 
 
-def generate_names(count=10, style="混合", seed=None, rng=None):
-    """生成 count 个不重复网名；词库/模板耗尽时返回实际可得的最大数量。"""
-    if style not in TEMPLATES:
-        raise ValueError(f"未知风格: {style}（可选: {'/'.join(STYLE_ORDER)}）")
-    if rng is None:
-        rng = random.Random(seed)
-    results = []
+def _weighted_choice(rng, pairs):
+    """按照 (权重, 值) 列表挑选一个值。"""
+    return rng.choices([value for weight, value in pairs],
+                       weights=[weight for weight, value in pairs], k=1)[0]
+
+
+def _make_one(style, rng):
+    chosen_style = style
+    if style == "混合":
+        chosen_style = rng.choices(list(STYLE_WEIGHTS),
+                                   weights=list(STYLE_WEIGHTS.values()), k=1)[0]
+    template = _weighted_choice(rng, RULES[chosen_style])
+    parts = {field: rng.choice(WORDS[field]) for field in _RULE_FIELDS[template]}
+    name = template.format(**parts)
+    return name
+
+
+def _natural_enough(name):
+    """仅保留必要的机械过滤；核心质量来自上方分风格的语义模板。"""
+    if not 2 <= len(name) <= 14:
+        return False
+    if re.search(r"\s|[\t\r\n]", name) or "偷偷偷" in name:
+        return False
+    # 如："月与月"、"雨与雨"，或者 "海边看海" (后者仍可能自然，不做武断剔除)
+    if re.search(r"^(.)与\1$", name):
+        return False
+    # 防止纯意外拼接重复字串；不过滤本来就自然的叠字昵称。
+    if re.search(r"(.{2,})\1", name):
+        return False
+    if re.fullmatch(r"([a-z]+)[._]\1", name):
+        return False
+    return True
+
+
+def generate_names(count=20, style="混合", seed=None):
+    """返回不重复的女生网名列表。style 可选：混合/日常/甜美/温柔/文艺/清冷/搞怪/复古/英文/极简/成熟/游戏。"""
+    style = ALIASES.get(style.lower(), style) if isinstance(style, str) else style
+    if style != "混合" and style not in RULES:
+        raise ValueError("不支持的风格：{}；可选：混合、{}".format(style, "、".join(RULES)))
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        raise ValueError("count 必须是非负整数")
+    if count > 100000:
+        raise ValueError("单次最多请求 100000 个；建议分批生成")
+
+    rng = random.Random(seed)
+    names = []
     seen = set()
-    attempts = 0
-    max_attempts = count * 200 + 2000
-    while len(results) < count and attempts < max_attempts:
-        attempts += 1
-        template = rng.choice(TEMPLATES[style])
-        try:
-            name = template.format(**{k: rng.choice(v) for k, v in WORDS.items()})
-        except (KeyError, IndexError):
-            continue
-        name = name.strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        results.append(name)
-    return results
-
-
-def list_styles():
-    return {style: len(templates) for style, templates in TEMPLATES.items() if style != "混合"}
+    # 有些短风格的组合数有限，尝试足够次数后停止，不用假名字凑数。
+    max_attempts = min(300000, max(300, count * 30))
+    for _ in range(max_attempts):
+        if len(names) >= count:
+            break
+        name = _make_one(style, rng)
+        if name not in seen and _natural_enough(name):
+            seen.add(name)
+            names.append(name)
+    return names
 
 
 def main():
-    parser = argparse.ArgumentParser(description="离线女生网名生成器（仅标准库）")
-    parser.add_argument("-n", "--count", type=int, default=10, help="生成数量（默认 10）")
-    parser.add_argument("-s", "--style", default="混合", help=f"风格（可选: {'/'.join(STYLE_ORDER)}）")
-    parser.add_argument("--seed", type=int, default=None, help="随机种子（可复现）")
-    parser.add_argument("--styles", action="store_true", help="查看可用风格后退出")
+    parser = argparse.ArgumentParser(description="离线女生网名生成器（不需要联网、AI、第三方库）")
+    parser.add_argument("-n", "--count", type=int, default=20, help="生成数量，默认 20")
+    parser.add_argument("-s", "--style", default="混合", help="网名风格，默认 混合")
+    parser.add_argument("--seed", type=int, default=None, help="随机种子；相同种子得到相同结果")
+    parser.add_argument("--styles", action="store_true", help="列出可用风格")
     args = parser.parse_args()
-
     if args.styles:
-        for style, count in list_styles().items():
-            print(f"{style}\t{count} 个模板")
+        print("混合、" + "、".join(RULES))
         return
-
-    for name in generate_names(args.count, style=args.style, seed=args.seed):
-        print(name)
+    try:
+        result = generate_names(args.count, args.style, args.seed)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print("\n".join(result))
+    if len(result) != args.count:
+        print("注意：该风格只能生成 {} 个不重复的网名，请减少数量或改用混合模式。".format(len(result)), file=__import__("sys").stderr)
 
 
 if __name__ == "__main__":
