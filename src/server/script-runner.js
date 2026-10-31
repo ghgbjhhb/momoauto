@@ -25,6 +25,7 @@ const {
   selectedDevice
 } = require('./context');
 const { SCRIPT_DEFINITIONS, scriptById } = require('./script-catalog');
+const { targetDeviceId } = require('../automation/runtime');
 const { redact } = require('./http');
 
 const authService = getAuthService();
@@ -163,7 +164,7 @@ async function runScriptMeasured(script, env, run) {
   });
   const file = path.join(PROJECT_ROOT, script.file || step?.source);
   if (step) {
-    if (!/^[A-Za-z0-9_-]+$/.test(String(env.YUNMOMO_DEVICE_ID || ''))) throw new Error('请用 YUNMOMO_DEVICE_ID 指定目标云机');
+    targetDeviceId(undefined, env);
     if (!env.YUNMOMO_TOKEN) throw new Error('请通过 YUNMOMO_TOKEN 提供当前登录令牌');
     env = {
       ...env,

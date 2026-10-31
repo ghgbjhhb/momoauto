@@ -22,7 +22,7 @@ const { classifyGreetingsScreen } = require('../tools/momo/greetings-layout');
 const { extractChatContactName, normalize } = require('../tools/momo/chat-history-sync');
 const { defaultArbiter } = require('../server/device-arbiter');
 const { sleep } = require('../automation/cancellation');
-const { PROJECT_ROOT, redact } = require('../automation/runtime');
+const { PROJECT_ROOT, redact, targetDeviceId } = require('../automation/runtime');
 
 const DESCRIPTION = 'MOMO 监听中枢：支持挂机巡检模式与全量翻底模式，执行入库 -> AI回复 -> 二次入库闭环';
 
@@ -779,35 +779,12 @@ async function runMomoMessageWatch(client, deviceId, options = {}) {
 }
 
 function parseArgs(argv) {
-  if (!process.env.YUNMOMO_TOKEN) {
-    try {
-      const fsSync = require('node:fs');
-      const envPath = path.join(PROJECT_ROOT, '.env.local');
-      if (fsSync.existsSync(envPath)) {
-        const raw = fsSync.readFileSync(envPath, 'utf8');
-        for (const line of raw.split(/\r?\n/)) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) continue;
-          const idx = trimmed.indexOf('=');
-          if (idx <= 0) continue;
-          const key = trimmed.slice(0, idx).trim();
-          let val = trimmed.slice(idx + 1).trim();
-          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-            val = val.slice(1, -1);
-          }
-          if (!process.env[key]) process.env[key] = val;
-        }
-      }
-    } catch {}
-  }
-
   const envMode = process.env.YUNMOMO_MOMO_WATCH_MODE;
   const envMax = process.env.YUNMOMO_MOMO_MAX_CONTACTS;
   const envWarmup = process.env.YUNMOMO_MOMO_WARMUP_INTERVAL;
   const envGreetings = process.env.YUNMOMO_MOMO_GREETINGS_INTERVAL;
 
   const options = {
-    deviceId: process.env.YUNMOMO_DEVICE_SF || '2030225672972312577',
     mode: envMode || 'watch', // 'watch' (1. 挂机模式) | 'drain' (2. 全量模式)
     maxContacts: Infinity,
     greetingsIntervalMs: DEFAULT_GREETINGS_INTERVAL_MS,
@@ -846,6 +823,7 @@ function parseArgs(argv) {
     }
   }
 
+  options.deviceId = targetDeviceId(options.deviceId);
   return options;
 }
 

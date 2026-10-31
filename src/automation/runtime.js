@@ -35,6 +35,15 @@ function redact(value) {
     .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted-token>');
 }
 
+// 目标云机解析的唯一入口：显式传入优先，其次 YUNMOMO_DEVICE_ID；二者皆缺时明确失败，绝不回退到猜测的设备。
+function targetDeviceId(explicitId, env = process.env) {
+  const value = String(explicitId ?? '').trim() || String(env.YUNMOMO_DEVICE_ID ?? '').trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error('未指定目标云机：请通过 --device 参数或 YUNMOMO_DEVICE_ID 环境变量提供设备 ID');
+  }
+  return value;
+}
+
 function launchCli(main) {
   return Promise.resolve().then(timedScript('script.' + path.basename(process.argv[1] || 'cli', '.js'), main)).catch(error => {
     console.error(redact(error.message));
@@ -43,4 +52,4 @@ function launchCli(main) {
   });
 }
 
-module.exports = { PROJECT_ROOT, redact, launchCli };
+module.exports = { PROJECT_ROOT, redact, launchCli, targetDeviceId };
