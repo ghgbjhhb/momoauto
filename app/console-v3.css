@@ -413,207 +413,13 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 .overview {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-12);
   height: 100%;
   min-height: 0;
   overflow: hidden;
   align-items: stretch;
-}
-
-/* ---------- 总览页左侧设备列表侧栏 ---------- */
-.ov-dev-sidebar {
-  width: 230px;
-  flex: none;
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-10);
-  overflow: hidden;
-  transition: width var(--dur-2), margin var(--dur-2), opacity var(--dur-2);
-}
-
-.ov-dev-sidebar.collapsed {
-  display: none !important;
-}
-
-.ov-dev-sidebar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-10) var(--sp-12);
-  border-bottom: 1px solid var(--line);
-  flex: none;
-}
-
-.ov-dev-sidebar-title-box {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-6);
-}
-
-.ov-dev-sidebar-title {
-  font-size: var(--fs-13);
-  font-weight: var(--fw-700);
-  color: var(--text);
-}
-
-.ov-dev-sidebar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4);
-}
-
-.ov-dev-sidebar-search {
-  padding: var(--sp-6) var(--sp-10);
-  border-bottom: 1px solid var(--line);
-  background: var(--soft);
-  flex: none;
-}
-
-.ov-dev-sidebar-search input {
-  width: 100%;
-  height: 28px;
-  font-size: var(--fs-12);
-  border-radius: var(--r-6);
-  padding: 0 var(--sp-8);
-  border: 1px solid var(--line-strong);
-  background: var(--card);
-  color: var(--text);
-}
-
-.ov-dev-cards {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  padding: var(--sp-8);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
-}
-
-/* 设备列表单个卡片 */
-.ov-dev-card {
-  padding: var(--sp-8) var(--sp-10);
-  border: 1px solid var(--line);
-  border-radius: var(--r-8);
-  background: var(--card);
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
-  transition: border-color var(--dur-2), background-color var(--dur-2), box-shadow var(--dur-2);
-}
-
-.ov-dev-card:hover {
-  border-color: var(--blue-chip);
-  background: var(--soft);
-}
-
-.ov-dev-card.selected {
-  border-color: var(--blue);
-  background: var(--blue-light);
-  box-shadow: 0 0 0 1px var(--blue);
-}
-
-.ov-dev-card.running {
-  border-left: 3px solid var(--green);
-}
-
-.ov-dev-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-6);
-}
-
-.ov-dev-card-name-box {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-6);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.ov-dev-card-index {
-  font-size: var(--fs-12);
-  font-weight: var(--fw-700);
-  color: var(--blue);
-  flex: none;
-}
-
-.ov-dev-card-name {
-  font-size: var(--fs-12);
-  font-weight: var(--fw-600);
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-dev-card-ip {
-  font-size: var(--fs-10);
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--soft);
-  padding: 2px 6px;
-  border-radius: var(--r-4);
-}
-
-.ov-dev-card.selected .ov-dev-card-ip {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.ov-dev-card-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-6);
-  padding-top: var(--sp-2);
-}
-
-.ov-dev-card-sub {
-  font-size: var(--fs-10);
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-dev-card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4);
-  flex: none;
-}
-
-.ov-dev-toggle-btn {
-  height: 26px;
-  padding: 0 var(--sp-8);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-4);
-  font-size: var(--fs-11);
-  font-weight: var(--fw-600);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-6);
-  background: var(--card);
-  color: var(--text);
-  flex: none;
-}
-
-.ov-dev-toggle-btn:hover {
-  border-color: var(--blue);
-  color: var(--blue);
 }
 
 .ov-left {
@@ -1847,19 +1653,21 @@ body:has(#page-overview:not([hidden])) .page {
   display: flex;
   flex-direction: column;
   gap: var(--sp-8);
-  padding-top: var(--sp-10);
+  padding-top: var(--sp-12);
+  padding-bottom: 54px; /* 抬高 54px，按钮完全避开右下角日志浮窗胶囊！ */
   border-top: 1px solid var(--line);
   flex: none;
 }
 
 .ov-wb-btn-run {
-  height: 38px;
-  font-size: var(--fs-13);
+  height: 42px; /* 增加高度更饱满 */
+  font-size: var(--fs-14);
   font-weight: var(--fw-600);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-6);
+  gap: var(--sp-8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .ov-wb-empty-fields {
@@ -1904,4 +1712,137 @@ body:has(#page-overview:not([hidden])) .page {
   gap: var(--sp-4);
   font-size: var(--fs-12);
   color: var(--text);
+}
+
+/* ---------- 侧边栏折叠设备子列表 ---------- */
+.nav-item-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-8);
+  width: 100%;
+  padding: var(--sp-10) var(--sp-12);
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-8);
+  text-align: left;
+  font-weight: var(--fw-500);
+  transition: background-color var(--dur-2), color var(--dur-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.nav-btn-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-10);
+  min-width: 0;
+}
+
+.nav-btn-tail {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  flex: none;
+}
+
+.nav-count-badge {
+  font-size: var(--fs-10);
+  font-weight: var(--fw-700);
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--soft-2);
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.nav-chevron-icon {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  transition: transform var(--dur-2);
+}
+
+.nav-chevron-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.nav-sub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 6px 10px;
+  margin-left: var(--sp-14);
+  border-left: 2px solid var(--line);
+}
+
+.nav-sub-list.collapsed {
+  display: none !important;
+}
+
+.nav-sub-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-6) var(--sp-8);
+  border-radius: var(--r-6);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: var(--fs-12);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--dur-2), color var(--dur-2);
+  user-select: none;
+}
+
+.nav-sub-item:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.nav-sub-item.active {
+  background: var(--blue-light);
+  color: var(--blue);
+  font-weight: var(--fw-600);
+  border-color: var(--blue-chip);
+}
+
+.nav-sub-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nav-sub-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  flex: none;
+}
+
+.nav-sub-dot.online { background: var(--green); }
+.nav-sub-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.nav-sub-dot.offline { background: var(--red); }
+
+.nav-sub-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-sub-status {
+  font-size: var(--fs-10);
+  color: var(--muted);
+  flex: none;
 }

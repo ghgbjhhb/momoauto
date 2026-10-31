@@ -37,6 +37,9 @@ function createPageId() {
 }
 
 const state = {
+  devicesNavExpanded: (function() {
+    try { return localStorage.getItem('yunmomo.nav.devicesExpanded') !== 'false'; } catch { return true; }
+  })(),
   pageId: createPageId(),
   page: 'overview',
   view: 'single',
@@ -417,11 +420,54 @@ const NAVS = [
 ];
 
 function navButtonHtml(page, title, icon) {
-  return `<button class="nav-btn ${state.page === page ? 'active' : ''}" data-goto="${page}" type="button" aria-label="${title}">${ic(icon, 18)}<span>${title}</span></button>`;
+  return `<button class="nav-btn ${state.page === page ? 'active' : ''}" data-goto="${page}" type="button" aria-label="${title}"><div class="nav-btn-main">${ic(icon, 18)}<span>${title}</span></div></button>`;
+}
+
+function navDevicesGroupHtml() {
+  const expanded = Boolean(state.devicesNavExpanded);
+  const total = (state.devices || []).length;
+  const isDevicesActive = state.page === 'devices' || state.page === 'overview';
+
+  const subItems = (state.devices || []).map(device => {
+    const isSelected = state.selectedDeviceId === device.deviceId;
+    const statusKey = typeof window.deviceStatusKey === 'function' ? window.deviceStatusKey(device) : (device.online ? 'online' : 'down');
+    const statusText = typeof window.STATUS_TEXT !== 'undefined' ? (window.STATUS_TEXT[statusKey] || '在线') : '在线';
+    const indexLabel = typeof window.deviceIndexLabel === 'function' ? window.deviceIndexLabel(device) : '#01';
+    return `
+      <button class="nav-sub-item ${isSelected ? 'active' : ''}" data-nav-device="${escapeHtml(device.deviceId)}" type="button" title="${escapeHtml(device.name || device.deviceId)}">
+        <div class="nav-sub-left">
+          <span class="nav-sub-dot ${statusKey === 'busy' ? 'running' : statusKey === 'online' ? 'online' : 'offline'}"></span>
+          <span class="nav-sub-name">${indexLabel} ${escapeHtml(device.name)}</span>
+        </div>
+        <span class="nav-sub-status">${statusText}</span>
+      </button>
+    `;
+  }).join('');
+
+  return `
+    <div class="nav-item-group">
+      <button class="nav-btn ${isDevicesActive ? 'active' : ''}" data-nav-toggle-devices type="button" aria-label="设备">
+        <div class="nav-btn-main">
+          ${ic('phoneDevice', 18)}
+          <span>设备</span>
+        </div>
+        <div class="nav-btn-tail">
+          <span class="nav-count-badge">${total}</span>
+          <span class="nav-chevron-icon ${expanded ? 'expanded' : ''}">${ic('chevron', 13)}</span>
+        </div>
+      </button>
+      <div class="nav-sub-list ${expanded ? '' : 'collapsed'}" id="navDevicesSubList">
+        ${subItems || '<div class="hint" style="font-size:11px; padding:4px 8px;">暂无云机</div>'}
+      </div>
+    </div>
+  `;
 }
 
 function renderShell() {
-  const navHtml = NAVS.map(([p, t, i]) => navButtonHtml(p, t, i)).join('');
+  const navHtml = NAVS.map(([p, t, i]) => {
+    if (p === 'devices') return navDevicesGroupHtml();
+    return navButtonHtml(p, t, i);
+  }).join('');
   const nav = elements.navMenu;
   if (nav) nav.innerHTML = navHtml;
   const embedNav = elements.embedNav;
@@ -443,25 +489,13 @@ function setPage(page) {
   if (!NAVS.some(x => x[0] === page)) page = 'overview';
   state.page = page;
 
-  if (page === 'devices') {
-    // 点击导航「设备」：直接定位到总览工作台并展开左侧设备列表
+  if (page === 'devices' || page === 'overview') {
+    // 聚焦总览实时操控与任务工作台
     for (const section of document.querySelectorAll('.page-section')) {
       section.hidden = section.id !== 'page-overview';
     }
     renderShell();
-    if (typeof window.openDeviceSidebar === 'function') {
-      window.openDeviceSidebar();
-    }
-    eventBus.dispatchEvent(new CustomEvent('page:changed', { detail: { page: 'devices' } }));
-    return;
-  }
-
-  if (page === 'overview') {
-    for (const section of document.querySelectorAll('.page-section')) {
-      section.hidden = section.id !== 'page-overview';
-    }
-    renderShell();
-    eventBus.dispatchEvent(new CustomEvent('page:changed', { detail: { page: 'overview' } }));
+    eventBus.dispatchEvent(new CustomEvent('page:changed', { detail: { page } }));
     return;
   }
 
@@ -498,6 +532,29 @@ function initTheme() {
 /* ---------- 全局交互 ---------- */
 
 document.addEventListener('click', event => {
+  const toggleDevices = event.target.closest('[data-nav-toggle-devices]');
+  if (toggleDevices) {
+    state.devicesNavExpanded = !state.devicesNavExpanded;
+    try { localStorage.setItem('yunmomo.nav.devicesExpanded', state.devicesNavExpanded ? 'true' : 'false'); } catch {}
+    setPage('overview');
+    renderShell();
+    return;
+  }
+
+  const navDevice = event.target.closest('[data-nav-device]');
+  if (navDevice) {
+    const deviceId = navDevice.dataset.navDevice;
+    if (typeof window.selectDevice === 'function') {
+      window.selectDevice(deviceId);
+    }
+    if (state.page !== 'overview') {
+      setPage('overview');
+    } else {
+      renderShell();
+    }
+    return;
+  }
+
   const button = event.target.closest('button, a.btn');
   if (!button) return;
   const goto = button.dataset.goto;

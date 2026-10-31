@@ -29,6 +29,9 @@ function deviceStatusKey(device) {
 }
 
 const STATUS_TEXT = { online: '在线', busy: '运行中', down: '离线' };
+window.STATUS_TEXT = STATUS_TEXT;
+window.deviceStatusKey = deviceStatusKey;
+window.deviceIndexLabel = deviceIndexLabel;
 
 // 状态仅在变化时刷新徽章/统计，避免直播每帧触发 DOM 重排
 let lastStatusSnapshot = '';
@@ -40,7 +43,7 @@ function renderStatusBadges(force = false) {
   lastStatusSnapshot = snapshot;
   renderStatusBar();
   renderDeviceChips();
-  renderDeviceSidebar();
+  if (typeof renderShell === 'function') renderShell();
   if (state.view === 'single') { renderViewerCaption(); updateDeviceMeta(device); }
   if (state.page === 'devices') renderDeviceTable();
 }
@@ -60,7 +63,7 @@ function selectDevice(deviceId) {
   renderStatusBar();
   renderRecentActivity();
   renderDeviceTable();
-  renderDeviceSidebar();
+  if (typeof renderShell === 'function') renderShell();
   if (changed) {
     eventBus.dispatchEvent(new CustomEvent('device:selected', { detail: { deviceId } }));
     window.dispatchEvent(new CustomEvent('device:selected', { detail: { deviceId } }));
@@ -566,169 +569,3 @@ eventBus.addEventListener('runtime:changed', () => {
 
 setInterval(refreshTileShots, TILE_SHOT_TTL);
 
-/* ---------- 总览页左侧设备列表侧栏联动 ---------- */
-
-function renderDeviceSidebar() {
-  const listEl = byId('ovDevCardsList');
-  if (!listEl) return;
-
-  const countBadge = byId('ovDevListCount');
-  const searchInput = byId('ovDevSearchInput');
-  const filter = (searchInput?.value || '').trim().toLowerCase();
-
-  const total = state.devices.length;
-  const online = state.devices.filter(d => deviceStatusKey(d) !== 'down').length;
-  if (countBadge) {
-    countBadge.textContent = `${online} 在线 / 共 ${total} 台`;
-  }
-
-  const list = state.devices.filter(device =>
-    !filter ||
-    device.name.toLowerCase().includes(filter) ||
-    String(device.deviceId).toLowerCase().includes(filter) ||
-    String(device.currentIp || '').toLowerCase().includes(filter)
-  );
-
-  if (!state.devices.length) {
-    listEl.innerHTML = `
-      <div class="empty" style="padding:var(--sp-16) var(--sp-8); font-size:var(--fs-12); text-align:center;">
-        暂无云手机实例<br>
-        <span class="hint">请点击顶部「兑换卡密」激活</span>
-      </div>
-    `;
-    return;
-  }
-
-  if (!list.length) {
-    listEl.innerHTML = '<div class="empty" style="padding:var(--sp-14); font-size:var(--fs-12); text-align:center;">没有匹配的设备</div>';
-    return;
-  }
-
-  listEl.innerHTML = list.map(device => {
-    const isSelected = state.selectedDeviceId === device.deviceId;
-    const statusKey = deviceStatusKey(device);
-    const badgeCls = statusKey === 'online' ? 'ok' : statusKey === 'busy' ? 'run' : 'err';
-    const statusText = STATUS_TEXT[statusKey];
-    const ip = device.currentIp || '局域网';
-    const subText = device.remainingText ? `剩余 ${device.remainingText}` : (device.sdkVersion ? device.sdkVersion.toUpperCase() : '云机');
-
-    return `
-      <div class="ov-dev-card ${isSelected ? 'selected' : ''} ${statusKey === 'busy' ? 'running' : ''}" data-dev-select="${escapeHtml(device.deviceId)}" title="${escapeHtml(deviceLabel(device))}">
-        <div class="ov-dev-card-top">
-          <div class="ov-dev-card-name-box">
-            <span class="ov-dev-card-index">${deviceIndexLabel(device)}</span>
-            <span class="ov-dev-card-name">${escapeHtml(device.name)}</span>
-          </div>
-          <span class="badge ${badgeCls} xs">${statusText}</span>
-        </div>
-        <div class="ov-dev-card-ip cell-mono" title="当前 IP / 代理: ${escapeHtml(ip)}">
-          ${escapeHtml(ip)}
-        </div>
-        <div class="ov-dev-card-bottom">
-          <span class="ov-dev-card-sub">${escapeHtml(subText)}</span>
-          <div class="ov-dev-card-actions">
-            <button class="btn icon-only ghost xs" data-dev-copy-id="${escapeHtml(device.deviceId)}" type="button" title="复制设备 ID">${ic('copy', 11)}</button>
-            <button class="btn xs ghost" data-dev-manual="${escapeHtml(device.deviceId)}" type="button" title="手动控制">${ic('maximize', 11)}</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function openDeviceSidebar() {
-  const sidebar = byId('ovDeviceSidebar');
-  if (sidebar) sidebar.classList.remove('collapsed');
-  localStorage.setItem('yunmomo.overview.devSidebarOpen', 'true');
-  updateDeviceSidebarToggleUI();
-  renderDeviceSidebar();
-}
-
-function closeDeviceSidebar() {
-  const sidebar = byId('ovDeviceSidebar');
-  if (sidebar) sidebar.classList.add('collapsed');
-  localStorage.setItem('yunmomo.overview.devSidebarOpen', 'false');
-  updateDeviceSidebarToggleUI();
-}
-
-function toggleDeviceSidebar() {
-  const sidebar = byId('ovDeviceSidebar');
-  if (!sidebar) return;
-  if (sidebar.classList.contains('collapsed')) {
-    openDeviceSidebar();
-  } else {
-    closeDeviceSidebar();
-  }
-}
-
-function updateDeviceSidebarToggleUI() {
-  const sidebar = byId('ovDeviceSidebar');
-  const toggleBtn = byId('ovDevToggleBtn');
-  const toggleIcon = byId('ovDevToggleIcon');
-  const isOpen = sidebar && !sidebar.classList.contains('collapsed');
-  if (toggleIcon) {
-    toggleIcon.innerHTML = ic(isOpen ? 'left' : 'phoneDevice', 12);
-  }
-  if (toggleBtn) {
-    toggleBtn.classList.toggle('selected', isOpen);
-  }
-  const collapseBtn = byId('ovDevCollapseBtn');
-  if (collapseBtn) {
-    collapseBtn.innerHTML = ic('left', 12);
-  }
-  const refreshBtn = byId('ovDevRefreshBtn');
-  if (refreshBtn) {
-    refreshBtn.innerHTML = ic('refresh', 12);
-  }
-}
-
-window.renderDeviceSidebar = renderDeviceSidebar;
-window.openDeviceSidebar = openDeviceSidebar;
-window.closeDeviceSidebar = closeDeviceSidebar;
-window.toggleDeviceSidebar = toggleDeviceSidebar;
-
-// 事件监听与初始化绑定
-byId('ovDevToggleBtn')?.addEventListener('click', toggleDeviceSidebar);
-byId('ovDevCollapseBtn')?.addEventListener('click', closeDeviceSidebar);
-byId('ovDevRefreshBtn')?.addEventListener('click', async () => {
-  if (state.tokenConfigured) {
-    showToast('正在刷新设备状态…');
-    await loadDevices();
-    renderDeviceSidebar();
-  }
-});
-
-byId('ovDevSearchInput')?.addEventListener('input', () => {
-  renderDeviceSidebar();
-});
-
-byId('ovDevCardsList')?.addEventListener('click', event => {
-  const copyBtn = event.target.closest('[data-dev-copy-id]');
-  if (copyBtn) {
-    const id = copyBtn.dataset.devCopyId;
-    copyToClipboard(id, `已复制虚拟机 ID: ${id}`);
-    return;
-  }
-
-  const manualBtn = event.target.closest('[data-dev-manual]');
-  if (manualBtn) {
-    const id = manualBtn.dataset.devManual;
-    const device = state.devices.find(d => d.deviceId === id);
-    if (device && typeof window.openManualControl === 'function') window.openManualControl(device);
-    return;
-  }
-
-  const card = event.target.closest('[data-dev-select]');
-  if (card) {
-    const deviceId = card.dataset.devSelect;
-    selectDevice(deviceId);
-  }
-});
-
-// 初始化设备侧边栏状态（默认打开，若用户手动收起则记住）
-const savedSidebarOpen = localStorage.getItem('yunmomo.overview.devSidebarOpen');
-if (savedSidebarOpen === 'false') {
-  byId('ovDeviceSidebar')?.classList.add('collapsed');
-}
-updateDeviceSidebarToggleUI();
-renderDeviceSidebar();
