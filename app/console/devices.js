@@ -16,13 +16,33 @@ function deviceRunning(deviceId) {
   return state.runtimeState.runs.some(run => run.deviceId === deviceId);
 }
 
+// 画面流健康度：平台接口不回报在线状态，徽章状态以「显式离线信号 + 直播流实测」为准
+const streamHealth = new Map(); // deviceId -> { ok, at }
+
 function deviceStatusKey(device) {
+  const id = device.deviceId;
   if (!isOnline(device)) return 'down';
-  if (deviceRunning(device.deviceId)) return 'busy';
+  if (deviceRunning(id)) return 'busy';
+  const health = streamHealth.get(id);
+  if (health && !health.ok && Date.now() - health.at < 20000) return 'down';
   return 'online';
 }
 
 const STATUS_TEXT = { online: '在线', busy: '运行中', down: '离线' };
+
+// 状态仅在变化时刷新徽章/统计，避免直播每帧触发 DOM 重排
+let lastStatusSnapshot = '';
+
+function renderStatusBadges(force = false) {
+  const device = currentDevice();
+  const snapshot = state.devices.map(d => deviceStatusKey(d)).join(',') + '|' + (device ? deviceStatusKey(device) : '');
+  if (!force && snapshot === lastStatusSnapshot) return;
+  lastStatusSnapshot = snapshot;
+  renderStatusBar();
+  renderDeviceChips();
+  if (state.view === 'single') renderViewerCaption();
+  if (state.page === 'devices') renderDeviceTable();
+}
 
 function deviceStatusBadge(device) {
   const key = deviceStatusKey(device);
@@ -52,9 +72,9 @@ function renderStatusBar() {
   const bar = elements.statusBar;
   if (!bar) return;
   const total = state.devices.length;
-  const online = state.devices.filter(d => isOnline(d)).length;
+  const offline = state.devices.filter(d => deviceStatusKey(d) === 'down').length;
   const running = state.runtimeState.runs.length;
-  const offline = total - online;
+  const online = total - offline;
   bar.innerHTML = `
     <div class="stat"><span class="stat-label">全部设备</span><span class="stat-val">${total}</span></div>
     <div class="stat"><span class="stat-label">在线</span><span class="stat-val good">${online}</span></div>
@@ -79,11 +99,12 @@ function renderDeviceChips() {
 function renderViewer() {
   const stage = elements.viewerStage;
   if (!stage) return;
+  lastStatusSnapshot = '';
   if (state.view === 'grid') { renderGridViewer(); return; }
   renderSingleViewer();
 }
 
-function stopPreview() {
+function closeAllPlayers() {
   for (const timer of state.previewRetry.values()) clearTimeout(timer);
   state.previewRetry.clear();
   for (const [deviceId, player] of state.previewPlayers) {
@@ -91,6 +112,11 @@ function stopPreview() {
     window.dispatchEvent(new CustomEvent('device-preview:closed', { detail: { deviceId, player } }));
     try { player.close(); } catch {}
   }
+  streamHealth.clear();
+}
+
+function stopPreview() {
+  closeAllPlayers();
 }
 window.stopPreview = stopPreview;
 
@@ -111,14 +137,15 @@ function renderSingleViewer() {
     return;
   }
 
-  // 同设备且直播仍在：只同步覆盖层，避免轮询重启视频流
-  if (stage.dataset.viewerDevice === id && state.previewPlayers.has(id)) {
-    const coverNow = stage.querySelector('.offline-cover');
-    if (coverNow) coverNow.hidden = hasLiveFrame(state.previewPlayers.get(id));
-    renderViewerCaption();
-    return;
+  // 关闭非当前设备的直播占用
+  for (const [pid, player] of state.previewPlayers) {
+    if (pid !== id) {
+      state.previewPlayers.delete(pid);
+      try { player.close(); } catch {}
+    }
   }
 
+  // 保留已渲染的 DOM 与画布（保留最后一帧），仅设备切换时重建
   let frame = stage.querySelector('.device-frame');
   if (!frame || stage.dataset.viewerDevice !== id) {
     stage.dataset.viewerDevice = id;
@@ -138,48 +165,49 @@ function renderSingleViewer() {
   const hint = stage.querySelector('.viewer-hint');
   const cover = stage.querySelector('.offline-cover');
 
-  // 关闭旧直播并围绕当前画布重建播放器（设备切换或画布重建时）
-  const old = state.previewPlayers.get(id);
-  if (old) { state.previewPlayers.delete(id); try { old.close(); } catch {} }
-  clearTimeout(state.previewRetry.get(id));
-  state.previewRetry.delete(id);
-
-  createPreviewPlayer(device, canvas, hint, cover);
+  if (!state.previewPlayers.has(id)) {
+    clearTimeout(state.previewRetry.get(id));
+    state.previewRetry.delete(id);
+    if (hint) { hint.textContent = '正在连接画面…'; hint.hidden = false; }
+    createPreviewPlayer(device, canvas, hint, cover);
+  } else if (cover) {
+    cover.hidden = hasLiveFrame(state.previewPlayers.get(id));
+  }
   renderViewerCaption();
 }
 
 function createPreviewPlayer(device, canvas, hint, cover) {
   const id = device.deviceId;
-  const setStatus = ok => {
-    if (hint) hint.hidden = ok;
-  };
+  const markHealth = ok => streamHealth.set(id, { ok, at: Date.now() });
   const player = new CloudVideoPlayer({
     canvas,
     deviceId: id,
     onFrame() {
+      markHealth(true);
       canvas.hidden = false;
       if (hint) hint.hidden = true;
       if (cover) cover.hidden = true;
+      renderStatusBadges();
     },
     onMessage(message) {
       if (message.type === 'error' && hint) { hint.hidden = false; hint.textContent = message.message; }
     },
     onError(error) {
+      markHealth(false);
       if (hint) { hint.hidden = false; hint.textContent = error.message; }
+      renderStatusBadges();
     },
     onClose(code) {
       if (state.previewPlayers.get(id) !== player) return;
       state.previewPlayers.delete(id);
+      markHealth(false);
       window.dispatchEvent(new CustomEvent('device-preview:closed', { detail: { deviceId: id, player } }));
-      canvas.hidden = true;
-      if (hint) { hint.hidden = false; hint.textContent = code ? '画面连接中断' : '画面已暂停'; }
+      // 保留最后一帧画面，仅叠加提示；状态徽章随之切为「离线」直到重连成功
+      if (hint) { hint.hidden = false; hint.textContent = code ? '画面连接中断，正在重连…' : '画面已暂停'; }
       if (cover) cover.hidden = true;
-      if (CloudVideoPlayer.canReconnect(code)) {
-        state.previewRetry.set(id, setTimeout(() => {
-          if (state.page === 'overview' && state.view === 'single' && state.selectedDeviceId === id) {
-            renderSingleViewer();
-          }
-        }, 3000));
+      renderStatusBadges();
+      if (CloudVideoPlayer.canReconnect(code) && state.page === 'overview' && state.view === 'single' && state.selectedDeviceId === id) {
+        state.previewRetry.set(id, setTimeout(() => renderSingleViewer(), 3000));
       }
     }
   });
@@ -217,8 +245,7 @@ function renderViewerCaption() {
 function renderGridViewer() {
   const stage = elements.viewerStage;
   stage.dataset.viewerDevice = '';
-  for (const player of state.previewPlayers.values()) { try { player.close(); } catch {} }
-  state.previewPlayers.clear();
+  closeAllPlayers();
 
   stage.innerHTML = `<div class="device-grid">${state.devices.map(device => {
     const key = deviceStatusKey(device);
@@ -389,10 +416,7 @@ function renderRecentActivity() {
 function requestAllPreviews() {
   if (!state.tokenConfigured || !state.devices.length) return;
   if (state.page !== 'overview' || state.view !== 'single') {
-    for (const [id, player] of state.previewPlayers) {
-      state.previewPlayers.delete(id);
-      try { player.close(); } catch {}
-    }
+    closeAllPlayers();
     return;
   }
   renderSingleViewer();
@@ -456,15 +480,13 @@ eventBus.addEventListener('page:changed', event => {
 });
 
 eventBus.addEventListener('devices:changed', () => {
-  renderStatusBar();
-  if (state.page === 'overview') { renderDeviceChips(); renderViewer(); renderRecentActivity(); }
-  if (state.page === 'devices') renderDeviceTable();
+  renderStatusBadges(true);
+  if (state.page === 'overview') { renderViewer(); renderRecentActivity(); }
 });
 
 eventBus.addEventListener('runtime:changed', () => {
-  renderStatusBar();
-  if (state.page === 'overview') { renderDeviceChips(); renderViewerCaption(); renderRecentActivity(); }
-  if (state.page === 'devices') renderDeviceTable();
+  renderStatusBadges(true);
+  if (state.page === 'overview') { renderViewerCaption(); renderRecentActivity(); }
 });
 
 setInterval(refreshTileShots, TILE_SHOT_TTL);

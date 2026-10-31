@@ -159,6 +159,35 @@ function fallbackCopy(text, successToast) {
   document.body.removeChild(textarea);
 }
 
+let sessionRecheck = null;
+
+// 401 复检：本地令牌可能已失效（其他标签页退出/改密令牌版本失效/账号变更），
+// 而 Cookie 会话仍然有效。若放任失效令牌以 Bearer 头遮蔽 Cookie 会话，
+// 所有带鉴权请求都会 401（设备列表为空、状态乱跳），画面流却正常——状态与画面矛盾。
+// 处理：用无头请求探测 Cookie 会话；有效则清掉脏令牌并整页重载恢复，
+// 会话彻底失效则清理并回登录页。
+function revalidateSession() {
+  if (sessionRecheck || isEmbedMode) return;
+  sessionRecheck = (async () => {
+    try {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const res = await fetch('/api/auth/me');
+      const data = await res.json().catch(() => ({}));
+      const hadLocalToken = Boolean(localStorage.getItem('yunmomo.auth_token'));
+      if (!data.ok || !data.user) {
+        try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
+        location.href = '/login.html';
+      } else if (hadLocalToken) {
+        try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
+        location.reload();
+      }
+    } catch { /* 网络抖动不在此处理，由轮询自行重试 */ }
+    finally {
+      setTimeout(() => { sessionRecheck = null; }, 5000);
+    }
+  })();
+}
+
 async function requestJson(url, options = {}) {
   const token = localStorage.getItem('yunmomo.auth_token');
   const headers = new Headers(options.headers || {});
@@ -166,6 +195,9 @@ async function requestJson(url, options = {}) {
     headers.set('Authorization', `Bearer ${token}`);
   }
   const response = await fetch(url, { ...options, headers });
+  if (response.status === 401 && !url.includes('/api/auth/')) {
+    revalidateSession();
+  }
   let payload = null;
   try { payload = await response.json(); } catch { payload = {}; }
   if (!response.ok) {
@@ -360,7 +392,7 @@ const NAVS = [
   ['overview', '总览', 'home'],
   ['devices', '设备', 'phoneDevice'],
   ['tasks', '任务', 'tasks'],
-  ['messages', '消息回复', 'message'],
+  ['messages', '消息回复设置', 'message'],
   ['logs', '运行日志', 'log'],
   ['settings', '设置', 'settings']
 ];
