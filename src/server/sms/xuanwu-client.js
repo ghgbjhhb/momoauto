@@ -288,7 +288,63 @@ class XuanwuClient {
     };
   }
 
-  // 4. 一键测试连通性
+  // 5. 带轮询抢号（对齐网页端机制：每秒请求一次，号池无号 C3007 时持续重试，最长 maxAttempts 次，抢到立即停止）
+  async getPhoneWithPolling(projectCode, { maxAttempts = 60, intervalMs = 1000, onRetry = null } = {}) {
+    let lastMessage = '未知原因';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await this.getPhone(projectCode);
+        if (res.success && res.phoneNumber) {
+          return { ...res, attempts: attempt };
+        }
+        lastMessage = res.errorMessage || res.message || '平台未返回可用手机号';
+      } catch (err) {
+        // 仅「号池无号 C3007」与「频率超限 C40005」可重试；余额不足/项目不存在等立即失败
+        if (err.code !== 'C3007' && err.code !== 'C40005') {
+          throw err;
+        }
+        lastMessage = err.message;
+      }
+      if (attempt < maxAttempts) {
+        if (typeof onRetry === 'function') {
+          try { onRetry({ attempt, maxAttempts, intervalMs, message: lastMessage }); } catch {}
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
+    throw new XuanwuError(`连续抢号 ${maxAttempts} 次仍无可用号码 (最后原因: ${lastMessage})`, 'C3007');
+  }
+
+  // 6. 带轮询查码（对齐网页端机制：每 5 秒查询一次该号码的验证码，最长 maxAttempts 次）
+  //    data.status: 1=已接收 0=未接收；C3054=正在获取(继续等)；C3051/C3055=会话失效(立即抛出，需重新抢号)
+  async getSmsWithPolling(sessionId, phoneNumber, { maxAttempts = 24, intervalMs = 5000, onPoll = null } = {}) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let res = null;
+      let pollStatus = null;
+      try {
+        res = await this.getSms(sessionId, phoneNumber);
+        pollStatus = res.status;
+      } catch (err) {
+        if (err.code === 'C3054' || err.code === 'C40005') {
+          pollStatus = 0; // 正在获取验证码/频率超限：视为未收到，等待后重查
+        } else {
+          throw err; // C3051 会话过期 / C3055 查码失败 → 轮询无意义，直接上抛
+        }
+      }
+      if (res && res.success && res.phoneCode) {
+        return { ...res, attempts: attempt };
+      }
+      if (typeof onPoll === 'function') {
+        try { onPoll({ attempt, maxAttempts, status: pollStatus }); } catch {}
+      }
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
+    return { success: false, phoneCode: '', attempts: maxAttempts, timedOut: true };
+  }
+
+  // 7. 一键测试连通性
   async testConnection() {
     const startTime = Date.now();
     try {

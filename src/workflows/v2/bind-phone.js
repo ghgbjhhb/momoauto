@@ -47,6 +47,12 @@ const DEFAULT_PROJECT_CODE = '369990';
 const DEFAULT_FIXED_PHONE = '17306728814';
 // 默认测试验证码（默认置空，防止使用已失效的旧码；收到新码后由外部传入）
 const DEFAULT_VERIFY_CODE = '';
+// 抢号轮询（对齐网页端抓包行为）：每秒请求 1 次，最长 60 次，有号立即返回停止
+const PHONE_POLL_INTERVAL_MS = 1000;
+const PHONE_POLL_MAX_ATTEMPTS = 60;
+// 查码轮询（对齐网页端抓包行为）：每 5 秒查询一次玄武平台，最长 24 次（约 2 分钟）
+const SMS_POLL_INTERVAL_MS = 5000;
+const SMS_POLL_MAX_ATTEMPTS = 24;
 
 function formatLogTime() {
   const d = new Date();
@@ -438,17 +444,18 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     // 2. 从接码平台取号 (若未直接传入手机号)
     if (!phoneNumber) {
-      log.console(`[接码平台] 正在向玄武平台申请手机号 (项目编码: ${projectCode} 陌陌换绑3)...`);
+      log.console(`[接码平台] 正在向玄武平台抢号 (项目编码: ${projectCode} 陌陌换绑3, 每秒 1 次最长 ${PHONE_POLL_MAX_ATTEMPTS} 次)...`);
       const smsService = new SmsService();
       const smsClient = smsService.getClient();
-      const phoneRes = await smsClient.getPhone(projectCode);
-      if (!phoneRes.success || !phoneRes.phoneNumber) {
-        throw new Error(`玄武接码取号失败: ${phoneRes.message || phoneRes.errorMessage || '未返回可用手机号'}`);
-      }
+      const phoneRes = await smsClient.getPhoneWithPolling(projectCode, {
+        maxAttempts: PHONE_POLL_MAX_ATTEMPTS,
+        intervalMs: PHONE_POLL_INTERVAL_MS,
+        onRetry: info => log.console(`[接码平台] 第 ${info.attempt}/${info.maxAttempts} 次抢号未果 (${info.message})，${Math.round(info.intervalMs / 1000)}s 后重试...`),
+      });
       phoneNumber = String(phoneRes.phoneNumber).trim();
       sessionId = phoneRes.sessionId;
-      log.console(`[接码平台] 取号成功: ${phoneNumber} (sessionId: ${sessionId}, 耗时: ${phoneRes.latencyMs}ms)`);
-      await log.file('Phone acquired from Xuanwu', { projectCode, phoneNumber, sessionId, raw: phoneRes.raw });
+      log.console(`[接码平台] 取号成功: ${phoneNumber} (sessionId: ${sessionId}, 第 ${phoneRes.attempts} 次请求, 耗时: ${phoneRes.latencyMs}ms)`);
+      await log.file('Phone acquired from Xuanwu', { projectCode, phoneNumber, sessionId, attempts: phoneRes.attempts, raw: phoneRes.raw });
     } else {
       log.console(`[手机号] 使用指定的手机号: ${phoneNumber}`);
     }
@@ -590,6 +597,29 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
     if (!isBindPhoneScreen(obs.items)) {
       throw new Error('未处于“手机绑定”界面，无法继续输入验证码！');
+    }
+
+    // 5.5 自动轮询接码平台查码（对齐网页端：每 5 秒查询一次该号码的验证码，最长约 2 分钟）
+    // 仅当号码来自玄武取号（存在 sessionId）且外部未显式提供验证码时启用；查不到则回落人工提供模式。
+    if (!verifyCode && sessionId && phoneNumber) {
+      log.console(`[接码平台] 自动查码启动: 每 ${SMS_POLL_INTERVAL_MS / 1000} 秒查询一次玄武平台 (最长 ${SMS_POLL_MAX_ATTEMPTS} 次)...`);
+      const smsClient = new SmsService().getClient();
+      try {
+        const smsRes = await smsClient.getSmsWithPolling(sessionId, phoneNumber, {
+          maxAttempts: SMS_POLL_MAX_ATTEMPTS,
+          intervalMs: SMS_POLL_INTERVAL_MS,
+          onPoll: info => log.console(`[接码平台] 第 ${info.attempt}/${info.maxAttempts} 次查码: ${info.status === 1 ? '已收到' : '暂未收到'}`),
+        });
+        if (smsRes.success && smsRes.phoneCode) {
+          verifyCode = String(smsRes.phoneCode).trim();
+          log.console(`[接码平台] 【查码成功】第 ${smsRes.attempts} 次查询获得验证码!`);
+          await log.file('SMS code auto-polled from Xuanwu', { sessionId, phoneNumber, attempts: smsRes.attempts });
+        } else {
+          log.console('[接码平台] 自动查码超时未收到验证码，转入人工提供模式。');
+        }
+      } catch (err) {
+        log.console(`[接码平台] 自动查码中止 (${err.message})，转入人工提供模式。`);
+      }
     }
 
     // 6. 定位「输入验证码」框并模拟人工逐字打字输入 (严禁直接粘贴)
