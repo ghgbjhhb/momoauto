@@ -145,10 +145,12 @@ class ChatInput {
   }
 
   async verify(expected, { empty = false, attempts = 3, code = 'INPUT_MISMATCH', requireKeyboard = !empty, optional = false } = {}) {
+    let observed = null, inputSource = null;
     for (let attempt = 0; attempt < attempts; attempt++) {
       let frame = await this.observeInputFrame();
       if (requireKeyboard && frame.layout.keyboard !== 'open') fail('KEYBOARD_NOT_OPEN', 'Input is no longer in the middle of the chat');
       let ocr = await this.read(frame);
+      observed = ocr.input_text; inputSource = ocr.input_source ?? 'crop';
       if (empty ? this.isEmpty(ocr, frame) : draftMatches(ocr.input_text, expected)) return { frame, ocr };
       // A candidate tap can update the field after the first screenshot was
       // captured. Use a fresh frame for the full-field pass instead of running
@@ -156,11 +158,13 @@ class ChatInput {
       frame = await this.observeInputFrame();
       if (requireKeyboard && frame.layout.keyboard !== 'open') fail('KEYBOARD_NOT_OPEN', 'Input is no longer in the middle of the chat');
       ocr = await this.read(frame, { full_field: true });
+      observed = ocr.input_text; inputSource = ocr.input_source ?? 'full-field';
       if (empty ? this.isEmpty(ocr, frame) : draftMatches(ocr.input_text, expected)) return { frame, ocr };
       if (attempt + 1 < attempts) await this.ctx.sleep(this.settings.pollMs);
     }
     if (optional) return null;
-    fail(code, empty ? 'Chat input is not confirmed empty' : 'Draft does not exactly match the intended message');
+    fail(code, empty ? 'Chat input is not confirmed empty' : 'Draft does not exactly match the intended message',
+      { expected: expected ?? null, observed, inputSource });
   }
 
   async clear() {
@@ -172,15 +176,22 @@ class ChatInput {
       await this.tap(frame.layout.input.x, frame.layout.input.y, frame);
       await this.ctx.sleep(this.settings.pollMs);
     }
-    try {
-      await this.key(protocol.KEY_CODES.A, protocol.META.CTRL_ON);
-      await this.key(protocol.KEY_CODES.DEL);
-    } catch {}
-
-    const charsToDelete = Math.max((ocr.input_text || '').length + 5, 20);
-    for (let i = 0; i < charsToDelete; i++) {
-      try { await this.key(protocol.KEY_CODES.DEL); } catch { break; }
+    // /stream 通道 sendKey 不传 metaState，Ctrl+A 到设备上退化为打字母 a，全选不可用；
+    // 且退格只删光标之前同线文本（点击取焦点会把光标落进文本中间）。
+    // 因此逐轮「移行尾 -> 批量退格 -> 核验为空」，靠核验驱动轮数覆盖多行草稿。
+    const batchSize = Math.max((ocr.input_text || '').length + 5, 20);
+    for (let round = 0; round < 4; round++) {
+      try { await this.key(protocol.KEY_CODES.MOVE_END); } catch {}
+      try {
+        await this.key(protocol.KEY_CODES.A, protocol.META.CTRL_ON);
+        await this.key(protocol.KEY_CODES.DEL);
+      } catch {}
+      for (let i = 0; i < batchSize; i++) {
+        try { await this.key(protocol.KEY_CODES.DEL); } catch { break; }
+      }
+      if (await this.verify(null, { empty: true, attempts: 1, optional: true })) return;
     }
+    await this.verify(null, { empty: true, attempts: 2, code: 'INPUT_NOT_CLEARED' });
   }
 
   async key(code, metaState = 0) {
@@ -319,6 +330,8 @@ class ChatInput {
       await this.verify(plan.text, { attempts: 4 });
     } catch (err) {
       if (err.code === 'INPUT_MISMATCH' || err.code === 'OCR_FAILED') {
+        const stamp = new Date().toTimeString().slice(0, 8);
+        console.log(`[${stamp}] [typing] 终态核验未通过，执行清空+粘贴自愈 (observed=${JSON.stringify(err.details?.observed ?? null)}, source=${err.details?.inputSource ?? 'unknown'})`);
         // 自愈恢复：输入法打字或多音字选择偏差时，执行清空并使用剪贴板粘贴兜底写入，再做终态核验
         await this.clear();
         await this.ctx.sleep(this.settings.settleMs);
