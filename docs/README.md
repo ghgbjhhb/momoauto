@@ -14,6 +14,8 @@
 - [发送联系方式](SEND-CONTACT.md)
 - [拉黑对方](BLOCK-PEER.md)
 - [MOMO 首页刷新与循环浏览](MOMO-HOME.md)
+- [MOMO 打招呼页面处理](MOMO-GREETINGS.md)
+- [MOMO 联系人及消息入库](MOMO-CONTACT-SYNC.md)
 - [中文分词与拼音输入](CHINESE-TYPING.md)
 - [云盘与 VPC 管理](MANAGEMENT.md)
 - [MOMO AI 自动回复 (DeepSeek API 集成)](MOMO-AI-REPLY.md)
@@ -23,18 +25,8 @@
 ## 开发维护
 
 - [项目目录与维护约定](PROJECT-STRUCTURE.md)
-- [控制台框架重构安排](APP-FRAMEWORK-REFACTOR-PLAN.md)
 - [运行依赖](../requirements/README.md)
 - [网页侧栏映射](TOOLBAR.md)
 - [协议说明](PROTOCOL.md)
 - [代码符号与全景架构索引](代码符号索引.md)
-
-## 原位保留的模型资料与历史记录
-
 - [原模型目录说明](../models/README.md)
-- [ScreenParser 历史评测](SCREENPARSER-EVAL-2026-10-13.md)
-- [2026-10-12 云机实测](LIVE-TEST-2026-10-12.md)
-- [2026-10-12 管理接口实测](MANAGEMENT-LIVE-TEST-2026-10-12.md)
-- [2026-10-12 云盘与初始化流程记录](CLOUD-TRANSFER-FLOW-2026-10-12.md)
-
-历史报告描述当时状态，不代表当前所有功能均已完成验证。模型对应文件和这些历史报告没有移动。
