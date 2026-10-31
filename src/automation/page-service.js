@@ -75,6 +75,11 @@ function classifyOverlay(ocrItems = [], detailRaw = null, h = 1280) {
     return 'app_update';
   }
 
+  // 7.5 语音聊天红包提现推广弹窗 - 会话列表顶部活动卡片，右上角带 X 关闭按钮
+  if (/红包待提现/.test(allText) && ocrItems.some(it => /去看看/.test(it.text))) {
+    return 'red_packet_promo';
+  }
+
   // 8. 语音/视频来电悬浮窗 (Incoming Call Overlay) - 屏幕顶部呼叫通知
   const topItems = ocrItems.filter(it => {
     if (!it.text || it.top > h * 0.20) return false;
@@ -375,6 +380,20 @@ async function observePageInternal(session, options = {}) {
       Math.min(h, closeY + halfBtnH),
     ];
     targets.updateClosePoint = { x: closeX, y: closeY };
+  }
+  if (overlay === 'red_packet_promo') {
+    // 弹窗卡片右上角的 X：帧固定为 360x640，弹窗布局由 MOMO 端决定，与 app_update 同样用标定比例
+    const closeX = Math.round(w * 0.89);
+    const closeY = Math.round(h * 0.11);
+    const halfBtnW = Math.max(20, Math.round(w * 0.045));
+    const halfBtnH = Math.max(20, Math.round(h * 0.025));
+    targets.redPacketCloseX = [
+      Math.max(0, closeX - halfBtnW),
+      Math.max(0, closeY - halfBtnH),
+      Math.min(w, closeX + halfBtnW),
+      Math.min(h, closeY + halfBtnH),
+    ];
+    targets.redPacketClosePoint = { x: closeX, y: closeY };
   }
   if (overlay === 'incoming_call') {
     const topItems = ocrItems.filter(it => it.top <= h * 0.20 && !/活动|快来|送给|订阅|充值|游戏/.test(it.text));

@@ -156,7 +156,26 @@ async function recoverToAllowedPage(session, allowedPages = ['message_list'], op
       }
     }
 
-    // 3.2 处理顶层语音/视频来电悬浮窗 (Incoming Call Overlay) - 拒接挂断消除全场景遮挡
+    // 3.2 处理语音聊天红包提现推广弹窗 (Red Packet Promo Dialog)
+    if (observation.overlay === 'red_packet_promo' && observation.targets?.redPacketCloseX) {
+      const [x1, y1, x2, y2] = observation.targets.redPacketCloseX;
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+      if (session.control?.tap) {
+        check();
+        const point = observedPoint(session.control, observation, { x: cx, y: cy });
+        await waitFor(session.control.tap(point.x, point.y, { signal: options.signal }), { signal: options.signal, timeoutMs: Math.max(1, deadline - performance.now()) });
+        if (session.control.flush) await waitFor(session.control.flush(), { signal: options.signal, timeoutMs: Math.max(1, deadline - performance.now()) });
+        try {
+          await cancellableSleep(settings.settleMs * 2, options.signal);
+        } catch (err) {
+          return { status: 'cancelled', observation: null, backSteps, history, error: { code: 'CANCELLED', message: 'Recovery was cancelled' } };
+        }
+        continue;
+      }
+    }
+
+    // 3.3 处理顶层语音/视频来电悬浮窗 (Incoming Call Overlay) - 拒接挂断消除全场景遮挡
     if (observation.overlay === 'incoming_call' && observation.targets?.incomingCallRejectPoint) {
       const point = observedPoint(session.control, observation, observation.targets.incomingCallRejectPoint);
       if (session.control?.tap) {
