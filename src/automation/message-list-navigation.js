@@ -119,5 +119,20 @@ async function returnMessageListTop(session, observation, options = {}) {
   }
   return { ok: hasTopHeader(obs), code: hasTopHeader(obs) ? null : 'LIST_TOP_UNCONFIRMED', observation: obs };
 }
+// 底部判定：两屏检测出的联系人名单一致（顺序无关；OCR 容错同 ocrFeatureMatches）。
+function sameContactNames(before, after) {
+  if (!Array.isArray(before) || !Array.isArray(after)) return false;
+  if (before.length < 1 || before.length !== after.length) return false;
+  const pool = after.map(normalizeOcrFeature);
+  return before.every(name => {
+    const value = normalizeOcrFeature(name);
+    if (!value) return false;
+    const index = pool.findIndex(other => ocrFeatureMatches(other, value));
+    if (index < 0) return false;
+    pool.splice(index, 1);
+    return true;
+  });
+}
+
 module.exports = { returnMessageListTop: require('./timing').timed('page.returnMessageListTop', returnMessageListTop,
-  session => ({ deviceId: session?.deviceId })), listSignature, topFeatureEvidence, ocrFeatureMatches };
+  session => ({ deviceId: session?.deviceId })), listSignature, topFeatureEvidence, ocrFeatureMatches, sameContactNames };

@@ -27,7 +27,7 @@ const path = require('node:path');
 const { YunmomoClient } = require('../index');
 const { runMomoAiReplyOnce } = require('./momo-ai-reply');
 const { observePage } = require('../automation/page-service');
-const { returnMessageListTop, listSignature } = require('../automation/message-list-navigation');
+const { returnMessageListTop, listSignature, sameContactNames } = require('../automation/message-list-navigation');
 const { scanMessageListCandidates } = require('../tools/momo/message-list-parser');
 const { classifyGreetingsScreen } = require('../tools/momo/greetings-layout');
 const { candidateSignature } = require('../tools/momo/message-list-watcher');
@@ -526,7 +526,10 @@ class WatchHub {
       const res = await returnMessageListTop(this.session(), ready.obs, { signal: this.signal, maxSteps, settleMs: 600 });
       if (res.ok) {
         const top = listReady(res.observation, this.options);
-        if (top) return { ...top, corrected: false };
+        if (top) {
+          await log('INFO', `[回顶] 已确认在列表顶部 (滑动 ${res.steps ?? 0} 次)`);
+          return { ...top, corrected: false };
+        }
       }
       if (res.code === 'LIST_TOP_UNCONFIRMED') {
         await this.stop('LIST_TOP_UNCONFIRMED', `滑动 ${maxSteps} 次仍未确认到达列表顶部（顶部特征不足），脚本停止`, 'list-top');
@@ -539,6 +542,7 @@ class WatchHub {
   /** 手指从下往上滑一屏（列表内容向下翻）。返回 { ready } 或 { end: 'bottom' | 'restart' }。 */
   async nextPage(ready) {
     const before = listSignature(ready.obs);
+    const beforeNames = (ready.scan?.candidates || []).map(c => c.peerName);
     const obs = ready.obs;
     const x = Math.round(obs.width * 0.5);
     const res = await this.tools.swipe([
@@ -550,8 +554,27 @@ class WatchHub {
     }
     await this.pause(800);
     const next = await this.toMessageList();
-    if (next.corrected) return { end: 'restart' };
-    if (listSignature(next.obs) === before) return { end: 'bottom' };
+    if (next.corrected) {
+      this.bottomStrikes = 0;
+      return { end: 'restart' };
+    }
+    if (listSignature(next.obs) === before) {
+      this.bottomStrikes = 0;
+      return { end: 'bottom' };
+    }
+    // 到底后画面可能有细微位移导致签名不同，联系人名单一致（OCR 容错）即视为原地未动；
+    // 连续两屏一致才判定到底，防止单次滑动被设备静默吞掉造成误判
+    if (sameContactNames(beforeNames, (next.scan?.candidates || []).map(c => c.peerName))) {
+      this.bottomStrikes++;
+      await log('DEBUG', `[翻页] 联系人名单与上一屏一致 (${this.bottomStrikes}/2)`);
+      if (this.bottomStrikes >= 2) {
+        this.bottomStrikes = 0;
+        await log('DEBUG', '[翻页] 连续两屏名单一致，判定已到列表底部');
+        return { end: 'bottom' };
+      }
+      return { ready: next };
+    }
+    this.bottomStrikes = 0;
     return { ready: next };
   }
 
@@ -757,6 +780,7 @@ class WatchHub {
    * 返回 'bottom' | 'page_budget' | 'restart' | 'limit'
    */
   async sweep() {
+    this.bottomStrikes = 0;
     let ready = await this.toTop(DRAIN_MAX_PAGES + 5);  // 上一遍可能停在很深的位置
     for (let page = 1; page <= DRAIN_MAX_PAGES; page++) {
       for (;;) {
@@ -767,7 +791,8 @@ class WatchHub {
         if (this.limitReached()) return 'limit';
         ready = await this.toMessageList();  // 处理后列表顺序会变，基于新截图继续本屏
       }
-      await log('INFO', `[全量] 第 ${page} 屏 ${ready.scan.candidates?.length || 0} 位联系人没有可处理的未读，向下翻页`);
+      const names = (ready.scan.candidates || []).map(c => c.peerName).join('、');
+      await log('INFO', `[全量] 第 ${page} 屏 ${ready.scan.candidates?.length || 0} 位联系人 (${names}) 没有可处理的未读，向下翻页`);
       const next = await this.nextPage(ready);
       if (next.end === 'bottom') {
         await log('INFO', `[全量] 已翻到消息列表最底部（共 ${page} 屏）`);
