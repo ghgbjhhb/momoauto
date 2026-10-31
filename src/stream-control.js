@@ -202,6 +202,10 @@ class StreamInput extends EventEmitter {
   }
 
   close() {
+    const entry = registry.get(this.deviceId);
+    if (entry && entry.client === this) {
+      registry.delete(this.deviceId);
+    }
     const ws = this.ws;
     this.ws = null;
     this._connecting = null;
@@ -235,12 +239,19 @@ function sharedStreamInput(options) {
   return entry.client;
 }
 
-function closeAllStreamInputs() {
-  for (const entry of registry.values()) entry.client.close();
-  registry.clear();
+function closeStreamInput(deviceId) {
+  const entry = registry.get(String(deviceId ?? ''));
+  return entry ? entry.client.close() : Promise.resolve();
 }
 
-module.exports = { StreamInput, sharedStreamInput, closeAllStreamInputs, INPUT_ERROR_CODES: Object.freeze({
+function closeAllStreamInputs() {
+  const pending = [];
+  for (const entry of registry.values()) pending.push(entry.client.close());
+  registry.clear();
+  return Promise.allSettled(pending);
+}
+
+module.exports = { StreamInput, sharedStreamInput, closeStreamInput, closeAllStreamInputs, INPUT_ERROR_CODES: Object.freeze({
   NOT_READY: 'INPUT_STREAM_NOT_READY',
   REJECTED: 'STREAM_INPUT_REJECTED',
 }) };

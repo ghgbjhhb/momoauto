@@ -6,7 +6,7 @@ const { basename } = require('node:path');
 const { inspect } = require('node:util');
 const WebSocket = require('ws');
 const p = require('./protocol');
-const { sharedStreamInput } = require('./stream-control');
+const { sharedStreamInput, closeStreamInput } = require('./stream-control');
 
 function requiredString(name, value) {
   if (typeof value !== 'string' || !value.trim()) throw new TypeError(name + ' must be a non-empty string');
@@ -244,15 +244,20 @@ class CloudPhoneControl extends EventEmitter {
   async close(options = {}) {
     this._desired = false;
     clearTimeout(this._retryTimer);
-    const socket = this.socket;
-    if (!socket || socket.readyState === WebSocket.CLOSED) return;
     const timeoutMs = p.integer('close timeoutMs', options.timeoutMs ?? 2000, 1, 0x7fffffff);
-    await new Promise(resolve => {
-      const timer = setTimeout(() => socket.terminate(), timeoutMs);
-      socket.once('close', () => { clearTimeout(timer); resolve(); });
-      if (socket.readyState === WebSocket.CONNECTING) socket.terminate();
-      else socket.close(1000, 'client close');
-    });
+    const tasks = [];
+    this._streamInput = null;
+    tasks.push(closeStreamInput(this.deviceId));
+    const socket = this.socket;
+    if (socket && socket.readyState !== WebSocket.CLOSED) {
+      tasks.push(new Promise(resolve => {
+        const timer = setTimeout(() => socket.terminate(), timeoutMs);
+        socket.once('close', () => { clearTimeout(timer); resolve(); });
+        if (socket.readyState === WebSocket.CONNECTING) socket.terminate();
+        else socket.close(1000, 'client close');
+      }));
+    }
+    await Promise.allSettled(tasks);
     if (this._connecting) await this._connecting.catch(() => {});
   }
 
