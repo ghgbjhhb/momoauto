@@ -143,6 +143,11 @@ function onTaskGroupsClick(event) {
     saveVisibilityConfig({ type: 'group', id: visGroup.dataset.visGroup, visible: !visGroup.classList.contains('on') });
     return;
   }
+  const bundleAdd = event.target.closest('[data-bundle-add]');
+  if (bundleAdd) {
+    openBundleModal();
+    return;
+  }
   const bundleEdit = event.target.closest('[data-bundle-edit]');
   if (bundleEdit) {
     const bundle = state.bundles.find(item => item.id === bundleEdit.dataset.bundleEdit);
@@ -241,10 +246,13 @@ function bundleCardHtml(bundle) {
   const manage = isScriptManageMode();
   const enabled = bundle.enabled !== false;
   if (!manage && !enabled) return '';
-  const stepScripts = (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
-  const stepsFlow = stepScripts.length
-    ? `<span class="bundle-steps-flow">${stepScripts.map((s, i) =>
-        `${i ? '<span class="bundle-step-arrow">→</span>' : ''}<span class="bundle-step-item">${i + 1}. ${escapeHtml(scriptTitle(s))}</span>`).join('')}</span>`
+  const steps = (bundle.stepIds || []).map((id, i) => {
+    const script = state.scripts.find(s => s.id === id);
+    return script ? { script, options: bundle.stepOptions?.[i] || {} } : null;
+  }).filter(Boolean);
+  const stepsFlow = steps.length
+    ? `<span class="bundle-steps-flow">${steps.map((step, i) =>
+        `${i ? '<span class="bundle-step-arrow">→</span>' : ''}<span class="bundle-step-item">${i + 1}. ${escapeHtml(scriptTitle(step.script))}${describeStepOptions(step) ? `<b class="bundle-step-opts">${escapeHtml(describeStepOptions(step))}</b>` : ''}</span>`).join('')}</span>`
     : '';
   const manageActions = manage ? `
     <span class="task-group-extra">
@@ -280,7 +288,7 @@ function renderTaskGroups() {
       const visSwitch = manage ? `<button class="switch ${groupVisible('custom') ? 'on' : ''}" data-vis-group="custom" type="button" role="switch" title="控制是否在用户侧显示"></button>` : '';
       html += `<div class="task-group ${collapsed ? 'collapsed' : ''}">
         <div class="task-group-head"><span class="task-group-title">${group.title}${!groupVisible('custom') && manage ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span><span class="task-group-extra">${visSwitch}<button class="collapse-btn" data-collapse-group="custom" type="button" aria-label="收起/展开">${ic('chevron', 14)}</button></span></div>
-        <div class="task-group-body">${displayBundles.length ? displayBundles.map(bundleCardHtml).join('') : '<div class="empty">暂无自定义组合脚本</div>'}</div>
+        <div class="task-group-body">${displayBundles.length ? displayBundles.map(bundleCardHtml).join('') : (manage ? '<div class="empty">暂无自定义组合脚本，<button class="btn sm" data-bundle-add type="button">立即添加</button></div>' : '<div class="empty">暂无自定义组合脚本</div>')}</div>
       </div>`;
       visibleCount += displayBundles.length;
       continue;
@@ -566,7 +574,7 @@ async function startTaskBatch() {
   const ids = resolveBatchDevices(script);
   if (!ids.length) { showToast('请先勾选至少一台可执行设备'); return; }
 
-  if ((script.id === 'flow-03' || String(script.order) === '3' || script.id.startsWith('flow-03')) && options.action !== 'show' && options.action !== 'close') {
+  if (isVpcProxyScript(script) && options.action !== 'show' && options.action !== 'close') {
     const vpcData = await promptVpcProxyDialog();
     if (!vpcData) return;
     options.vpcData = vpcData;
@@ -637,7 +645,7 @@ async function runScriptDirect(script, deviceId) {
   try {
     options = collectTaskOptions(script);
   } catch { options = {}; }
-  if ((script.id === 'flow-03' || String(script.order) === '3' || script.id.startsWith('flow-03')) && options.action !== 'show' && options.action !== 'close') {
+  if (isVpcProxyScript(script) && options.action !== 'show' && options.action !== 'close') {
     const vpcData = await promptVpcProxyDialog();
     if (!vpcData) return null;
     options.vpcData = vpcData;
@@ -798,8 +806,12 @@ window.stopRunningScript = stopRunningScript;
 
 /* ---------- 组合脚本执行 ---------- */
 
-async function executeSingleStep(script, targetId) {
-  return runScriptOnDevice(script, targetId, {});
+function isVpcProxyScript(script) {
+  return script.id === 'flow-03' || String(script.order) === '3' || script.id.startsWith('flow-03');
+}
+
+async function executeSingleStep(script, targetId, options = {}) {
+  return runScriptOnDevice(script, targetId, options);
 }
 
 async function executeBundle(bundle) {
@@ -807,17 +819,29 @@ async function executeBundle(bundle) {
   if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
   if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
   const targetId = state.selectedDeviceId;
-  const stepScripts = (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
-  if (!stepScripts.length) { showToast('此组合未包含有效脚本步骤'); return; }
-  if (stepScripts.some(s => s.requiresDevice) && !targetId) { showToast('此组合需要操作云机，请先选择目标云机'); return; }
+  const steps = (bundle.stepIds || []).map((id, i) => {
+    const script = state.scripts.find(s => s.id === id);
+    return script ? { script, options: { ...(bundle.stepOptions?.[i] || {}) } } : null;
+  }).filter(Boolean);
+  if (!steps.length) { showToast('此组合未包含有效脚本步骤'); return; }
+  if (steps.some(step => step.script.requiresDevice) && !targetId) { showToast('此组合需要操作云机，请先选择目标云机'); return; }
+
+  // 含「设置 VPC 代理」的步骤统一在组合开始前补一次代理数据输入，避免执行中途被打断
+  const vpcSteps = steps.filter(step => isVpcProxyScript(step.script)
+    && step.options.action !== 'show' && step.options.action !== 'close' && !step.options.vpcData);
+  if (vpcSteps.length) {
+    const vpcData = await promptVpcProxyDialog();
+    if (!vpcData) return;
+    for (const step of vpcSteps) step.options.vpcData = vpcData;
+  }
 
   const bundleRunState = { bundleId: bundle.id, stopped: false };
   state.activeBundleRun = bundleRunState;
-  const total = stepScripts.length;
+  const total = steps.length;
   writeOutput(`【开始执行组合脚本】: ${bundle.name}`, [
     `功能备注：${bundle.description || '无'}`,
     `目标设备：${targetId ? deviceLabel(currentDevice()) : '无需设备'}`,
-    ...stepScripts.map((s, i) => `  ${i + 1}. ${s.title}`)
+    ...steps.map((step, i) => `  ${i + 1}. ${step.script.title}${describeStepOptions(step)}`)
   ]);
 
   try {
@@ -827,9 +851,19 @@ async function executeBundle(bundle) {
         showToast('组合脚本已停止');
         break;
       }
-      const script = stepScripts[i];
+      const step = steps[i];
+      const script = step.script;
+      if (script.destructive) {
+        const confirmed = await confirmDestructive(script, step.options, [targetId]);
+        if (!confirmed) {
+          writeOutput(`【组合脚本取消】: 步骤 ${i + 1} (${script.title}) 为破坏性操作，已按确认弹窗取消。`, ['组合脚本后续步骤已终止。']);
+          showToast(`步骤 ${i + 1} (${script.title}) 未确认执行，组合已停止`);
+          break;
+        }
+        step.options.resetConfirmed = true;
+      }
       writeOutput(`▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [`正在运行子脚本 ${script.id}...`]);
-      const stepRes = await executeSingleStep(script, targetId);
+      const stepRes = await executeSingleStep(script, targetId, step.options);
       if (bundleRunState.stopped || stepRes.cancelled) {
         writeOutput(`【组合脚本中断】: 步骤 ${i + 1} (${script.title}) 已停止。`, ['终止后续执行。']);
         showToast(`组合脚本已在步骤 ${i + 1} 停止`);
@@ -856,6 +890,18 @@ async function executeBundle(bundle) {
     loadSharedRuntimeState();
     if (typeof requestAllPreviews === 'function') requestAllPreviews();
   }
+}
+
+function describeStepOptions(step) {
+  const entries = Object.entries(step.options || {}).filter(([name]) => name !== 'vpcData');
+  if (!entries.length) return '';
+  const parts = entries.map(([name, value]) => {
+    const field = (step.script.parameters || []).find(item => item.name === name);
+    const label = field ? field.label.replace(/（.*?）/g, '') : name;
+    const shown = field?.choices ? parameterChoiceLabel(field, String(value)) : String(value);
+    return `${label}: ${shown}`;
+  });
+  return `（${parts.join('；')}）`;
 }
 
 function stopRunningBundle() {
@@ -911,6 +957,7 @@ function promptVpcProxyDialog() {
 /* ---------- 组合脚本管理（管理员） ---------- */
 
 let editingBundleSteps = [];
+let editingBundleStepOptions = [];
 
 function openBundleModal(bundle = null) {
   const modal = byId('scriptBundleModal');
@@ -933,6 +980,9 @@ function openBundleModal(bundle = null) {
     byId('bundleDescInput').value = bundle.description || '';
     byId('bundleEnabledInput').checked = bundle.enabled !== false;
     editingBundleSteps = Array.isArray(bundle.stepIds) ? [...bundle.stepIds] : [];
+    editingBundleStepOptions = Array.isArray(bundle.stepOptions)
+      ? bundle.stepOptions.map(item => ({ ...(item && typeof item === 'object' ? item : {}) }))
+      : [];
   } else {
     byId('bundleModalTitle').textContent = '新建自定义脚本组合';
     byId('bundleEditId').value = '';
@@ -940,9 +990,32 @@ function openBundleModal(bundle = null) {
     byId('bundleDescInput').value = '';
     byId('bundleEnabledInput').checked = true;
     editingBundleSteps = [];
+    editingBundleStepOptions = [];
   }
+  // 与 stepIds 保持等长，旧数据（无 stepOptions）按空参数补齐
+  while (editingBundleStepOptions.length < editingBundleSteps.length) editingBundleStepOptions.push({});
+  editingBundleStepOptions.length = editingBundleSteps.length;
   renderModalSelectedSteps();
   try { modal.showModal(); } catch { modal.setAttribute('open', ''); }
+}
+
+function bundleStepParamHtml(script, index) {
+  const fields = script?.parameters || [];
+  return fields.map(field => {
+    const value = editingBundleStepOptions[index]?.[field.name] ?? field.defaultValue ?? '';
+    if (field.choices) {
+      return `<label class="bundle-param"><span>${escapeHtml(field.label)}</span>
+        <select class="select" data-bundle-param="${index}:${escapeHtml(field.name)}">
+          ${field.choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(value) === String(choice) ? 'selected' : ''}>${escapeHtml(parameterChoiceLabel(field, choice))}</option>`).join('')}
+        </select></label>`;
+    }
+    if (field.multiline) {
+      return `<label class="bundle-param bundle-param-full"><span>${escapeHtml(field.label)}</span>
+        <textarea class="input textarea" data-bundle-param="${index}:${escapeHtml(field.name)}" ${field.required ? 'required' : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} placeholder="${escapeHtml(field.placeholder || '')}">${escapeHtml(value)}</textarea></label>`;
+    }
+    return `<label class="bundle-param"><span>${escapeHtml(field.label)}</span>
+      <input class="input" data-bundle-param="${index}:${escapeHtml(field.name)}" type="text" ${field.required ? 'required' : ''} ${field.maxLength ? `maxlength="${field.maxLength}"` : ''} placeholder="${escapeHtml(field.placeholder || '')}" value="${escapeHtml(value)}" autocomplete="off" spellcheck="false"></label>`;
+  }).join('');
 }
 
 function renderModalSelectedSteps() {
@@ -955,14 +1028,18 @@ function renderModalSelectedSteps() {
   }
   editingBundleSteps.forEach((stepId, index) => {
     const script = state.scripts.find(s => s.id === stepId);
+    const paramFields = bundleStepParamHtml(script, index);
     const row = document.createElement('div');
     row.className = 'bundle-step-row';
-    row.innerHTML = `<span class="task-name"><span class="num">${index + 1}</span>${escapeHtml(script ? script.title : stepId)}</span>
-      <span class="bundle-step-actions">
-        <button class="btn-icon" data-step-up="${index}" type="button" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
-        <button class="btn-icon" data-step-down="${index}" type="button" ${index === editingBundleSteps.length - 1 ? 'disabled' : ''} title="下移">▼</button>
-        <button class="btn-icon danger" data-step-remove="${index}" type="button" title="移除">✗</button>
-      </span>`;
+    row.innerHTML = `<div class="bundle-step-head">
+        <span class="task-name"><span class="num">${index + 1}</span>${escapeHtml(script ? script.title : stepId)}</span>
+        <span class="bundle-step-actions">
+          <button class="btn-icon" data-step-up="${index}" type="button" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
+          <button class="btn-icon" data-step-down="${index}" type="button" ${index === editingBundleSteps.length - 1 ? 'disabled' : ''} title="下移">▼</button>
+          <button class="btn-icon danger" data-step-remove="${index}" type="button" title="移除">✗</button>
+        </span>
+      </div>
+      ${paramFields ? `<div class="bundle-step-params">${paramFields}</div>` : ''}`;
     container.append(row);
   });
 }
@@ -970,28 +1047,80 @@ function renderModalSelectedSteps() {
 function initBundleModalEvents() {
   byId('closeBundleModalBtn')?.addEventListener('click', () => byId('scriptBundleModal')?.close());
   byId('cancelBundleBtn')?.addEventListener('click', () => byId('scriptBundleModal')?.close());
-  byId('bundleSelectedSteps')?.addEventListener('click', event => {
+  const stepsHost = byId('bundleSelectedSteps');
+  // 步骤参数输入实时回填，保证上移/下移重排后值不丢
+  const syncParamInput = target => {
+    const raw = target.dataset.bundleParam || '';
+    const colon = raw.indexOf(':');
+    const index = Number(raw.slice(0, colon));
+    const name = raw.slice(colon + 1);
+    if (!Number.isInteger(index) || index < 0 || !name) return;
+    if (!editingBundleStepOptions[index]) editingBundleStepOptions[index] = {};
+    editingBundleStepOptions[index][name] = target.value;
+  };
+  stepsHost?.addEventListener('input', event => {
+    if (event.target.matches('[data-bundle-param]')) syncParamInput(event.target);
+  });
+  stepsHost?.addEventListener('change', event => {
+    if (event.target.matches('[data-bundle-param]')) syncParamInput(event.target);
+  });
+  stepsHost?.addEventListener('click', event => {
     const up = event.target.closest('[data-step-up]');
     const down = event.target.closest('[data-step-down]');
     const remove = event.target.closest('[data-step-remove]');
     if (up) {
       const i = Number(up.dataset.stepUp);
       [editingBundleSteps[i - 1], editingBundleSteps[i]] = [editingBundleSteps[i], editingBundleSteps[i - 1]];
+      [editingBundleStepOptions[i - 1], editingBundleStepOptions[i]] = [editingBundleStepOptions[i], editingBundleStepOptions[i - 1]];
       renderModalSelectedSteps();
     } else if (down) {
       const i = Number(down.dataset.stepDown);
       [editingBundleSteps[i + 1], editingBundleSteps[i]] = [editingBundleSteps[i], editingBundleSteps[i + 1]];
+      [editingBundleStepOptions[i + 1], editingBundleStepOptions[i]] = [editingBundleStepOptions[i], editingBundleStepOptions[i + 1]];
       renderModalSelectedSteps();
     } else if (remove) {
-      editingBundleSteps.splice(Number(remove.dataset.stepRemove), 1);
+      const i = Number(remove.dataset.stepRemove);
+      editingBundleSteps.splice(i, 1);
+      editingBundleStepOptions.splice(i, 1);
       renderModalSelectedSteps();
     }
   });
   byId('addStepToBundleBtn')?.addEventListener('click', () => {
     const select = byId('bundleAvailableScriptsSelect');
-    if (select?.value) { editingBundleSteps.push(select.value); renderModalSelectedSteps(); }
+    if (select?.value) { editingBundleSteps.push(select.value); editingBundleStepOptions.push({}); renderModalSelectedSteps(); }
   });
   byId('saveBundleBtn')?.addEventListener('click', handleSaveBundleModal);
+}
+
+function syncBundleStepOptionsFromDom() {
+  const container = byId('bundleSelectedSteps');
+  if (!container) return;
+  for (const input of container.querySelectorAll('[data-bundle-param]')) {
+    const raw = input.dataset.bundleParam || '';
+    const colon = raw.indexOf(':');
+    const index = Number(raw.slice(0, colon));
+    const name = raw.slice(colon + 1);
+    if (!Number.isInteger(index) || index < 0 || !name) continue;
+    if (!editingBundleStepOptions[index]) editingBundleStepOptions[index] = {};
+    editingBundleStepOptions[index][name] = input.value;
+  }
+}
+
+function normalizeBundleStepOptions() {
+  return editingBundleStepOptions.map((options, index) => {
+    const clean = {};
+    for (const [name, value] of Object.entries(options || {})) {
+      const text = String(value ?? '').trim();
+      if (text) clean[name] = text;
+    }
+    const script = state.scripts.find(s => s.id === editingBundleSteps[index]);
+    for (const field of (script?.parameters || [])) {
+      if (field.required && !clean[field.name]) {
+        throw new Error(`步骤 ${index + 1}（${script.title}）的「${field.label}」为必填项`);
+      }
+    }
+    return clean;
+  });
 }
 
 async function handleSaveBundleModal() {
@@ -999,6 +1128,15 @@ async function handleSaveBundleModal() {
   const name = byId('bundleNameInput')?.value?.trim();
   if (!name) { showToast('请输入组合脚本名称'); return; }
   if (!editingBundleSteps.length) { showToast('请至少添加一个执行步骤'); return; }
+  // 保存前以 DOM 实际值为准再收集一次，避免输入事件丢失（自动填充、清空等场景）
+  syncBundleStepOptionsFromDom();
+  let stepOptions;
+  try {
+    stepOptions = normalizeBundleStepOptions();
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
   try {
     const res = await requestJson('/api/admin/scripts/bundles', {
       method: 'POST',
@@ -1008,7 +1146,8 @@ async function handleSaveBundleModal() {
         name,
         description: byId('bundleDescInput')?.value?.trim() || '',
         enabled: byId('bundleEnabledInput')?.checked !== false,
-        stepIds: editingBundleSteps
+        stepIds: editingBundleSteps,
+        stepOptions
       })
     });
     if (res.ok) {

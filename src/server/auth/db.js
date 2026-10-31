@@ -877,6 +877,18 @@ class AuthDatabase {
     const now = Date.now();
     const id = bundle.id || `bundle_${now}_${Math.random().toString(36).slice(2, 6)}`;
     const stepIds = Array.isArray(bundle.stepIds) ? bundle.stepIds : [];
+    const stepOptions = stepIds.map((_, index) => {
+      const source = Array.isArray(bundle.stepOptions) ? bundle.stepOptions[index] : null;
+      if (!source || typeof source !== 'object') return {};
+      const clean = {};
+      for (const [key, value] of Object.entries(source)) {
+        if (typeof key !== 'string' || !key || key.length > 120) continue;
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          clean[key] = String(value).slice(0, 2000);
+        }
+      }
+      return clean;
+    });
 
     const existingIndex = bundles.findIndex(b => b.id === id);
     const bundleData = {
@@ -885,6 +897,7 @@ class AuthDatabase {
       description: String(bundle.description || '').trim(),
       enabled: bundle.enabled !== false,
       stepIds,
+      stepOptions,
       createdAt: existingIndex >= 0 ? bundles[existingIndex].createdAt : now,
       updatedAt: now
     };
