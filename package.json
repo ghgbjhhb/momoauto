@@ -31,7 +31,8 @@
   ],
   "scripts": {
     "timing:report": "node scripts/timing-report.js",
-    "index": "node scripts/generate-code-index.js",
+    "index:symbols": "python scripts/serena-export-symbols.py",
+    "index": "npm run index:symbols && node scripts/generate-code-index.js",
     "app": "node src/server/app-server.js",
     "tunnel:start": "\"scripts\\frp-4318\\启动4318穿透.bat\" silent",
     "tunnel:stop": "\"scripts\\frp-4318\\停止4318穿透.bat\" silent",

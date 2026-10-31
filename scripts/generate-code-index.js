@@ -5,6 +5,8 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT_FILE = path.join(ROOT, 'docs', '代码符号索引.md');
+const SYMBOLS_FILE = path.join(ROOT, '.serena', 'cache', 'symbols.json');
+const FILE_URL_BASE = 'file:///d:/AA-project/自动化';
 
 const SCAN_DIRS = [
   'src',
@@ -15,172 +17,99 @@ const SCAN_DIRS = [
   'python_workers'
 ];
 
+const SCANNED_EXTENSIONS = ['.js', '.py', '.ts', '.html', '.css'];
+const IGNORED_DIRECTORIES = ['node_modules', '.git', '.runtime', '.local-output', '__pycache__', '.venv-zhtyping', '.research', 'templates'];
+
+function loadSymbols() {
+  if (!fs.existsSync(SYMBOLS_FILE)) {
+    console.error('[code-indexer] 缺少 Serena 符号导出文件 .serena/cache/symbols.json');
+    console.error('[code-indexer] 请先执行: serena project index && npm run index:symbols');
+    process.exit(1);
+  }
+  return JSON.parse(fs.readFileSync(SYMBOLS_FILE, 'utf8'));
+}
+
 function scanDirectory(dir, fileList = []) {
   if (!fs.existsSync(dir)) return fileList;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (!['node_modules', '.git', '.runtime', '.local-output', '__pycache__', '.venv-zhtyping', '.research', 'templates'].includes(entry.name)) {
+      if (!IGNORED_DIRECTORIES.includes(entry.name)) {
         scanDirectory(fullPath, fileList);
       }
-    } else if (entry.isFile()) {
-      const ext = path.extname(entry.name).toLowerCase();
-      if (['.js', '.py', '.ts', '.html', '.css'].includes(ext)) {
-        fileList.push(fullPath);
-      }
+    } else if (entry.isFile() && SCANNED_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) {
+      fileList.push(fullPath);
     }
   }
   return fileList;
 }
 
-function parseJsFile(filePath, content) {
-  const lines = content.split(/\r?\n/);
-  const classes = [];
-  const functions = [];
-  const exports = [];
-  const constants = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNum = i + 1;
-
-    // Class definition
-    const classMatch = line.match(/^(\s*)(export\s+)?class\s+([A-Za-z0-9_$]+)(\s+extends\s+([A-Za-z0-9_$]+))?/);
-    if (classMatch) {
-      classes.push({
-        name: classMatch[3],
-        parent: classMatch[5] || null,
-        line: lineNum
-      });
-      continue;
-    }
-
-    // Function definition
-    const funcMatch = line.match(/^(\s*)(export\s+)?(async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(([^)]*)\)/);
-    if (funcMatch) {
-      functions.push({
-        name: funcMatch[4],
-        async: Boolean(funcMatch[3]),
-        params: funcMatch[5].trim(),
-        line: lineNum
-      });
-      continue;
-    }
-
-    // Top-level arrow or function variable
-    const varFuncMatch = line.match(/^(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(async\s+)?(?:\(([^)]*)\)|([A-Za-z0-9_$]+))\s*=>/);
-    if (varFuncMatch) {
-      functions.push({
-        name: varFuncMatch[1],
-        async: Boolean(varFuncMatch[2]),
-        params: (varFuncMatch[3] || varFuncMatch[4] || '').trim(),
-        line: lineNum
-      });
-      continue;
-    }
-
-    // Significant constants
-    const constMatch = line.match(/^const\s+([A-Z0-9_]{3,})\s*=/);
-    if (constMatch) {
-      constants.push({
-        name: constMatch[1],
-        line: lineNum
-      });
-    }
-
-    // Module exports
-    const exportMatch = line.match(/module\.exports\s*=\s*(?:\{([^}]+)\}|([A-Za-z0-9_$]+))/);
-    if (exportMatch) {
-      if (exportMatch[1]) {
-        exportMatch[1].split(',').forEach(item => {
-          const trimmed = item.trim().split(/\s*:\s*/)[0];
-          if (trimmed && !trimmed.startsWith('//') && !trimmed.startsWith('...')) {
-            exports.push({ name: trimmed, line: lineNum });
-          }
-        });
-      } else if (exportMatch[2]) {
-        exports.push({ name: exportMatch[2], line: lineNum });
-      }
-    }
-  }
-
-  return { classes, functions, constants, exports, lineCount: lines.length };
+function link(relPath, label, line) {
+  const safeLabel = label.replace(/([\[\]])/g, '\\$1');
+  return `[\`${safeLabel}\`](${FILE_URL_BASE}/${relPath}${line ? `#L${line}` : ''})`;
 }
 
-function parsePyFile(filePath, content) {
-  const lines = content.split(/\r?\n/);
-  const classes = [];
-  const functions = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNum = i + 1;
-
-    const classMatch = line.match(/^class\s+([A-Za-z0-9_]+)(?:\(([^)]*)\))?:/);
-    if (classMatch) {
-      classes.push({
-        name: classMatch[1],
-        parent: classMatch[2] || null,
-        line: lineNum
-      });
-      continue;
-    }
-
-    const defMatch = line.match(/^def\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)(?:\s*->\s*([^:]+))?:/);
-    if (defMatch) {
-      functions.push({
-        name: defMatch[1],
-        params: defMatch[2].trim(),
-        returnType: defMatch[3]?.trim() || null,
-        line: lineNum
-      });
-    }
-  }
-
-  return { classes, functions, lineCount: lines.length };
+function rangeLabel(item) {
+  if (item.endLine && item.endLine > item.line) return `第 ${item.line}–${item.endLine} 行`;
+  return `第 ${item.line} 行`;
 }
 
-function generateMarkdownIndex() {
-  const allFiles = [];
-  for (const scanDir of SCAN_DIRS) {
-    scanDirectory(path.join(ROOT, scanDir), allFiles);
-  }
+const symbols = loadSymbols();
+const fileEntries = symbols.files || {};
 
-  const results = [];
-  for (const file of allFiles) {
-    const relPath = path.relative(ROOT, file).replace(/\\/g, '/');
-    const content = fs.readFileSync(file, 'utf8');
-    const ext = path.extname(file).toLowerCase();
-
-    let parsed = null;
-    if (ext === '.js' || ext === '.ts') {
-      parsed = parseJsFile(file, content);
-    } else if (ext === '.py') {
-      parsed = parsePyFile(file, content);
-    } else {
-      parsed = { lineCount: content.split(/\r?\n/).length };
-    }
-
-    results.push({
-      relPath,
-      ext,
-      ...parsed
-    });
-  }
-
-  return results;
+const scannedFiles = [];
+for (const scanDir of SCAN_DIRS) {
+  scanDirectory(path.join(ROOT, scanDir), scannedFiles);
 }
 
-const parsedFiles = generateMarkdownIndex();
+const relPaths = scannedFiles
+  .map((file) => path.relative(ROOT, file).replace(/\\/g, '/'))
+  .sort();
+
+const cacheUpdatedAt = Math.max(
+  0,
+  ...Object.values(symbols.languages || {}).map((info) => (info.cacheUpdatedAt || 0) * 1000)
+);
+const staleFiles = relPaths.filter(
+  (relPath) => fs.statSync(path.join(ROOT, relPath)).mtimeMs > cacheUpdatedAt
+);
+
+function countFiles(prefix) {
+  return relPaths.filter((relPath) => relPath === prefix || relPath.startsWith(`${prefix}/`)).length;
+}
+
+const lineCountCache = new Map();
+function countLines(relPath) {
+  if (!lineCountCache.has(relPath)) {
+    lineCountCache.set(relPath, fs.readFileSync(path.join(ROOT, relPath), 'utf8').split(/\r?\n/).length);
+  }
+  return lineCountCache.get(relPath);
+}
+
+const stats = relPaths.reduce((acc, relPath) => {
+  const entry = fileEntries[relPath];
+  if (!entry) return acc;
+  acc.classes += entry.classes.length;
+  acc.methods += entry.classes.reduce((sum, cls) => sum + cls.members.length, 0);
+  acc.functions += entry.functions.length;
+  acc.constants += entry.constants.length;
+  if (entry.classes.length || entry.functions.length || entry.constants.length) acc.symbolFiles += 1;
+  return acc;
+}, { classes: 0, methods: 0, functions: 0, constants: 0, symbolFiles: 0 });
 
 let md = `# 📖 云脉云手机自动化代码符号与架构全景索引
 
 > **生成时间**：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}  
+> **符号来源**：Serena 语言服务（LSP）文档符号缓存，覆盖 ${stats.symbolFiles} 个源文件 / ${relPaths.length} 个扫描文件，  
+> 解析出 ${stats.classes} 个类与接口、${stats.methods} 个成员方法、${stats.functions} 个函数、${stats.constants} 个模块级常量。  
 > **服务默认端口**：\`4318\` (\`http://127.0.0.1:4318/\`)  
 > **GPU 识别常驻端口**：\`4329\` (\`http://127.0.0.1:4329/\`)  
 > **项目定位**：基于 Yunmomo 云手机平台的高性能自动化控制、YOLO/RapidOCR 本地视觉感知与端到端 RPA 调度中台。
-
+${staleFiles.length && cacheUpdatedAt ? `
+> ⚠️ **缓存滞后**：有 ${staleFiles.length} 个源文件的修改时间晚于 Serena 符号缓存，行号可能偏移。  
+> 刷新方式：\`serena project index\` → \`npm run index\`。
+` : ''}
 ---
 
 ## 🏛️ 一、系统全景架构与模块拓扑 (System Architecture)
@@ -188,8 +117,8 @@ let md = `# 📖 云脉云手机自动化代码符号与架构全景索引
 \`\`\`mermaid
 flowchart TD
     subgraph UI_Console["🖥️ Web 控制台与操作台 (app/ & src/server/)"]
-        App["Web 前端 (app.js / index.html)<br/>• 01~08 步进器状态感知<br/>• 云手机集群画面与编号管理"]
-        Workstation["原画工作台 (manual-control.js)<br/>• 9:16 真机操控面板<br/>• AI 视觉透视图层 (HUD Overlay)"]
+        App["Web 前端 (app/console/ & app/admin/)<br/>• 01~08 步进器状态感知<br/>• 云手机集群画面与编号管理"]
+        Workstation["原画工作台 (app/manual-control.js)<br/>• 9:16 真机操控面板<br/>• AI 视觉透视图层 (HUD Overlay)"]
         Server["本地控制台服务 (src/server/app-server.js)<br/>• 默认端口 4318<br/>• REST /api/* 接口网关<br/>• WebSocket 触控中继"]
     end
 
@@ -234,9 +163,7 @@ flowchart TD
     end
 
     subgraph AI_Engine["🧠 AI大脑与本地视觉感知 (src/ai/ & src/automation/ & python_*)"]
-        DeepSeek["DeepSeek API 引擎 (src/ai/)
-• 官方 OpenAI 兼容接口
-• deepseek-chat 智能会话"]
+        DeepSeek["DeepSeek API 引擎 (src/ai/)<br/>• 官方 OpenAI 兼容接口<br/>• deepseek-chat 智能会话"]
         OCR["RapidOCR 引擎 (ocr.js & rapidocr_worker.py)<br/>• WSL Python 本地 ONNX 推理<br/>• 控件边界与文字置信度"]
         GPU_Pool["GPU 识别池 (recognition-service.js)<br/>• 端口 4329 常驻 RPC 服务<br/>• YOLO 页面/聊天框/头像检测"]
         TypingEngine["自然拼音打字引擎 (python_typing/ & ws-ime-input.js)<br/>• jieba 分词 + 拼音映射<br/>• 虚拟键盘按键计划生成"]
@@ -263,70 +190,87 @@ flowchart TD
 
 ## 📂 二、目录职责与工程分工
 
-| 目录路径 | 文件数量 | 核心职责与关键技术 |
+| 目录路径 | 源文件数 | 核心职责与关键技术 |
 |---|---|---|
-| [\`src/\`](file:///d:/AA-project/自动化/src) | 核心库 | 云端 REST 客户端、scrcpy 协议帧编解码、WebSocket 实时真机控制器、高清抓帧引擎 |
-| [\`src/automation/\`](file:///d:/AA-project/自动化/src/automation) | 自动化引擎 | 路径/环境隔离、WSL RapidOCR 桥接、4329 GPU 识别常驻服务、并发锁、页面导航恢复 |
-| [\`src/tools/\`](file:///d:/AA-project/自动化/src/tools) | 工具与视觉算子 | 点击/滑动/区域加权采样、MOMO 页面识别、红点候选、聊天详情提取 |
-| [\`src/workflows/\`](file:///d:/AA-project/自动化/src/workflows) | 业务流程实现 | 01~14 业务流程、MOMO 消息持续监听、参数校验、上游调用、重试熔断 |
-| [\`src/typing/\`](file:///d:/AA-project/自动化/src/typing) | 2 个模块 | WebSocket 输入法按键注入、聊天消息自然拼音分词输入控制器 |
-| [\`src/server/\`](file:///d:/AA-project/自动化/src/server) | 本地服务 | 本地 Web 控制台 HTTP/WS 服务（默认端口 4318）、设备锁、真机触控桥接、视频流代理 |
-| [\`app/\`](file:///d:/AA-project/自动化/app) | 5 个前端文件 | 业务控制台 UI、01~08 全流程状态感知步进器、微型进度条、AI 视觉 HUD 覆盖层 |
-| [\`flows/\`](file:///d:/AA-project/自动化/flows) | 流程入口 | 01~14 CLI 规范执行入口、\`_common.js\` 串行流水线调度执行器 |
-| [\`python_typing/\`](file:///d:/AA-project/自动化/python_typing) | 10 个模块 | 纯 Python 中文分词、拼音拼写转换、候选词匹配、九宫格/全键盘按键动作生成 |
-| [\`python_workers/\`](file:///d:/AA-project/自动化/python_workers) | 3 个 Worker | RapidOCR 常驻进程、输入法候选 OCR 进程、分词拼音计划输出管道 |
-| [\`docs/\`](file:///d:/AA-project/自动化/docs) | 20 篇文档 | API 接口文档、协议定义、MOMO 自动化规范、性能基准、架构约定 |
+| [\`src/\`](file:///d:/AA-project/自动化/src) | ${countFiles('src')} | 云端 REST 客户端、scrcpy 协议帧编解码、WebSocket 实时真机控制器、高清抓帧引擎 |
+| [\`src/automation/\`](file:///d:/AA-project/自动化/src/automation) | ${countFiles('src/automation')} | 路径/环境隔离、WSL RapidOCR 桥接、4329 GPU 识别常驻服务、并发锁、页面导航恢复 |
+| [\`src/tools/\`](file:///d:/AA-project/自动化/src/tools) | ${countFiles('src/tools')} | 点击/滑动/区域加权采样、MOMO 页面识别、红点候选、聊天详情提取 |
+| [\`src/workflows/\`](file:///d:/AA-project/自动化/src/workflows) | ${countFiles('src/workflows')} | 01~16 业务流程实现、MOMO 消息持续监听、参数校验、上游调用、重试熔断 |
+| [\`src/brain/\`](file:///d:/AA-project/自动化/src/brain) | ${countFiles('src/brain')} | 多设备监听调度中枢、串行 DeviceActor、优先级任务队列与调度控制库 |
+| [\`src/ai/\`](file:///d:/AA-project/自动化/src/ai) | ${countFiles('src/ai')} | DeepSeek 会话配置、上下文拼装与 AI 回复任务执行 |
+| [\`src/typing/\`](file:///d:/AA-project/自动化/src/typing) | ${countFiles('src/typing')} | WebSocket 输入法按键注入、聊天消息自然拼音分词输入控制器 |
+| [\`src/server/\`](file:///d:/AA-project/自动化/src/server) | ${countFiles('src/server')} | 本地 Web 控制台 HTTP/WS 服务（默认端口 4318）、设备锁、真机触控桥接、视频流代理 |
+| [\`app/\`](file:///d:/AA-project/自动化/app) | ${countFiles('app')} | 业务控制台 UI、01~16 全流程状态感知步进器、微型进度条、AI 视觉 HUD 覆盖层 |
+| [\`flows/\`](file:///d:/AA-project/自动化/flows) | ${countFiles('flows')} | 中文编号 CLI 执行入口（v2/v3/momo 三套），统一转发至 \`src/workflows/\` |
+| [\`python_typing/\`](file:///d:/AA-project/自动化/python_typing) | ${countFiles('python_typing')} | 纯 Python 中文分词、拼音拼写转换、候选词匹配、九宫格/全键盘按键动作生成 |
+| [\`python_workers/\`](file:///d:/AA-project/自动化/python_workers) | ${countFiles('python_workers')} | RapidOCR 常驻进程、输入法候选 OCR 进程、分词拼音计划输出管道 |
+| [\`scripts/\`](file:///d:/AA-project/自动化/scripts) | ${countFiles('scripts')} | 控制台启动入口、识别常驻服务、4318 穿透、索引生成与 UI 校验脚本 |
 
 ---
 
 ## 📑 三、核心类与导出符号全览 (Classes & Symbols)
 
+> 以下符号、签名与行号全部来自 Serena 语言服务解析结果；类成员（方法/字段）随类缩进列出。
+
 `;
 
 // Group by category
 const categories = [
-  { name: '1. 核心 SDK 与客户端 (src/client, control, protocol, management)', match: f => f.startsWith('src/') && !f.includes('src/automation') && !f.includes('src/tools') && !f.includes('src/workflows') && !f.includes('src/typing') && !f.includes('src/server') },
+  { name: '1. 核心 SDK 与客户端 (src/client, control, protocol, management)', match: f => f.startsWith('src/') && !f.includes('src/automation') && !f.includes('src/tools') && !f.includes('src/workflows') && !f.includes('src/typing') && !f.includes('src/server') && !f.includes('src/brain') && !f.includes('src/ai') },
   { name: '2. 自动化感知与基础服务 (src/automation/)', match: f => f.startsWith('src/automation/') },
   { name: '3. 视觉算子与工具集 (src/tools/)', match: f => f.startsWith('src/tools/') },
   { name: '4. 业务工作流核心实现 (src/workflows/)', match: f => f.startsWith('src/workflows/') },
   { name: '4.6 持续监听与调度中枢 (src/brain/)', match: f => f.startsWith('src/brain/') },
   { name: '4.5 AI 回复与大模型接入 (src/ai/)', match: f => f.startsWith('src/ai/') },
-  { name: '5. 拼音打字与输入法系统 (src/typing/ & python_typing/)', match: f => f.startsWith('src/typing/') || f.startsWith('python_typing/') },
+  { name: '5. 拼音打字与输入法系统 (src/typing/ & python_typing/ & python_workers/)', match: f => f.startsWith('src/typing/') || f.startsWith('python_typing/') || f.startsWith('python_workers/') },
   { name: '6. Web 服务端与前端控制台 (src/server/ & app/)', match: f => f.startsWith('src/server/') || f.startsWith('app/') },
-  { name: '7. 流程执行入口 (flows/)', match: f => f.startsWith('flows/') }
+  { name: '7. 流程执行入口 (flows/)', match: f => f.startsWith('flows/') },
+  { name: '8. 启动与运维脚本 (scripts/)', match: f => f.startsWith('scripts/') }
 ];
 
 for (const cat of categories) {
   md += `### ${cat.name}\n\n`;
-  const matchedFiles = parsedFiles.filter(f => cat.match(f.relPath));
+  const matchedFiles = relPaths.filter(cat.match);
 
-  for (const file of matchedFiles) {
-    md += `#### 📄 [\`${file.relPath}\`](file:///d:/AA-project/自动化/${file.relPath}) (${file.lineCount} 行)\n\n`;
+  for (const relPath of matchedFiles) {
+    const entry = fileEntries[relPath];
+    const lineCount = entry ? entry.lines : countLines(relPath);
+    md += `#### 📄 [\`${relPath}\`](${FILE_URL_BASE}/${relPath}) (${lineCount} 行)\n\n`;
 
-    if (file.classes && file.classes.length > 0) {
-      md += `**核心类定义 (Classes)**:\n`;
-      for (const cls of file.classes) {
-        md += `- [\`${cls.name}\`](file:///d:/AA-project/自动化/${file.relPath}#L${cls.line})${cls.parent ? ` *(继承自 \`${cls.parent}\`)*` : ''} —— 第 ${cls.line} 行\n`;
+    if (!entry || (!entry.classes.length && !entry.functions.length && !entry.constants.length)) {
+      md += /\.(css|html)$/.test(relPath)
+        ? `_样式与页面模板，不参与 LSP 符号解析。_\n\n`
+        : `_纯转发壳（re-export / CLI 引导），无顶层可执行符号。_\n\n`;
+      continue;
+    }
+
+    if (entry.classes.length > 0) {
+      md += `**类与接口 (Classes)**:\n`;
+      for (const cls of entry.classes) {
+        md += `- ${link(relPath, cls.name, cls.line)} —— ${rangeLabel(cls)}\n`;
+        for (const member of cls.members) {
+          md += `  - ${link(relPath, member.decl || member.name, member.line)} — L${member.line}\n`;
+        }
       }
       md += '\n';
     }
 
-    if (file.functions && file.functions.length > 0) {
-      md += `**函数与方法 (Functions)**:\n`;
-      for (const fn of file.functions) {
-        md += `- [\`${fn.name}(${fn.params})\`](file:///d:/AA-project/自动化/${file.relPath}#L${fn.line})${fn.async ? ' *(async)*' : ''}${fn.returnType ? ` \`-> ${fn.returnType}\`` : ''} —— 第 ${fn.line} 行\n`;
+    if (entry.functions.length > 0) {
+      md += `**函数 (Functions)**:\n`;
+      for (const fn of entry.functions) {
+        md += `- ${link(relPath, fn.decl || fn.name, fn.line)} —— ${rangeLabel(fn)}\n`;
       }
       md += '\n';
     }
 
-    if (file.constants && file.constants.length > 0) {
-      md += `**关键配置与枚举常量**:\n`;
-      const constList = file.constants.map(c => `[\`${c.name}\`](file:///d:/AA-project/自动化/${file.relPath}#L${c.line})`).join(', ');
-      md += `${constList}\n\n`;
+    if (entry.constants.length > 0) {
+      md += `**模块级常量与状态**:\n`;
+      const constList = entry.constants.map(c => `${link(relPath, c.name, c.line)} (第 ${c.line} 行)`);
+      md += `${constList.join(' · ')}\n\n`;
     }
 
-    if (file.exports && file.exports.length > 0) {
-      md += `**模块导出 (Exports)**: ${file.exports.map(e => `\`${e.name}\``).join(', ')}\n\n`;
+    if (entry.exports.length > 0) {
+      md += `**模块导出 (Exports)**: ${entry.exports.map(e => `\`${e}\``).join(', ')}\n\n`;
     }
   }
 }
@@ -341,7 +285,7 @@ md += `---
 |---|---|---|---|---|
 | **GET** | \`/api/status\` | 获取本地控制台服务与登录态状态 | 无 | \`{ ok: true, tokenConfigured: boolean, sessionSource: string, host: string }\` |
 | **GET** | \`/api/devices\` | 获取当前账号下的云手机列表及在线状态 | 无 | \`{ ok: true, devices: Array<CloudDeviceInfo> }\` |
-| **GET** | \`/api/scripts\` | 获取 01~14 流程、MOMO 监听及执行全部定义 | 无 | \`{ ok: true, scripts: Array<ScriptDefinition> }\` |
+| **GET** | \`/api/scripts\` | 获取 01~16 流程、MOMO 监听及执行全部定义 | 无 | \`{ ok: true, scripts: Array<ScriptDefinition> }\` |
 | **GET** | \`/api/screenshot\` | 高速读取单台云手机的最新高清原画画面 | \`deviceId\` (云机 ID) | 二进制图片流 (\`image/jpeg\` / \`image/png\`) |
 | **GET** | \`/api/vision-inspect\` | **AI 视觉识别透视**：调用 RapidOCR 解析当前画面所有文字及坐标 | \`deviceId\` (云机 ID) | \`{ ok: true, width, height, count, items: Array<{text, score, left, top, right, bottom, center_x, center_y}> }\` |
 | **POST** | \`/api/execute\` | 执行指定的自动化业务脚本（01~10 或执行全部） | \`{ scriptId, deviceId, options, resetConfirmed }\` | \`{ ok: boolean, exitCode: number, stdout: string, stderr: string }\` |
@@ -434,9 +378,17 @@ npm run flow:all -- --execute
 
 ### 3. 刷新本索引
 \`\`\`powershell
-node scripts/generate-code-index.js
+# 1) 用 Serena 语言服务重建符号缓存（分钟级，只需在代码结构变化后执行）
+serena project index
+
+# 2) 导出符号 JSON 并重新生成索引
+npm run index
 \`\`\`
 `;
 
 fs.writeFileSync(OUTPUT_FILE, md, 'utf8');
+console.log(`[code-indexer] 符号源: Serena LSP · 文件 ${stats.symbolFiles}/${relPaths.length} · 类 ${stats.classes} · 方法 ${stats.methods} · 函数 ${stats.functions}`);
+if (staleFiles.length && cacheUpdatedAt) {
+  console.warn(`[code-indexer] 警告：${staleFiles.length} 个文件晚于符号缓存，请重新执行 serena project index`);
+}
 console.log(`[code-indexer] Successfully generated: ${OUTPUT_FILE} (${md.length} bytes)`);

@@ -30,7 +30,7 @@
 ## 常用命令
 
 - `npm run app` — 启动本地控制台（4318 端口）
-- `npm run index` — 重新生成代码符号索引
+- `npm run index` — 重新生成代码符号索引（符号取自 Serena LSP 缓存；改动代码结构后先执行 `serena project index` 刷新缓存）
 - `npm run flow:NN` — 业务脚本（01~16）；`npm run timing:report` — 慢步骤报告
 
 ## 工程守则
