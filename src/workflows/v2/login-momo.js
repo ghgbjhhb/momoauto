@@ -26,6 +26,7 @@ const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
 const { logAuthBudget, recordAuthStart } = require('../../automation/auth-session');
+const { generateGirlNickname } = require('../../automation/nickname-generator');
 const { SmsService } = require('../../server/sms/service');
 
 const {
@@ -49,8 +50,10 @@ const DEFAULT_POLL_MS = 700;
 const DEFAULT_TARGET_TIME = '16:05';
 // 默认使用【直接一键授权模式 (direct)】；若遇到超时(>8分钟)或服务端提示“请重新授权”，脚本会自动触发【历史复扫模式 (relogin)】自愈
 const DEFAULT_YAYA_MODE = 'direct';
-// TODO: 当前默认女网名“菲菲菲”，方便后续随时接入外部词库动态生成网名
+// 默认女网名仅作随机生成失败时的兜底；正常每次运行由 python_workers/nickname 离线生成
 const DEFAULT_NICKNAME = '菲菲菲';
+// 命中这些关键字时触发随机网名生成（与任务配置表单默认值保持一致）
+const AUTO_NICKNAME_KEYWORDS = new Set(['随机生成', '随机', '自动生成', '自动']);
 
 function formatLogTime() {
   const d = new Date();
@@ -439,7 +442,21 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
   const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
-  const nickname = String(options.nickname || process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME).trim();
+  // 网名解析：'随机生成' 等关键字 → 调用离线生成器 (python_workers/nickname)；
+  // 生成失败回退默认网名；显式指定则原样使用。
+  const nicknameSetting = String(options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME ?? '').trim() || DEFAULT_NICKNAME;
+  let nickname;
+  if (AUTO_NICKNAME_KEYWORDS.has(nicknameSetting)) {
+    try {
+      nickname = await generateGirlNickname({ style: '混合' });
+      log.console(`[人设网名] 已随机生成女生网名: "${nickname}"`);
+    } catch (err) {
+      nickname = DEFAULT_NICKNAME;
+      log.console(`[人设网名] ⚠️ 随机生成失败 (${err.message})，回退默认网名 "${DEFAULT_NICKNAME}"`);
+    }
+  } else {
+    nickname = nicknameSetting;
+  }
   const modeLabel = yayaMode === 'relogin' ? '历史复扫' : '直接授权';
 
   await log.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, targetTime, yayaMode, nickname });
@@ -1006,7 +1023,7 @@ function parseCliArgs(argv) {
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
     yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE,
-    nickname: process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME,
+    nickname: process.env.YUNMOMO_MOMO_NICKNAME || '随机生成',
     phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '',
     verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990',

@@ -127,7 +127,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     category: 'momo',
     version: 'v2',
     parameters: [
-      { name: 'nickname', label: '女生网名', defaultValue: '菲菲菲', placeholder: '设置女生昵称，默认菲菲菲' }
+      { name: 'nickname', label: '女生网名', defaultValue: '随机生成', placeholder: '随机生成=每次自动起名；也可指定固定网名' }
     ]
   },
   {
