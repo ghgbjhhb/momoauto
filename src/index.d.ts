@@ -102,6 +102,7 @@ export interface ControlOptions {
   token: string; deviceId: string; udid: string; origin?: string; endpoint?: string;
   screenWidth?: number; screenHeight?: number; displayId?: number; maxFps?: number;
   videoSettings?: VideoSettings; autoRefresh?: boolean; autoCopy?: (text: string) => void | Promise<void>;
+  inputOverStream?: boolean;
 }
 export interface TouchOptions {
   pointerId?: number; pressure?: number; buttons?: number; screenWidth?: number; screenHeight?: number;

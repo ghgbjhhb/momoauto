@@ -78,7 +78,7 @@ function createVideoStreams({ client }) {
 
   function create(device) {
     const control = client().openControl({ deviceId: device.deviceId, udid: device.udid,
-      autoRefresh: false, videoSettings: { ...SETTINGS, bounds: { ...SETTINGS.bounds } } });
+      autoRefresh: false, inputOverStream: false, videoSettings: { ...SETTINGS, bounds: { ...SETTINGS.bounds } } });
     const entry = { control, viewers: new Set(), holders: new Set(), closed: false, lastPacketAt: 0, lastRefreshAt: 0,
       refreshBit: false, startedAt: 0, pingAt: 0, lastPingAt: 0 };
     // CloudPhoneControl emits `initial` after parsing display metadata and before

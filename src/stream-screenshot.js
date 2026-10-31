@@ -88,7 +88,7 @@ class StreamCapture {
     // Drain without logging remote/device details or unbounded diagnostic output.
     decoder.stderr.on('data', () => {});
     const control = this.control = this.client.openControl({
-      deviceId: this.deviceId, udid, autoRefresh: false,
+      deviceId: this.deviceId, udid, autoRefresh: false, inputOverStream: false,
       videoSettings: { bounds: { width: options.maxSize, height: options.maxSize },
         bitrate: options.bitrate, maxFps: 24, iFrameInterval: 1 }
     });

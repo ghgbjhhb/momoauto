@@ -6,6 +6,7 @@ const { basename } = require('node:path');
 const { inspect } = require('node:util');
 const WebSocket = require('ws');
 const p = require('./protocol');
+const { sharedStreamInput } = require('./stream-control');
 
 function requiredString(name, value) {
   if (typeof value !== 'string' || !value.trim()) throw new TypeError(name + ' must be a non-empty string');
@@ -33,6 +34,11 @@ class CloudPhoneControl extends EventEmitter {
     this.endpoint = options.endpoint ?? 'wss://qk.yunmomo.com/';
     this.screenWidth = p.integer('screenWidth', options.screenWidth ?? 720, 1, 65535);
     this.screenHeight = p.integer('screenHeight', options.screenHeight ?? 1280, 1, 65535);
+    // 触摸/按键走厂商 /stream JSON 协议（旧隧道触摸注入已被服务端下线）。
+    // 截图/转发等纯视频连接点必须显式传 false，避免与流程输入互抢 master。
+    this.inputOverStream = options.inputOverStream !== false;
+    this._streamInput = null;
+    this._streamError = null;
     this.displayId = p.integer('displayId', options.displayId ?? 0, 0, 0x7fffffff);
     this.videoSettings = { bitrate: 524288, maxFps: options.maxFps ?? 60, iFrameInterval: 15,
       bounds: { width: 720, height: 720 }, lockedVideoOrientation: -1, sendFrameMeta: false,
@@ -170,6 +176,7 @@ class CloudPhoneControl extends EventEmitter {
       if (firstReady) {
         this.send(p.encodeVideoSettings(this.videoSettings));
         this.emit('ready', info);
+        this._warmStreamInput();
       }
       return;
     }
@@ -192,11 +199,46 @@ class CloudPhoneControl extends EventEmitter {
     return this;
   }
 
+  _ensureStreamInput() {
+    if (!this.inputOverStream) return null;
+    if (!this._streamInput) {
+      this._streamInput = sharedStreamInput({ deviceId: this.deviceId, token: this.token,
+        origin: this.origin, endpoint: this.endpoint });
+    }
+    return this._streamInput;
+  }
+
+  _warmStreamInput() {
+    const stream = this._ensureStreamInput();
+    if (!stream || stream.open) return;
+    this._streamError = null;
+    stream.ensureConnected().catch(error => { this._streamError = error; });
+  }
+
+  _streamSend(operation) {
+    const stream = this._ensureStreamInput();
+    if (!stream) return false;
+    try {
+      operation(stream);
+      this._streamError = null;
+      return true;
+    } catch (error) {
+      if (error && error.code === 'INPUT_STREAM_NOT_READY') {
+        this._warmStreamInput();
+        if (this._streamError) error.cause = this._streamError;
+      }
+      throw error;
+    }
+  }
+
   flush() {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Cloud phone is not connected'));
     // ws preserves frame order. Callback confirms local write, not Android execution.
-    return new Promise((resolve, reject) => this.socket.ping(Buffer.alloc(0), undefined,
+    const legacy = new Promise((resolve, reject) => this.socket.ping(Buffer.alloc(0), undefined,
       error => error ? reject(new Error('Cloud phone write failed')) : resolve(this)));
+    if (!this._streamInput) return legacy;
+    // 输入帧走独立通道，两条都确认写入才算 flush 完成。
+    return Promise.all([legacy, this._streamInput.flush()]).then(() => this);
   }
 
   async close(options = {}) {
@@ -255,10 +297,21 @@ class CloudPhoneControl extends EventEmitter {
   }
 
   touch(action, x, y, options = {}) {
+    if (this._streamSend(stream => stream.sendTouch(action, x, y, options))) return this;
     return this.send(p.encodeTouch({ ...options, action, x, y,
       screenWidth: options.screenWidth ?? this.screenWidth, screenHeight: options.screenHeight ?? this.screenHeight,
       pressure: options.pressure ?? (action === p.ACTION.UP ? 0 : 1),
       buttons: options.buttons ?? (action === p.ACTION.UP ? 0 : 1) }));
+  }
+
+  keyDown(keycode, options = {}) {
+    if (this._streamSend(stream => stream.sendKey(keycode, 0))) return this;
+    return this.send(p.encodeKey({ ...options, action: 0, keycode }));
+  }
+
+  keyUp(keycode, options = {}) {
+    if (this._streamSend(stream => stream.sendKey(keycode, 1))) return this;
+    return this.send(p.encodeKey({ ...options, action: 1, keycode }));
   }
 
   tap(x, y, options = {}) {
@@ -311,8 +364,6 @@ class CloudPhoneControl extends EventEmitter {
   }
 
   text(value) { return this.send(p.encodeText(value)); }
-  keyDown(keycode, options = {}) { return this.send(p.encodeKey({ ...options, action: 0, keycode })); }
-  keyUp(keycode, options = {}) { return this.send(p.encodeKey({ ...options, action: 1, keycode })); }
   key(keycode, options) { this.keyDown(keycode, options); return this.keyUp(keycode, options); }
   pressKey(name, options) {
     const code = typeof name === 'number' ? name : p.KEY_CODES[String(name).trim().toUpperCase().replace(/[- ]/g, '_')];
