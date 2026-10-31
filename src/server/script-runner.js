@@ -529,13 +529,6 @@ function configureScript(script, body, env) {
     env.YUNMOMO_MOMO_AI_MODE = mode;
     if (options.contactName?.trim()) env.YUNMOMO_MOMO_CONTACT_NAME = options.contactName.trim();
   }
-  if (script.id === 'flow-16') {
-    if (options.yayaMode?.trim()) env.YAYA_MODE = options.yayaMode.trim();
-    if (options.targetTime?.trim()) env.YAYA_TARGET_TIME = options.targetTime.trim();
-    if (options.nickname?.trim()) env.YUNMOMO_MOMO_NICKNAME = options.nickname.trim();
-    if (options.phoneNumber?.trim()) env.YUNMOMO_MOMO_PHONE = options.phoneNumber.trim();
-    if (options.verifyCode?.trim()) env.YUNMOMO_MOMO_VERIFY_CODE = options.verifyCode.trim();
-  }
   if (script.id === 'flow-15') {
     if (options.mode?.trim()) env.YUNMOMO_MOMO_WATCH_MODE = options.mode.trim();
     if (options.maxContacts?.trim()) env.YUNMOMO_MOMO_MAX_CONTACTS = options.maxContacts.trim();

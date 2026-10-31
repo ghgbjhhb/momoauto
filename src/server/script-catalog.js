@@ -125,10 +125,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     id: 'flow-16', order: 16, title: '陌陌一键上号',
     file: 'flows/momo/16-momo一键上号.js', args: ['--execute'], requiresDevice: true,
     category: 'momo',
-    version: 'v2',
-    parameters: [
-      { name: 'nickname', label: '女生网名', defaultValue: '随机生成', placeholder: '随机生成=每次自动起名；也可指定固定网名' }
-    ]
+    version: 'v2'
   },
   {
     id: 'flow-18', order: 18, title: 'MOMO拉黑当前联系人',

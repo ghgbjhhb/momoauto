@@ -50,10 +50,12 @@ const DEFAULT_POLL_MS = 700;
 const DEFAULT_TARGET_TIME = '16:05';
 // 默认使用【直接一键授权模式 (direct)】；若遇到超时(>8分钟)或服务端提示“请重新授权”，脚本会自动触发【历史复扫模式 (relogin)】自愈
 const DEFAULT_YAYA_MODE = 'direct';
-// 默认女网名仅作随机生成失败时的兜底；正常每次运行由 python_workers/nickname 离线生成
+// 兜底女网名仅作随机生成失败时使用；正常每次运行由 python_workers/nickname 离线生成
 const DEFAULT_NICKNAME = '菲菲菲';
-// 命中这些关键字时触发随机网名生成（与任务配置表单默认值保持一致）
-const AUTO_NICKNAME_KEYWORDS = new Set(['随机生成', '随机', '自动生成', '自动']);
+// 未指定网名时的取值，命中 AUTO_NICKNAME_KEYWORDS 即走离线生成器
+const AUTO_NICKNAME = '随机生成';
+// 命中这些关键字时触发随机网名生成
+const AUTO_NICKNAME_KEYWORDS = new Set([AUTO_NICKNAME, '随机', '自动生成', '自动']);
 
 function formatLogTime() {
   const d = new Date();
@@ -319,7 +321,7 @@ function isMomoHomeScreen(items, screenHeight = 640) {
  * 陌陌自愈复扫闭环：当遇到“请重新授权”时，自动清后台 -> 重新打开陌陌 -> 动态页点登录 -> 微信登录 -> 丫丫复扫 -> 重置计时器
  */
 async function recoverViaRescan(client, resolvedDeviceId, options, ctx) {
-  const { phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode } = ctx;
+  const { phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode, nickname } = ctx;
   log.console('[自愈恢复 1/4] 清除后台并返回桌面...');
   await clearAllRecentTasks(phone, control, worker, ocrDir, state, log);
   await sleep(1000);
@@ -414,7 +416,7 @@ async function recoverViaRescan(client, resolvedDeviceId, options, ctx) {
     const { runSetupProfile } = require('./setup-profile');
     await runSetupProfile(client, resolvedDeviceId, {
       ...options,
-      nickname: options.nickname || DEFAULT_NICKNAME,
+      nickname: nickname || DEFAULT_NICKNAME,
       phone,
       control,
       worker,
@@ -442,9 +444,9 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
   const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
-  // 网名解析：'随机生成' 等关键字 → 调用离线生成器 (python_workers/nickname)；
+  // 网名解析：留空或 '随机生成' 等关键字 → 调用离线生成器 (python_workers/nickname)；
   // 生成失败回退默认网名；显式指定则原样使用。
-  const nicknameSetting = String(options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME ?? '').trim() || DEFAULT_NICKNAME;
+  const nicknameSetting = String(options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME ?? '').trim() || AUTO_NICKNAME;
   let nickname;
   if (AUTO_NICKNAME_KEYWORDS.has(nicknameSetting)) {
     try {
@@ -534,7 +536,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
       log.console('[1/5] 当前已处于手机绑定界面，直接推进手机号绑定阶段！');
       const bindResult = await runBindWithSessions(client, resolvedDeviceId, options, {
         client, resolvedDeviceId, options,
-        phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode,
+        phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode, nickname,
       }, grabber, log);
 
       if (bindResult?.state === 'waiting_verify_code') {
@@ -794,7 +796,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
 
     const bindResult = await runBindWithSessions(client, resolvedDeviceId, options, {
       client, resolvedDeviceId, options,
-      phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode,
+      phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode, nickname,
     }, grabber, log);
 
     if (bindResult?.state === 'waiting_verify_code') {
@@ -1023,7 +1025,7 @@ function parseCliArgs(argv) {
     deviceId: process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID,
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
     yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE,
-    nickname: process.env.YUNMOMO_MOMO_NICKNAME || '随机生成',
+    nickname: process.env.YUNMOMO_MOMO_NICKNAME || AUTO_NICKNAME,
     phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '',
     verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990',
