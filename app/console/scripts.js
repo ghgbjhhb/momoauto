@@ -347,6 +347,9 @@ async function saveVisibilityConfig({ type, id, visible }) {
     if (res.ok && res.visibility) state.visibility = res.visibility;
     showToast(`已${visible ? '开启' : '关闭'}在用户侧的显示`);
     renderTaskGroups();
+    // 任务显隐开关变动，立即同步更新总览页任务列表
+    renderOverviewTasks();
+    eventBus.dispatchEvent(new CustomEvent('scripts:changed'));
   } catch (err) {
     showToast('更新显隐设置失败: ' + err.message);
   }
@@ -358,8 +361,7 @@ function parameterChoiceLabel(field, value) {
   if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
   if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新', execute: '执行发送', draft: '生成并输入', watch: '挂机模式 (巡查前几页)', drain: '全量模式 (必须翻到底)', ip: '定位到IP所在地', search: '搜索地点穿越' })[value] || String(value);
   if (field.name === 'maxContacts') return ({ xx: '持续运行(无上限)', '1': '1人(单次测试)', '3': '3人', '5': '5人', '10': '10人' })[value] || String(value);
-  if (field.name === 'warmupInterval') return ({ default: '默认(25~70分随机)', '0': '立即养号(测试)', '60000': '1分钟后养号', '300000': '5分钟后养号' })[value] || String(value);
-  if (field.name === 'greetingsInterval') return ({ '0': '发现招呼立即处理(测试)', '1200000': '20分钟一次', '1800000': '30分钟一次' })[value] || String(value);
+  if (field.name === 'warmupInterval') return ({ default: '默认(10~25分随机)', '0': '立即养号(测试)', '60000': '1分钟后养号', '300000': '5分钟后养号' })[value] || String(value);
   if (field.name === 'maxApproved') return value + ' 人';
   if (field.name === 'maxDistance') return ({ none: '不限距离', '3': '≤ 3公里', '5': '≤ 5公里', '10': '≤ 10公里', '20': '≤ 20公里', '50': '≤ 50公里' })[value] || String(value);
   if (field.name === 'approveProbability') return Math.round(Number(value) * 100) + '%';
@@ -1361,6 +1363,7 @@ async function saveBundleDirect(bundle) {
     if (res.ok) {
       showToast(`已${bundle.enabled ? '开启' : '关闭'}组合脚本的用户侧显示`);
       if (typeof loadScripts === 'function') await loadScripts();
+      renderOverviewTasks();
     }
   } catch (err) {
     showToast('更新组合脚本状态失败: ' + err.message);
@@ -1387,9 +1390,28 @@ async function deleteBundle(bundleId) {
 
 let ovTaskFilter = 'all'; // 'all' | 'momo' | 'bundle'
 
+function isScriptVisibleForOverview(script) {
+  if (!script) return false;
+  // 单个脚本显隐开关：关了就不在总览显示
+  if (!scriptVisible(script)) return false;
+  // 所属分组显隐开关：所属组关了也不在总览显示
+  const groupKey = script.category || (script.id.endsWith('-v2') ? 'v2' : script.id.endsWith('-v3') ? 'v3' : 'momo');
+  if (groupKey && !groupVisible(groupKey)) return false;
+  return true;
+}
+
+function isBundleVisibleForOverview(bundle) {
+  if (!bundle) return false;
+  // 组合脚本分组总开关
+  if (!groupVisible('custom')) return false;
+  // 组合自身的启用开关
+  if (bundle.enabled === false) return false;
+  return true;
+}
+
 function getOverviewFilteredTasks() {
-  const visibleScripts = state.scripts.filter(s => scriptVisible(s));
-  const visibleBundles = (state.bundles || []).filter(b => b.enabled !== false);
+  const visibleScripts = state.scripts.filter(isScriptVisibleForOverview);
+  const visibleBundles = (state.bundles || []).filter(isBundleVisibleForOverview);
 
   if (ovTaskFilter === 'momo') {
     return {
@@ -1419,15 +1441,27 @@ function renderOverviewTasks() {
 
   const { scripts, bundles } = getOverviewFilteredTasks();
   if (!scripts.length && !bundles.length) {
+    state.taskScriptId = '';
+    state.taskBundleId = '';
     listEl.innerHTML = '<div class="empty">暂无可用业务任务</div>';
-    if (configEl) configEl.innerHTML = '';
+    if (configEl) configEl.innerHTML = '<div class="empty">暂无可用任务</div>';
     return;
   }
 
-  // 默认选中第一个任务（如果尚未选中）
-  if (!state.taskScriptId && !state.taskBundleId) {
-    if (scripts.length) state.taskScriptId = scripts[0].id;
-    else if (bundles.length) state.taskBundleId = bundles[0].id;
+  // 校验当前选中的任务是否依然在可见列表中；如果被关闭隐藏了，自动切换到第一个可用任务
+  const isCurrentScriptVisible = state.taskScriptId && scripts.some(s => s.id === state.taskScriptId);
+  const isCurrentBundleVisible = state.taskBundleId && bundles.some(b => b.id === state.taskBundleId);
+
+  let forceRebuild = false;
+  if (!isCurrentScriptVisible && !isCurrentBundleVisible) {
+    if (scripts.length) {
+      state.taskScriptId = scripts[0].id;
+      state.taskBundleId = '';
+    } else if (bundles.length) {
+      state.taskBundleId = bundles[0].id;
+      state.taskScriptId = '';
+    }
+    forceRebuild = true;
   }
 
   // 渲染任务列表
@@ -1478,7 +1512,7 @@ function renderOverviewTasks() {
   listEl.innerHTML = scriptItems + bundleItems;
 
   // 渲染底部快速配置与主执行条
-  renderOverviewTaskConfig(configEl, currentDev, isRunning);
+  renderOverviewTaskConfig(configEl, currentDev, isRunning, forceRebuild);
 }
 
 function updateOverviewWorkbenchFooter(currentDev, isRunning) {

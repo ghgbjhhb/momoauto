@@ -39,9 +39,10 @@ const { PROJECT_ROOT, targetDeviceId } = require('../automation/runtime');
 
 const DESCRIPTION = 'MOMO 监听中枢：支持挂机巡检模式与全量翻底模式，执行入库 -> AI回复 -> 二次入库闭环';
 
-const DEFAULT_GREETINGS_INTERVAL_MS = 30 * 60 * 1000;
-const DEFAULT_WARMUP_MIN_MINUTES = 25;
-const DEFAULT_WARMUP_MAX_MINUTES = 70;
+const DEFAULT_GREETINGS_MIN_MINUTES = 8;    // 招呼处理间隔下限
+const DEFAULT_GREETINGS_MAX_MINUTES = 30;   // 招呼处理间隔上限
+const DEFAULT_WARMUP_MIN_MINUTES = 10;
+const DEFAULT_WARMUP_MAX_MINUTES = 25;
 const DEFAULT_MAX_WATCH_PAGES = 5;          // 挂机模式顺着本批未读往下看的最多屏数（含首屏）
 const DEFAULT_MAX_GREETINGS = 5;            // 每次招呼处理最多通过人数
 const DEFAULT_IDLE_INTERVAL_MS = 2500;      // 挂机空闲时两次看首屏的间隔
@@ -120,6 +121,11 @@ function calcNextWarmupIntervalMs(options = {}) {
   const minMin = options.warmupMinMinutes ?? DEFAULT_WARMUP_MIN_MINUTES;
   const maxMin = options.warmupMaxMinutes ?? DEFAULT_WARMUP_MAX_MINUTES;
   return Math.round((minMin + Math.random() * (maxMin - minMin)) * 60 * 1000);
+}
+
+function calcNextGreetingsIntervalMs() {
+  return Math.round((DEFAULT_GREETINGS_MIN_MINUTES + Math.random() *
+    (DEFAULT_GREETINGS_MAX_MINUTES - DEFAULT_GREETINGS_MIN_MINUTES)) * 60 * 1000);
 }
 
 /** 一帧画面的粗粒度状态，用来判断纠正动作有没有让画面变化。 */
@@ -248,7 +254,7 @@ class WatchHub {
     this.isDrain = options.mode === 'drain';
     this.targetLimit = options.maxContacts ?? Infinity;
     this.maxWatchPages = Math.max(1, options.maxWatchPages ?? DEFAULT_MAX_WATCH_PAGES);
-    this.greetingsIntervalMs = options.greetingsIntervalMs ?? DEFAULT_GREETINGS_INTERVAL_MS;
+    this.maxDistanceKm = options.maxDistanceKm ?? null;
     this.ignored = new IgnoredCards(ignoredCardsPath(this.deviceId, options.dbPath));
 
     this.tools = null;
@@ -839,9 +845,10 @@ class WatchHub {
 
     const now = Date.now();
     const warmupMs = calcNextWarmupIntervalMs(this.options);
+    const greetingsMs = calcNextGreetingsIntervalMs();
     this.nextWarmupAt = now + warmupMs;
-    this.nextGreetingsAt = now + this.greetingsIntervalMs;
-    await log('INFO', `[挂机模式] 开始盯首屏。下次首页养号约 ${minutes(warmupMs)} 分钟后，下次招呼处理约 ${minutes(this.greetingsIntervalMs)} 分钟后`);
+    this.nextGreetingsAt = now + greetingsMs;
+    await log('INFO', `[挂机模式] 开始盯首屏。下次首页养号约 ${minutes(warmupMs)} 分钟后，下次招呼处理约 ${minutes(greetingsMs)} 分钟后`);
 
     this.burst.clear();
     while (!this.signal?.aborted) {
@@ -925,12 +932,12 @@ class WatchHub {
     const ready = await this.toTop(8);
     const entry = findGreetingsEntry(ready.obs);
     if (!entry) {
-      const retryMs = Math.min(GREETINGS_RETRY_MS, this.greetingsIntervalMs);
-      this.nextGreetingsAt = Date.now() + retryMs;
-      await log('WARN', `首屏未找到 [收到的招呼] 入口，${minutes(retryMs)} 分钟后重试`);
+      this.nextGreetingsAt = Date.now() + GREETINGS_RETRY_MS;
+      await log('WARN', `首屏未找到 [收到的招呼] 入口，${minutes(GREETINGS_RETRY_MS)} 分钟后重试`);
       return;
     }
-    this.nextGreetingsAt = Date.now() + this.greetingsIntervalMs;
+    const nextGreetingsMs = calcNextGreetingsIntervalMs();
+    this.nextGreetingsAt = Date.now() + nextGreetingsMs;
 
     await log('INFO', `点击 [收到的招呼]${entry.unreadCount ? ` (未读: ${entry.unreadCount})` : ''}`);
     if (!await this.tap(entry.box, ready.obs, '收到的招呼')) return;
@@ -938,12 +945,16 @@ class WatchHub {
 
     const maxApproved = this.options.maxApprovedGreetings ?? DEFAULT_MAX_GREETINGS;
     await log('INFO', `开始处理打招呼 (最多通过 ${maxApproved} 人)...`);
+    if (this.maxDistanceKm !== null) {
+      await log('INFO', `距离筛选: 仅通过 <= ${this.maxDistanceKm} 公里 (超出自动拒绝)`);
+    }
     const res = await this.tools.processMomoGreetings({
       execute: true,
       maxApproved,
       approveProbability: 0.9,
       rejectProbability: 0.1,
       cycles: 1,
+      maxDistanceKm: this.maxDistanceKm,
       skipBack: false,
       signal: this.signal,
       timeoutMs: 180000,
@@ -957,7 +968,7 @@ class WatchHub {
       await log('WARN', `打招呼处理未成功: ${res?.error?.code || 'UNKNOWN'} (已通过 ${approved} 位)`);
     }
     if (data.rateLimited) await log('WARN', '打招呼触发频率限制，按正常间隔等待下次');
-    await log('INFO', `下次招呼处理约 ${minutes(this.greetingsIntervalMs)} 分钟后`);
+    await log('INFO', `下次招呼处理约 ${minutes(nextGreetingsMs)} 分钟后`);
   }
 
   // ───────────────────────── 生命周期 ─────────────────────────
@@ -1031,7 +1042,7 @@ function parseArgs(argv) {
   const options = {
     mode: env.YUNMOMO_MOMO_WATCH_MODE || 'watch', // 'watch' (挂机模式) | 'drain' (全量模式)
     maxContacts: Infinity,
-    greetingsIntervalMs: DEFAULT_GREETINGS_INTERVAL_MS,
+    maxDistanceKm: null,
     warmupMinMinutes: DEFAULT_WARMUP_MIN_MINUTES,
     warmupMaxMinutes: DEFAULT_WARMUP_MAX_MINUTES,
     warmupIntervalOverrideMs: null,
@@ -1042,11 +1053,12 @@ function parseArgs(argv) {
   if (env.YUNMOMO_MOMO_MAX_CONTACTS && env.YUNMOMO_MOMO_MAX_CONTACTS !== 'xx') {
     options.maxContacts = intOption(env.YUNMOMO_MOMO_MAX_CONTACTS, 1, Infinity);
   }
+  if (env.YUNMOMO_MOMO_MAX_DISTANCE && env.YUNMOMO_MOMO_MAX_DISTANCE !== 'none') {
+    const dist = Number(env.YUNMOMO_MOMO_MAX_DISTANCE);
+    if (!Number.isNaN(dist) && dist > 0) options.maxDistanceKm = dist;
+  }
   if (env.YUNMOMO_MOMO_WARMUP_INTERVAL && env.YUNMOMO_MOMO_WARMUP_INTERVAL !== 'default') {
     options.warmupIntervalOverrideMs = intOption(env.YUNMOMO_MOMO_WARMUP_INTERVAL, 0, null);
-  }
-  if (env.YUNMOMO_MOMO_GREETINGS_INTERVAL) {
-    options.greetingsIntervalMs = intOption(env.YUNMOMO_MOMO_GREETINGS_INTERVAL, 0, DEFAULT_GREETINGS_INTERVAL_MS);
   }
   if (env.YUNMOMO_MOMO_MAX_GREETINGS) {
     options.maxApprovedGreetings = intOption(env.YUNMOMO_MOMO_MAX_GREETINGS, 1, DEFAULT_MAX_GREETINGS);
@@ -1059,7 +1071,10 @@ function parseArgs(argv) {
     else if (arg === '--device') options.deviceId = argv[++i];
     else if (arg === '--max-contacts') options.maxContacts = intOption(argv[++i], 1, Infinity);
     else if (arg === '--max-greetings') options.maxApprovedGreetings = intOption(argv[++i], 1, DEFAULT_MAX_GREETINGS);
-    else if (arg === '--greetings-interval') options.greetingsIntervalMs = intOption(argv[++i], 0, DEFAULT_GREETINGS_INTERVAL_MS);
+    else if (arg === '--max-distance' || arg === '--distance') {
+      const dist = Number(argv[++i]);
+      if (!Number.isNaN(dist) && dist > 0) options.maxDistanceKm = dist;
+    }
     else if (arg === '--warmup-interval') options.warmupIntervalOverrideMs = intOption(argv[++i], 0, null);
     else if (arg === '--watch-pages') options.maxWatchPages = intOption(argv[++i], 1, DEFAULT_MAX_WATCH_PAGES);
     else if (arg === '--run-dir') options.runDir = argv[++i];
@@ -1090,7 +1105,7 @@ async function main(argv = process.argv.slice(2)) {
     `工作模式  : ${isDrain ? '全量模式 (翻到底，复查到没有未读)' : '挂机模式 (先清积压，再盯首屏)'}`,
     `处理上限  : ${options.maxContacts === Infinity ? '无限制' : `${options.maxContacts} 位联系人`}`,
     isDrain ? '定时支线  : 全量模式不执行招呼处理与首页养号' :
-      `招呼处理  : 一次最多通过 ${options.maxApprovedGreetings} 人 (间隔 ${minutes(options.greetingsIntervalMs)} 分钟)`,
+      `招呼处理  : 一次最多通过 ${options.maxApprovedGreetings} 人${options.maxDistanceKm !== null ? ` (距离≤${options.maxDistanceKm}km)` : ''} (间隔 ${DEFAULT_GREETINGS_MIN_MINUTES}~${DEFAULT_GREETINGS_MAX_MINUTES} 分钟随机)`,
     ...(isDrain ? [] : [`首页养号  : ${warmupDesc}`]),
     `日志文件  : ${path.relative(PROJECT_ROOT, activeLogFile)}`,
     '--------------------------------------------------\n',

@@ -535,7 +535,10 @@ function configureScript(script, body, env) {
     if (options.maxContacts?.trim()) env.YUNMOMO_MOMO_MAX_CONTACTS = options.maxContacts.trim();
     if (options.maxGreetings?.trim()) env.YUNMOMO_MOMO_MAX_GREETINGS = options.maxGreetings.trim();
     if (options.warmupInterval?.trim()) env.YUNMOMO_MOMO_WARMUP_INTERVAL = options.warmupInterval.trim();
-    if (options.greetingsInterval?.trim()) env.YUNMOMO_MOMO_GREETINGS_INTERVAL = options.greetingsInterval.trim();
+    const rawDist = options.maxDistance ?? options.maxDistanceKm;
+    if (rawDist && String(rawDist).trim() && String(rawDist).trim() !== 'none') {
+      env.YUNMOMO_MOMO_MAX_DISTANCE = String(rawDist).trim();
+    }
   }
   if (script.id === 'flow-18') {
     env.YUNMOMO_MOMO_CONTACT_NAME = options.contactName.trim();
