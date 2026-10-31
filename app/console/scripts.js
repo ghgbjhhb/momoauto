@@ -250,7 +250,8 @@ function bundleCardHtml(bundle) {
     const script = state.scripts.find(s => s.id === id);
     return script ? { script, options: bundle.stepOptions?.[i] || {} } : null;
   }).filter(Boolean);
-  const stepsFlow = steps.length
+  // 步骤流程仅管理员可见；用户侧只显示备注，避免长流程挤占卡片
+  const stepsFlow = manage && steps.length
     ? `<span class="bundle-steps-flow">${steps.map((step, i) =>
         `${i ? '<span class="bundle-step-arrow">→</span>' : ''}<span class="bundle-step-item">${i + 1}. ${escapeHtml(scriptTitle(step.script))}${describeStepOptions(step) ? `<b class="bundle-step-opts">${escapeHtml(describeStepOptions(step))}</b>` : ''}</span>`).join('')}</span>`
     : '';
