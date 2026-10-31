@@ -51,9 +51,10 @@ async function generateReply(rawMessages = [], config = null, options = {}) {
     throw err;
   }
 
-  // 1. 构建对话上下文并检查字数/条数预算
+  // 1. 构建对话上下文并检查字数/条数预算（progress：代码侧统计的对话进度，用于句数门槛回复策略）
   const context = buildChatContext(rawMessages, effectiveConfig, {
-    maxTotalChars: options.maxTotalChars
+    maxTotalChars: options.maxTotalChars,
+    progress: options.progress
   });
 
   // 2. 调用模型生成（JSON 契约下抬高 max_tokens 下限避免截断；responseFormat 让 API 层强制 JSON 输出）

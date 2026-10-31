@@ -380,6 +380,12 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
     const lastMsgText = lastMsg ? (lastMsg.text || '') : '';
     logLive('3/6', `历史对话加载完成，共 ${history.length} 条记录${lastMsgText ? ` (最新消息: “${lastMsgText}”)` : ''}`);
 
+    // 对话进度：我方累计发送句数 + 固化意向（contactIntent 一经判定为真永久保持，防后续轮次误判回退）
+    const selfSentCount = history.filter(m => m.sender === 'self').length;
+    const contactRecord = momoDb.getContactByName(contactName);
+    const stickyContactIntent = contactRecord?.contactIntent === 1;
+    logLive('3/6', `对话进度：我方已发送 ${selfSentCount} 句${stickyContactIntent ? '，对方联系方式意向已确认' : ''}`);
+
     if (mode === MODES.OBSERVE) {
       logLive('3/6', '观测模式完成：消息已入库，不调用大模型');
       return buildSuccessReport({
@@ -408,7 +414,12 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
       generated = await generateReply(history, configSnapshot, {
         deviceId,
         signal: options.signal,
-        fetchFn: options.fetchFn
+        fetchFn: options.fetchFn,
+        progress: {
+          selfSentCount,
+          minSelfMessages: configSnapshot.handoffMinSelfMessages,
+          stickyIntent: stickyContactIntent
+        }
       });
       replyText = (generated?.text || '').trim();
       if (!replyText) {
@@ -435,7 +446,13 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
       // 意图分析与落库：stage/summary 仅供监控展示，无论是否触发话术都记录
       const intent = generated.intent || { stage: '未知', readyForContactScript: false, summary: '', formatValid: false };
       logLive('4/6', `对方意图 [${intent.stage}]${intent.summary ? `：${intent.summary}` : ''}${intent.formatValid ? '' : '（格式解析失败，已按普通回复降级）'}`);
-      try { momoDb.updateContactIntent(contactName, { lastIntent: intent.summary, lastIntentStage: intent.stage }); } catch {}
+      try {
+        momoDb.updateContactIntent(contactName, {
+          lastIntent: intent.summary,
+          lastIntentStage: intent.stage,
+          contactIntent: intent.readyForContactScript === true ? true : undefined
+        });
+      } catch {}
 
       // 归档完整 AI 调用日志 (含真实发送 Prompt 上下文与 Tokens)
       try {
@@ -455,14 +472,18 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
     }
     check();
 
-    // 4.5 意图分流：意向达到可发话术阶段 -> 话术连发 + 自动拉黑；否则按普通回复打字发送
+    // 4.5 意图分流：意向固化（本轮判定或历史已确认）且我方句数达标 -> 话术连发 + 自动拉黑；否则按普通回复打字发送
     const intent = generated.intent || { stage: '未知', readyForContactScript: false, summary: '', formatValid: false };
     const isDraft = mode === MODES.DRAFT;
     const segments = Array.isArray(configSnapshot.handoffSegments) ? configSnapshot.handoffSegments : [];
-    const handoffState = momoDb.getContactByName(contactName)?.handoffState || '';
+    const handoffState = contactRecord?.handoffState || '';
+    const effectiveContactIntent = intent.readyForContactScript === true || stickyContactIntent;
+    const minSelfMessages = Number(configSnapshot.handoffMinSelfMessages) || 7;
 
-    if (!isDraft && intent.readyForContactScript === true) {
-      if (configSnapshot.handoffEnabled !== true || segments.length === 0) {
+    if (!isDraft && effectiveContactIntent) {
+      if (selfSentCount < minSelfMessages) {
+        logLive('5/6', `对方有意向，但我方已发送 ${selfSentCount} 句，未达 ${minSelfMessages} 句门槛，按普通升温回复处理`);
+      } else if (configSnapshot.handoffEnabled !== true || segments.length === 0) {
         logLive('5/6', '意向已达可发话术阶段，但话术功能未启用或未配置段落，按普通回复处理');
       } else if (handoffState === 'sent' || handoffState === 'blocked') {
         logLive('5/6', `该联系人话术此前已发送 (状态: ${handoffState})，绝不重发，按普通回复处理`);

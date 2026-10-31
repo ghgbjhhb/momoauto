@@ -175,6 +175,7 @@ class MomoDatabase {
         lastIntent TEXT,
         lastIntentStage TEXT,
         handoffState TEXT,
+        contactIntent INTEGER DEFAULT 0,
         createdAt TEXT DEFAULT (datetime('now', 'localtime')),
         updatedAt TEXT DEFAULT (datetime('now', 'localtime'))
       );
@@ -198,7 +199,8 @@ class MomoDatabase {
     for (const [column, type] of [
       ['lastIntent', 'TEXT'],
       ['lastIntentStage', 'TEXT'],
-      ['handoffState', 'TEXT']
+      ['handoffState', 'TEXT'],
+      ['contactIntent', 'INTEGER']
     ]) {
       if (!existingColumns.includes(column)) {
         this.db.exec(`ALTER TABLE contacts ADD COLUMN ${column} ${type};`);
@@ -234,6 +236,7 @@ class MomoDatabase {
             lastIntent = COALESCE(?, lastIntent),
             lastIntentStage = COALESCE(?, lastIntentStage),
             handoffState = COALESCE(?, handoffState),
+            contactIntent = COALESCE(?, contactIntent),
             updatedAt = ?
         WHERE id = ?
       `);
@@ -245,6 +248,7 @@ class MomoDatabase {
         contact.lastIntent ?? null,
         contact.lastIntentStage ?? null,
         contact.handoffState ?? null,
+        contact.contactIntent ?? null,
         now,
         existing.id
       );
@@ -252,8 +256,8 @@ class MomoDatabase {
     }
 
     const stmt = this.db.prepare(`
-      INSERT INTO contacts (name, deviceId, lastMessage, lastMessageTime, syncedAt, lastIntent, lastIntentStage, handoffState, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO contacts (name, deviceId, lastMessage, lastMessageTime, syncedAt, lastIntent, lastIntentStage, handoffState, contactIntent, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       name,
@@ -264,6 +268,7 @@ class MomoDatabase {
       contact.lastIntent ?? null,
       contact.lastIntentStage ?? null,
       contact.handoffState ?? null,
+      contact.contactIntent ?? null,
       now,
       now
     );
@@ -271,14 +276,16 @@ class MomoDatabase {
   }
 
   /**
-   * 记录一次意图分析结果（lastIntent/lastIntentStage，只做展示与审计）
+   * 记录一次意图分析结果（lastIntent/lastIntentStage 供展示审计；contactIntent 一经置 1 永久固化，
+   * 防止后续轮次模型把联系方式意向误判回无意向，COALESCE 保证不会回写 0）
    */
-  updateContactIntent(name, { lastIntent, lastIntentStage } = {}) {
+  updateContactIntent(name, { lastIntent, lastIntentStage, contactIntent } = {}) {
     if (!name) return null;
     return this.upsertContact({
       name,
       lastIntent: lastIntent || null,
-      lastIntentStage: lastIntentStage || null
+      lastIntentStage: lastIntentStage || null,
+      contactIntent: contactIntent === true ? 1 : null
     });
   }
 

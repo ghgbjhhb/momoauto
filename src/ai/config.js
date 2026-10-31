@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   // 联系方式话术连发：AI 意图判定达到可发阶段时，按顺序连发以下段落并发完成后自动拉黑
   handoffEnabled: false,
   handoffSegments: [],
+  // 话术触发门槛：我方（self）累计发送句数达到该值才允许甩话术，之前一律普通升温回复
+  handoffMinSelfMessages: 7,
   deviceOverrides: {}
 };
 
@@ -102,6 +104,8 @@ function normalizeSettings(parsed) {
     .flatMap(s => String(s ?? '').split(/\r?\n/))
     .map(s => s.trim())
     .filter(Boolean);
+  const minSelf = Number(settings.handoffMinSelfMessages);
+  settings.handoffMinSelfMessages = Number.isFinite(minSelf) && minSelf >= 1 ? Math.floor(minSelf) : 7;
 
   const active = settings.providers.find(p => p.id === settings.activeProviderId) || settings.providers[0];
   if (active) {
