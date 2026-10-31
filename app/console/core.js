@@ -252,8 +252,17 @@ function updateLogMeta() {
 
 /* ---------- 设备基础判断 ---------- */
 
+// 云机平台列表/详情接口均不返回稳定的 online/status 字段（实测恒为 null/undefined），
+// 且租期未到的设备可正常推流与桥接。因此只有在平台明确上报离线时才判离线，
+// 未上报状态一律按在线处理；真实不可达由直播流/脚本的连接错误兜底呈现。
+function isExplicitOffline(device) {
+  return device.online === false
+    || device.status === 0 || device.status === '0'
+    || device.status === 'offline';
+}
+
 function isOnline(device) {
-  return device.online === true || device.status === 1 || device.status === '1' || device.status === 'online';
+  return !isExplicitOffline(device);
 }
 
 function shortDeviceId(device) {
