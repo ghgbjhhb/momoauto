@@ -39,6 +39,9 @@ class StreamInput extends EventEmitter {
     this.videoHeight = null;
     this.ws = null;
     this._connecting = null;
+    // 厂商服务端会丢弃「down→up 两帧无位移」的静止 tap（官方网页端人手点击天然带微移动），
+    // 因此 DOWN 后若无 MOVE 帧则在 UP 前补一个 1~2px 的人手抖动。
+    this._pendingDown = null;
   }
 
   buildUrl() {
@@ -130,11 +133,21 @@ class StreamInput extends EventEmitter {
     // 字段取值与官方网页查看器一致：move pressure 0.5，up buttons 0
     const pressure = action === ACTION.MOVE ? 0.5 : 1;
     const buttons = action === ACTION.UP ? 0 : 1;
-    this.ws.send(JSON.stringify({
-      op: 'touch', action, pointerId: POINTER_ID_MOUSE,
-      x: mappedX, y: mappedY, pressure, buttons,
-      screenWidth: this.videoWidth, screenHeight: this.videoHeight,
+    const send = frame => this.ws.send(JSON.stringify({
+      op: 'touch', pointerId: POINTER_ID_MOUSE,
+      screenWidth: this.videoWidth, screenHeight: this.videoHeight, ...frame,
     }));
+    if (action === ACTION.DOWN) {
+      this._pendingDown = { x: mappedX, y: mappedY, moved: false };
+    } else if (action === ACTION.MOVE && this._pendingDown) {
+      if (mappedX !== this._pendingDown.x || mappedY !== this._pendingDown.y) this._pendingDown.moved = true;
+    } else if (action === ACTION.UP && this._pendingDown && !this._pendingDown.moved) {
+      const jitterX = Math.min(this.videoWidth - 1, Math.max(0, this._pendingDown.x + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random() * 2))));
+      const jitterY = Math.min(this.videoHeight - 1, Math.max(0, this._pendingDown.y + (Math.random() < 0.5 ? -1 : 1)));
+      send({ action: ACTION.MOVE, x: jitterX, y: jitterY, pressure: 0.5, buttons: 1 });
+    }
+    if (action === ACTION.UP) this._pendingDown = null;
+    send({ action, x: mappedX, y: mappedY, pressure, buttons });
     return this;
   }
 
