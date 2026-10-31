@@ -368,9 +368,20 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
   const resolvedDeviceId = deviceIdOf(target);
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const projectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE).trim();
-  let phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || DEFAULT_FIXED_PHONE).trim();
-  let verifyCode = String(options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || DEFAULT_VERIFY_CODE).trim();
+  // 手机号来源优先级：显式指定 > 玄武预抢会话 (login-momo 并行抢号) > 旧固定号兜底
+  const phoneSession = options.phoneSession || null;
+  let phoneNumber = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || '').trim();
   let sessionId = null;
+  let phoneGrabbedAt = phoneSession ? Number(phoneSession.grabbedAt) : null;
+  if (!phoneNumber && phoneSession && phoneSession.phoneNumber) {
+    phoneNumber = String(phoneSession.phoneNumber).trim();
+    sessionId = phoneSession.sessionId || null;
+    log.console(`[接码平台] 使用并行预抢号: ${phoneNumber} (sessionId: ${sessionId}, 号龄: ${Math.round((Date.now() - phoneGrabbedAt) / 1000)}s)`);
+  }
+  if (!phoneNumber) {
+    phoneNumber = DEFAULT_FIXED_PHONE;
+  }
+  let verifyCode = String(options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || DEFAULT_VERIFY_CODE).trim();
 
   await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, projectCode, phoneNumber, verifyCode });
 
@@ -442,8 +453,10 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       log.console(`[识别发现] 屏幕验证码输入栏当前显示: "${existingCodeOnScreen}" (若为失效旧码，后续将予以清空重写)`);
     }
 
-    // 2. 从接码平台取号 (若未直接传入手机号)
-    if (!phoneNumber) {
+    // 2. 从接码平台取号 (若未直接传入手机号且无预抢会话)
+    if (sessionId) {
+      log.console(`[接码平台] 沿用并行预抢号 ${phoneNumber} (sessionId: ${sessionId})，跳过现场取号。`);
+    } else if (!options.phoneNumber && !process.env.YUNMOMO_MOMO_PHONE) {
       log.console(`[接码平台] 正在向玄武平台抢号 (项目编码: ${projectCode} 陌陌换绑3, 每秒 1 次最长 ${PHONE_POLL_MAX_ATTEMPTS} 次)...`);
       const smsService = new SmsService();
       const smsClient = smsService.getClient();
@@ -454,6 +467,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       });
       phoneNumber = String(phoneRes.phoneNumber).trim();
       sessionId = phoneRes.sessionId;
+      phoneGrabbedAt = Date.now();
       log.console(`[接码平台] 取号成功: ${phoneNumber} (sessionId: ${sessionId}, 第 ${phoneRes.attempts} 次请求, 耗时: ${phoneRes.latencyMs}ms)`);
       await log.file('Phone acquired from Xuanwu', { projectCode, phoneNumber, sessionId, attempts: phoneRes.attempts, raw: phoneRes.raw });
     } else {
@@ -534,7 +548,11 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     const phoneBindState = await getPhoneBindState(resolvedDeviceId, phoneNumber);
     const hasRequestedBefore = Boolean(phoneBindState?.hasRequestedCode && phoneBindState?.isRecentRequest);
 
-    if (hasCountdown) {
+    // 换号重跑判定：新一轮玄武号码的旧界面倒计时属于上一个号码，严禁沿用，必须重新点击获取
+    const forceFreshGetCode = Boolean(options.forceGetCode) && Boolean(sessionId);
+    if (forceFreshGetCode) {
+      log.console('[3/5] 【换号重跑】检测到本轮为全新号码，旧倒计时已作废，强制重新点击「获取验证码」...');
+    } else if (hasCountdown) {
       log.console('[3/5] 检测到验证码已发送并处于倒计时状态，跳过重复获取。');
     } else if (options.skipGetCode) {
       log.console('[3/5] 参数指定直接进入验证码键入阶段，跳过获取验证码点击。');
@@ -599,11 +617,27 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
       throw new Error('未处于“手机绑定”界面，无法继续输入验证码！');
     }
 
-    // 5.5 自动轮询接码平台查码（对齐网页端：每 5 秒查询一次该号码的验证码，最长约 2 分钟）
-    // 仅当号码来自玄武取号（存在 sessionId）且外部未显式提供验证码时启用；查不到则回落人工提供模式。
+    // 5.5 自动轮询接码平台查码（对齐网页端：每 5 秒查询一次该号码的验证码，最长 5 分钟）
+    // 仅当号码来自玄武取号（存在 sessionId）且外部未显式提供验证码时启用。
+    // 码窗耗尽或会话失效 → 释放旧号并返回 phone_expired，由上层调度换新号重跑（人工兜底仅保留给固定号模式）。
     if (!verifyCode && sessionId && phoneNumber) {
-      log.console(`[接码平台] 自动查码启动: 每 ${SMS_POLL_INTERVAL_MS / 1000} 秒查询一次玄武平台 (最长 ${SMS_POLL_MAX_ATTEMPTS} 次)...`);
+      log.console(`[接码平台] 自动查码启动: 每 ${SMS_POLL_INTERVAL_MS / 1000} 秒查询一次玄武平台 (最长 ${SMS_POLL_MAX_ATTEMPTS} 次/5分钟)...`);
       const smsClient = new SmsService().getClient();
+      const expiredResult = async message => {
+        const rel = await smsClient.releasePhone(sessionId, phoneNumber);
+        log.console(`[接码平台] 旧号 ${phoneNumber} 释放结果: ${rel.ok ? (rel.released ? '已释放(反馈31,归还预占)' : '平台侧已不存在') : `释放失败: ${rel.error || rel.message}`}`);
+        await log.file('Phone session expired, released', { sessionId, phoneNumber, message });
+        return {
+          ok: false,
+          state: 'phone_expired',
+          phoneNumber,
+          sessionId,
+          grabbedAt: phoneGrabbedAt,
+          screenshotsDir,
+          lastScreenshotPath,
+          message,
+        };
+      };
       try {
         const smsRes = await smsClient.getSmsWithPolling(sessionId, phoneNumber, {
           maxAttempts: SMS_POLL_MAX_ATTEMPTS,
@@ -615,10 +649,10 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
           log.console(`[接码平台] 【查码成功】第 ${smsRes.attempts} 次查询获得验证码!`);
           await log.file('SMS code auto-polled from Xuanwu', { sessionId, phoneNumber, attempts: smsRes.attempts });
         } else {
-          log.console('[接码平台] 自动查码超时未收到验证码，转入人工提供模式。');
+          return await expiredResult('验证码 5 分钟窗口内未收到，玄武会话已失效');
         }
       } catch (err) {
-        log.console(`[接码平台] 自动查码中止 (${err.message})，转入人工提供模式。`);
+        return await expiredResult(`玄武会话失效 (${err.message})`);
       }
     }
 
@@ -787,6 +821,18 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
     await logAuthBudget(log, resolvedDeviceId, '手机绑定全流程达成');
     const completedAt = Date.now();
     const completedTimeFormatted = new Date(completedAt).toLocaleString('zh-CN', { hour12: false });
+
+    // 上报玄武 feedback 20=验证成功（帮平台结算与号码质量统计；尽力而为，绝不阻塞成功返回）
+    if (sessionId && homeConfirmed) {
+      try {
+        const fbClient = new SmsService().getClient();
+        const fb = await fbClient.feedback(sessionId, phoneNumber, 20);
+        log.console(`[接码平台] 已上报验证成功反馈 (status=20, 耗时 ${fb.latencyMs}ms)`);
+        await log.file('Feedback 20 reported', { sessionId, phoneNumber });
+      } catch (err) {
+        log.console(`[接码平台] 验证成功反馈上报失败 (不影响流程): ${err.message}`);
+      }
+    }
 
     return {
       ok: true,

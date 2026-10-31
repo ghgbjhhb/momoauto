@@ -26,6 +26,7 @@ const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
 const shared = require('../../automation/screen');
 const { logAuthBudget, recordAuthStart } = require('../../automation/auth-session');
+const { SmsService } = require('../../server/sms/service');
 
 const {
   numberOr,
@@ -457,6 +458,19 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   let yayaResult = null;
   let profileResult = null;
 
+  // B线：一键登录启动即并行抢号 (平均约 2 分钟到手)，与桌面搜寻/登录/资料完善同步进行；
+  // 显式指定手机号时保持旧的固定号模式，不启动抢号。
+  const smsProjectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990').trim();
+  const smsClient = new SmsService().getClient();
+  const grabber = createPhoneGrabber(smsClient, smsProjectCode, log);
+  const explicitPhone = Boolean(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE);
+  if (!explicitPhone) {
+    log.console('[抢号线 B] 一键登录启动，并行开抢玄武号码 (与登录/资料完善同步进行)...');
+    grabber.start();
+  } else {
+    log.console('[抢号线 B] 检测到指定手机号，跳过玄武取号 (固定号模式)。');
+  }
+
   try {
     await control.connect();
     await log.file('Control connected successfully', { screen: `${control.screenWidth}x${control.screenHeight}` });
@@ -501,31 +515,10 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     // 检查是否已经处于手机绑定界面 (且未触发强制清后台)
     if (!shouldClean && isFinalPhoneBindScreen(obs.items)) {
       log.console('[1/5] 当前已处于手机绑定界面，直接推进手机号绑定阶段！');
-      const { runBindPhone } = require('./bind-phone');
-      let bindResult = await runBindPhone(client, resolvedDeviceId, {
-        ...options,
-        phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
-        phone,
-        control,
-        worker,
-      }, log);
-
-      if (bindResult?.state === 'reauth_required') {
-        log.console('[1/5] ⚠️ 检测到服务端返回“请重新授权”，触发自动复扫自愈机制！');
-        await recoverViaRescan(client, resolvedDeviceId, options, {
-          phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode
-        });
-        log.console('[1/5] 复扫自愈完成，重新执行手机绑定提交...');
-        bindResult = await runBindPhone(client, resolvedDeviceId, {
-          ...options,
-          phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-          verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
-          phone,
-          control,
-          worker,
-        }, log);
-      }
+      const bindResult = await runBindWithSessions(client, resolvedDeviceId, options, {
+        client, resolvedDeviceId, options,
+        phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode,
+      }, grabber, log);
 
       if (bindResult?.state === 'waiting_verify_code') {
         log.console('[1/5] 验证码已触发发送，8分钟授权计时正在进行中！等待用户提供最新验证码...');
@@ -782,33 +775,10 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     log.console('[5/5] 资料完善完成，启动陌陌手机号绑定流程 (手机号打字/验证码过盾/打字提交)...');
     lastScreenshotPath = profileResult.lastScreenshotPath || lastScreenshotPath;
 
-    const { runBindPhone } = require('./bind-phone');
-    let bindResult = await runBindPhone(client, resolvedDeviceId, {
-      ...options,
-      phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-      verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
-      phone,
-      control,
-      worker,
-      screenshotsDir,
-    }, log);
-
-    // 检查是否遭遇“请重新授权” (生命周期超期自愈)
-    if (bindResult?.state === 'reauth_required') {
-      log.console('[5/5] ⚠️ 检测到服务端返回“请重新授权”，触发自动复扫自愈机制！');
-      await recoverViaRescan(client, resolvedDeviceId, options, {
-        phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode
-      });
-      log.console('[5/5] 复扫自愈完成，重新执行手机绑定提交...');
-      bindResult = await runBindPhone(client, resolvedDeviceId, {
-        ...options,
-        phoneNumber: options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE,
-        verifyCode: options.verifyCode || process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
-        phone,
-        control,
-        worker,
-      }, log);
-    }
+    const bindResult = await runBindWithSessions(client, resolvedDeviceId, options, {
+      client, resolvedDeviceId, options,
+      phone, control, worker, ocrDir, state, screenshotsDir, log, targetTime, yayaMode,
+    }, grabber, log);
 
     if (bindResult?.state === 'waiting_verify_code') {
       log.console('[5/5] 验证码已成功触发发送，8分钟微信授权生命周期正在计时！等待用户提供最新验证码...');
@@ -851,14 +821,182 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
     if (phone) {
       lastScreenshotPath = await captureMilestoneScreenshot(phone, screenshotsDir, '99-error-snapshot', '失败现场截图', log);
     }
+    // 异常收场：释放未消费的玄武号码，避免号池占用与预占资金悬挂
+    await grabber.releaseCurrent().catch(() => {});
     throw Object.assign(error, { screenshotsDir, lastScreenshotPath, yayaResult });
   } finally {
+    // 成功/人工等待收尾仅停看护：号码仍在使用中或已被消费，严禁在此释放
+    grabber.dispose();
     await control.close().catch(() => {});
     await worker.close().catch(() => {});
     if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
       await fs.rm(ocrDir, { recursive: true, force: true }).catch(() => {});
     }
   }
+}
+
+// ==================== 玄武并行抢号调度 (B 线) ====================
+// 抢号平均耗时约 2 分钟，因此与主流程 (A线: 登录/资料完善) 并行开抢；
+// 玄武号码的验证码 5 分钟码窗自取号成功起算，保鲜看护在号龄超限时自动释放旧号换新号，
+// 绑定停靠点通过 acquire() 取用号龄受控的会话。扣费仅在验证码到达时发生，
+// 释放走 feedback 31=老号（来码前唯一合法免扣费收尾），预占金额立即归还。
+const PHONE_KEEPER_INTERVAL_MS = 5000;          // 保鲜看护巡检间隔
+const PHONE_KEEPER_MAX_AGE_MS = 3 * 60 * 1000;  // 触发后台续抢的号龄上限 (3 分钟)
+const PHONE_DOCK_MAX_AGE_MS = 2 * 60 * 1000;    // 绑定停靠点允许的最大号龄 (保证 5 分钟码窗完整)
+const AUTH_RESUME_MIN_MS = 4 * 60 * 1000;       // 授权剩余低于 4 分钟 → 复扫重置后重新抢号
+const MAX_BIND_ROUNDS = 3;                      // 一轮绑定最多消耗的玄武号码数
+
+function createPhoneGrabber(smsClient, projectCode, log) {
+  let current = null;      // 最近抢到的会话 {phoneNumber, sessionId, grabbedAt, attempts}
+  let grabPromise = null;  // 在途抢号 (永不 reject，失败折叠为 {grabError})
+  let keeperTimer = null;
+  let stopped = true;
+  let grabbing = false;
+
+  const ageMsOf = s => (s ? Date.now() - s.grabbedAt : Infinity);
+
+  async function doGrab(reason) {
+    grabbing = true;
+    try {
+      log.console(`[抢号线 B] 向玄武抢号 (项目 ${projectCode})${reason ? ` [${reason}]` : ''}...`);
+      const session = await smsClient.grabPhoneSession(projectCode, {
+        maxAttempts: 60,
+        intervalMs: 1000,
+        onRetry: info => log.console(`[抢号线 B] 第 ${info.attempt}/${info.maxAttempts} 次未果 (${info.message})...`),
+      });
+      current = session;
+      log.console(`[抢号线 B] 抢号成功: ${session.phoneNumber} (sessionId: ${session.sessionId}, 第 ${session.attempts} 次请求)`);
+      return session;
+    } catch (err) {
+      log.console(`[抢号线 B] 抢号失败: ${err.message}`);
+      return { grabError: err };
+    } finally {
+      grabbing = false;
+    }
+  }
+
+  async function keeperTick() {
+    if (stopped || grabbing || !current) return;
+    if (ageMsOf(current) <= PHONE_KEEPER_MAX_AGE_MS) return;
+    const stale = current;
+    current = null;
+    log.console(`[抢号线 B] 号码 ${stale.phoneNumber} 号龄 ${Math.round((Date.now() - stale.grabbedAt) / 1000)}s 超限，自动续抢保鲜...`);
+    await smsClient.releasePhone(stale.sessionId, stale.phoneNumber).catch(() => {});
+    grabPromise = doGrab('保鲜续抢');
+  }
+
+  function stopKeeper() {
+    stopped = true;
+    if (keeperTimer) {
+      clearInterval(keeperTimer);
+      keeperTimer = null;
+    }
+  }
+
+  return {
+    start() {
+      if (!stopped) return;
+      stopped = false;
+      grabPromise = doGrab('并行预抢');
+      keeperTimer = setInterval(() => { keeperTick().catch(() => {}); }, PHONE_KEEPER_INTERVAL_MS);
+      if (typeof keeperTimer.unref === 'function') keeperTimer.unref();
+    },
+    // 绑定停靠点取号：停看护 → 等在途抢号落地 → 号龄超限则释放重抢 → 返回受控新鲜会话
+    async acquire() {
+      stopKeeper();
+      if (grabPromise) {
+        const pending = await grabPromise;
+        grabPromise = null;
+        if (pending && !pending.grabError) current = pending;
+      }
+      if (current && ageMsOf(current) <= PHONE_DOCK_MAX_AGE_MS) {
+        return current;
+      }
+      if (current) {
+        log.console(`[抢号线 B] 停靠点发现号龄 ${Math.round(ageMsOf(current) / 1000)}s 超限，释放后现场重抢...`);
+        await smsClient.releasePhone(current.sessionId, current.phoneNumber).catch(() => {});
+        current = null;
+      }
+      const fresh = await doGrab('停靠点重抢');
+      if (fresh && fresh.grabError) throw fresh.grabError;
+      return fresh;
+    },
+    // 释放未消费的号码（错误收场/复扫前），尽力而为
+    async releaseCurrent() {
+      stopKeeper();
+      if (grabPromise) {
+        try {
+          const pending = await grabPromise;
+          if (pending && !pending.grabError) current = pending;
+        } catch {}
+        grabPromise = null;
+      }
+      if (current) {
+        await smsClient.releasePhone(current.sessionId, current.phoneNumber).catch(() => {});
+        log.console(`[抢号线 B] 已释放未消费号码 ${current.phoneNumber}`);
+        current = null;
+      }
+    },
+    // 仅停看护（成功/人工等待收尾时调用，号码仍在使用中，严禁释放）
+    dispose() {
+      stopKeeper();
+    },
+  };
+}
+
+// 绑定停靠点的号码调度决策：
+// - 授权剩余 < 4 分钟 → 释放旧号，复扫重置 8 分钟授权生命周期，复扫完成后重新抢号；
+// - 其余情况 → 取用保鲜看护下号龄受控的预抢号。
+async function preparePhoneSession(grabber, ctx, log) {
+  const { getAuthSession } = require('../../automation/auth-session');
+  const authSession = await getAuthSession(ctx.resolvedDeviceId);
+  const remainingMs = authSession ? authSession.remainingMs : null;
+  const remainingStr = authSession ? authSession.remainingFormatted : '未记录(视为充足)';
+  if (remainingMs !== null && remainingMs < AUTH_RESUME_MIN_MS) {
+    log.console(`[号码调度] 授权剩余仅 ${remainingStr} (<4分钟)，5 分钟验证码码窗撑不住绑定链路，先复扫重置授权再重新抢号...`);
+    await grabber.releaseCurrent();
+    await recoverViaRescan(ctx.client, ctx.resolvedDeviceId, ctx.options, ctx);
+    log.console('[号码调度] 复扫完成、授权计时已重置，重新抢号以保证 5 分钟码窗完整...');
+    return await grabber.acquire();
+  }
+  log.console(`[号码调度] 授权剩余 ${remainingStr}，直接取用预抢号。`);
+  return await grabber.acquire();
+}
+
+// 绑定执行环：号码调度 → 绑定 → (phone_expired 换号重跑 / reauth_required 复扫重跑)
+// 最多消耗 MAX_BIND_ROUNDS 个玄武号码；验证码超时不再转人工等待。
+async function runBindWithSessions(client, resolvedDeviceId, options, ctx, grabber, log) {
+  const { runBindPhone } = require('./bind-phone');
+  const fixedPhone = String(options.phoneNumber || process.env.YUNMOMO_MOMO_PHONE || '').trim();
+  let bindResult = null;
+  for (let round = 1; round <= MAX_BIND_ROUNDS; round++) {
+    let phoneSession = null;
+    if (!fixedPhone) {
+      log.console(`[绑定环] 第 ${round}/${MAX_BIND_ROUNDS} 轮：执行号码调度...`);
+      phoneSession = await preparePhoneSession(grabber, ctx, log);
+    }
+    bindResult = await runBindPhone(client, resolvedDeviceId, {
+      ...options,
+      phoneNumber: fixedPhone || undefined,
+      phoneSession,
+      forceGetCode: round > 1,
+      phone: ctx.phone,
+      control: ctx.control,
+      worker: ctx.worker,
+      screenshotsDir: ctx.screenshotsDir,
+    }, log);
+    if (bindResult?.state === 'phone_expired' && round < MAX_BIND_ROUNDS) {
+      log.console(`[绑定环] 号码 ${bindResult.phoneNumber} 码窗耗尽 (${bindResult.message})，换新号重跑...`);
+      continue;
+    }
+    if (bindResult?.state === 'reauth_required' && round < MAX_BIND_ROUNDS) {
+      log.console('[绑定环] 服务端返回“请重新授权”，触发复扫自愈后重跑绑定...');
+      await recoverViaRescan(client, resolvedDeviceId, options, ctx);
+      continue;
+    }
+    break;
+  }
+  return bindResult;
 }
 
 function parseCliArgs(argv) {
@@ -869,7 +1007,7 @@ function parseCliArgs(argv) {
     targetTime: process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME,
     yayaMode: process.env.YAYA_MODE || DEFAULT_YAYA_MODE,
     nickname: process.env.YUNMOMO_MOMO_NICKNAME || DEFAULT_NICKNAME,
-    phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '17306728814',
+    phoneNumber: process.env.YUNMOMO_MOMO_PHONE || '',
     verifyCode: process.env.YUNMOMO_MOMO_VERIFY_CODE || '',
     projectCode: process.env.YUNMOMO_MOMO_PROJECT_CODE || '369990',
   };

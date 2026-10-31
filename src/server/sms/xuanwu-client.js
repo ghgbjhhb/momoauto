@@ -70,7 +70,7 @@ class XuanwuClient {
     this.apiKey = (apiKey || '').trim();
   }
 
-  async _request(route, query = {}) {
+  async _request(route, query = {}, { method = 'GET', body = null } = {}) {
     if (!this.apiKey) {
       throw new XuanwuError('未配置玄武 API 密钥 (API Key)', 'NO_API_KEY');
     }
@@ -94,16 +94,22 @@ class XuanwuClient {
     const parsedUrl = new URL(urlStr);
 
     const transport = parsedUrl.protocol === 'http:' ? http : https;
+    const headers = {
+      'Accept': 'application/json',
+      'X-API-Key': this.apiKey,
+      'User-Agent': 'MomoAutomation-XuanwuSDK/1.0'
+    };
+    const bodyStr = body !== null && body !== undefined ? JSON.stringify(body) : null;
+    if (bodyStr !== null) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    }
     const reqOptions = {
-      method: 'GET',
+      method,
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'http:' ? 80 : 443),
       path: parsedUrl.pathname + parsedUrl.search,
-      headers: {
-        'Accept': 'application/json',
-        'X-API-Key': this.apiKey,
-        'User-Agent': 'MomoAutomation-XuanwuSDK/1.0'
-      },
+      headers,
       timeout: this.timeout
     };
 
@@ -224,6 +230,9 @@ class XuanwuClient {
         reject(netErr);
       });
 
+      if (bodyStr !== null) {
+        req.write(bodyStr);
+      }
       req.end();
     });
   }
@@ -344,7 +353,51 @@ class XuanwuClient {
     return { success: false, phoneCode: '', attempts: maxAttempts, timedOut: true };
   }
 
-  // 7. 一键测试连通性
+  // 7. 反馈验证结果 (POST phone/feedback)：status 20=验证成功 32=验证错误 31=老号
+  //    取号后、验证码到达前仅允许 31；每个取号会话只能反馈一次，以 sessionId 为唯一依据。
+  async feedback(sessionId, phoneNumber, status) {
+    if (!sessionId || !phoneNumber) {
+      throw new XuanwuError('反馈必须提供 sessionId 与 phoneNumber', 'INVALID_PARAM');
+    }
+    const res = await this._request('phone/feedback', {}, {
+      method: 'POST',
+      body: { sessionId: Number(sessionId), phoneNumber: String(phoneNumber), status: Number(status) }
+    });
+    return { ok: true, data: res.data || {}, latencyMs: res.latencyMs, raw: res.raw };
+  }
+
+  // 8. 释放取号会话 (feedback 31=老号)：来码前唯一合法的免扣费收尾，立即归还预占金额。
+  //    尽力而为：会话不存在/已过期/已反馈过均视为已释放，不向上抛错，绝不阻塞主流程。
+  async releasePhone(sessionId, phoneNumber) {
+    if (!sessionId || !phoneNumber) {
+      return { ok: false, skipped: true, message: '缺少 sessionId 或 phoneNumber，跳过释放' };
+    }
+    try {
+      const res = await this.feedback(sessionId, phoneNumber, 31);
+      return { ok: true, released: true, latencyMs: res.latencyMs };
+    } catch (err) {
+      const benign = err.code === 'C3051' || /已反馈|重复反馈|不存在|已过期/.test(String(err.message || ''));
+      if (benign) {
+        return { ok: true, released: false, alreadyGone: true, message: err.message };
+      }
+      return { ok: false, error: err.message, code: err.code || 'FAIL' };
+    }
+  }
+
+  // 9. 抢号并返回标准会话对象（附 grabbedAt 本地时间戳，供"5 分钟码窗/号龄保鲜"决策使用）
+  async grabPhoneSession(projectCode, options = {}) {
+    const res = await this.getPhoneWithPolling(projectCode, options);
+    return {
+      phoneNumber: res.phoneNumber,
+      sessionId: res.sessionId,
+      grabbedAt: Date.now(),
+      attempts: res.attempts,
+      latencyMs: res.latencyMs,
+      raw: res.raw
+    };
+  }
+
+  // 10. 一键测试连通性
   async testConnection() {
     const startTime = Date.now();
     try {
