@@ -268,11 +268,9 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
   const resolvedDeviceId = deviceIdOf(target);
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
-  // 网名解析：留空即随机生成（显式指定则原样使用）；生成失败直接中断，不回退固定网名。
-  const { nickname, generated } = await resolveGirlNickname(
-    options.nickname || process.env.YUNMOMO_MOMO_NICKNAME
-  );
-  log.console(`[人设网名] ${generated ? '已随机生成' : '使用指定'}女生网名: "${nickname}"`);
+  // 网名：留空即离线随机生成，显式指定则原样使用
+  const nickname = await resolveGirlNickname(options.nickname || process.env.YUNMOMO_MOMO_NICKNAME);
+  log.console(`[人设网名] 女生网名: "${nickname}"`);
 
   await log.file('Setup profile task initialized', { deviceName, resolvedDeviceId, nickname });
 

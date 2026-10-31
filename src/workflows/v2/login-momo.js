@@ -438,11 +438,9 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
   const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
-  // 网名解析：留空即随机生成（显式指定则原样使用）；生成失败直接中断，不回退固定网名。
-  const { nickname, generated } = await resolveGirlNickname(
-    options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME
-  );
-  log.console(`[人设网名] ${generated ? '已随机生成' : '使用指定'}女生网名: "${nickname}"`);
+  // 网名：留空即离线随机生成，显式指定则原样使用
+  const nickname = await resolveGirlNickname(options.nickname ?? process.env.YUNMOMO_MOMO_NICKNAME);
+  log.console(`[人设网名] 女生网名: "${nickname}"`);
   const modeLabel = yayaMode === 'relogin' ? '历史复扫' : '直接授权';
 
   await log.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, targetTime, yayaMode, nickname });
