@@ -53,7 +53,7 @@ async function handleExecuteRoutes(ctx, request, response, url) {
       || url.pathname === '/api/momo-brain/status'
       || url.pathname === '/api/ai-reply/run';
     const targetDevice = deviceId || (actsOnDevice ? effectiveDeviceId : '');
-    if (targetDevice && !authService.canAccessDevice(user, targetDevice)) {
+    if (targetDevice && !await authService.ensureDeviceAccess(user, targetDevice)) {
       json(response, 403, { ok: false, error: '无该设备的访问权限' });
       return true;
     }
@@ -71,17 +71,17 @@ async function handleExecuteRoutes(ctx, request, response, url) {
 
     if (url.pathname.startsWith('/api/ai-reply/runs/')) {
       const runRecord = activeRuns.get(url.pathname.split('/')[4]);
-      if (runRecord && !authService.canAccessDevice(user, runRecord.deviceId)) {
+      if (runRecord && !await authService.ensureDeviceAccess(user, runRecord.deviceId)) {
         json(response, 403, { ok: false, error: '无该任务的访问权限' });
         return true;
       }
     }
 
     if (url.pathname.startsWith('/api/momo-brain/')) {
-      const handled = handleMomoBrainRoutes(request, response, url, bodyJson, brainManager());
+      const handled = handleMomoBrainRoutes(request, response, url, bodyJson, brainManager(), user);
       if (handled) return true;
     } else {
-      const handled = handleAiReplyRoutes(request, response, url, bodyJson, client());
+      const handled = handleAiReplyRoutes(request, response, url, bodyJson, client(), user);
       if (handled) return true;
     }
   }
@@ -152,7 +152,7 @@ async function handleExecuteRoutes(ctx, request, response, url) {
   if (request.method === 'POST' && url.pathname === '/api/execute') {
     const body = await readJsonBody(request);
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
-    if (user.role !== 'admin' && body?.deviceId && !authService.canAccessDevice(user, body.deviceId)) {
+    if (user.role !== 'admin' && body?.deviceId && !await authService.ensureDeviceAccess(user, body.deviceId)) {
       json(response, 403, { ok: false, error: '无权操作此设备或该设备已到期回收' });
       return true;
     }

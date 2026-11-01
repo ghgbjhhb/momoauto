@@ -94,8 +94,8 @@ async function captureMilestoneScreenshot(phone, tools, dir, filename, desc) {
  * 获取设备互斥写锁或借用父级租约
  */
 function acquireWorkflowLock(deviceId, runId, options = {}) {
-  const existingLock = defaultArbiter.getLockInfo(deviceId);
-  const parentToken = options.leaseToken || existingLock?.leaseToken;
+  // 仅显式持有父级租约的内部任务允许借用；独立请求必须排他申请。
+  const parentToken = options.leaseToken;
   if (parentToken) {
     const borrowRes = defaultArbiter.borrowLease(deviceId, parentToken, runId);
     if (borrowRes.ok) return borrowRes;
@@ -107,7 +107,7 @@ function acquireWorkflowLock(deviceId, runId, options = {}) {
  * 发送成功后自动将发出的消息写入本地数据库并更新联系人
  */
 function persistSentMessage(momoDb, deviceId, contactName, text) {
-  if (!momoDb || !contactName || !text) return;
+  if (!momoDb || !contactName || !text) return false;
   try {
     const contact = momoDb.upsertContact({
       name: contactName,
@@ -121,10 +121,10 @@ function persistSentMessage(momoDb, deviceId, contactName, text) {
         text,
         time: ''
       }]);
+      return true;
     }
-  } catch {
-    // 数据库更新异常不影响主流程返回
-  }
+  } catch {}
+  return false;
 }
 
 /**
@@ -223,13 +223,13 @@ async function runContactHandoff({ tools, phone, momoDb, deviceId, contactName, 
       sent = await tools.sendChatMessage(segmentText, {
         expectedPeer: contactName,
         execute: true,
-        verifyChatPage: false,
+        verifyChatPage: true,
         signal,
         assertActive: check
       });
       check();
     } else {
-      sent = { ok: true, data: { sendState: 'own_bubble_observed' } };
+      throw Object.assign(new Error('聊天发送工具不可用'), { code: 'SEND_TOOL_UNAVAILABLE' });
     }
 
     const sendState = sent?.data?.sendState || 'not_started';
@@ -243,7 +243,12 @@ async function runContactHandoff({ tools, phone, momoDb, deviceId, contactName, 
     }
 
     sentSegments++;
-    persistSentMessage(momoDb, deviceId, contactName, segmentText);
+    if (!persistSentMessage(momoDb, deviceId, contactName, segmentText)) {
+      try { momoDb.updateHandoffState(contactName, 'uncertain'); } catch {}
+      return { ok: false, outcome: 'handoff_uncertain', sentSegments,
+        failedSegment: i + 1, sendState: 'own_bubble_observed',
+        error: { code: 'PERSIST_FAILED', message: '话术已发送，但本地消息写入失败，需人工复核' } };
+    }
     const shotSeg = await captureMilestoneScreenshot(phone, tools, screenshotsDir, `02-handoff-seg${i + 1}`, `话术第 ${i + 1} 段发送成功现场`);
     if (shotSeg) screenshots.push(shotSeg);
     logLive('5/6', `第 ${i + 1} 段已确认上屏`);
@@ -316,7 +321,8 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
   if (!lockRes.ok) {
     const err = { code: lockRes.reason || 'DEVICE_BUSY' };
     logLive('1/6', `获取设备写锁失败: ${err.code}`);
-    return { ok: false, mode, contactName, error: err, data: { ok: false, mode, contactName, error: err } };
+    return { ok: false, status: 'failed', mode, contactName, error: err,
+      data: { ok: false, mode, contactName, error: err } };
   }
   const lease = lockRes.lease;
   logLive('1/6', `成功持有设备 ${deviceId} 互斥控制写锁`);
@@ -403,7 +409,7 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
 
     // 4. 实时调用大模型生成全新回复（每次调用均独立思考，绝不复用旧回复）
     check();
-    const configSnapshot = getEffectiveConfig(deviceId);
+    const configSnapshot = getEffectiveConfig(deviceId, options.userId || process.env.YUNMOMO_USER_ID);
     logLive('4/6', '正在调用大模型生成全新的回复内容...');
     const genStart = Date.now();
     let generated = null;
@@ -536,7 +542,7 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
         expectedPeer: contactName,
         execute: true,
         typeOnly: isDraft,
-        verifyChatPage: false,
+        verifyChatPage: true,
         signal: options.signal,
         assertActive: check,
         onDraftFrame: async (draftFrame) => {
@@ -555,7 +561,7 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
       });
       check();
     } else {
-      sent = { ok: true, data: { sendState: isDraft ? 'draft_verified' : 'own_bubble_observed' } };
+      throw Object.assign(new Error('聊天发送工具不可用'), { code: 'SEND_TOOL_UNAVAILABLE' });
     }
 
     const sendState = sent.data?.sendState || 'not_started';
@@ -576,7 +582,13 @@ async function runMomoAiReplyOnce(client, deviceId, options = {}) {
         const shot3 = await captureMilestoneScreenshot(phone, tools, screenshotsDir, '03-after-send', '点击发送成功后的结果画面（停留在当前聊天页）');
         if (shot3) screenshots.push(shot3);
         logLive('6/6', '正在将已发出的消息写入本地数据库...');
-        persistSentMessage(momoDb, deviceId, contactName, replyText);
+        if (!persistSentMessage(momoDb, deviceId, contactName, replyText)) {
+          return buildFailureReport({
+            runId, mode, contactName, screenshotsDir, screenshots,
+            error: { code: 'PERSIST_FAILED', message: '消息已发送，但本地历史写入失败，需人工复核' },
+            outcome: 'needs_review', sendState: 'own_bubble_observed', aiMetadata
+          });
+        }
         logLive('6/6', '本地数据库落库完成');
       } else {
         logLive('6/6', '草稿已保留在输入框中 (draft模式未发送、未落库)');

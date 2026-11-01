@@ -35,11 +35,17 @@ class BrainManager {
     if (options.mode !== undefined && !['plan','observe','draft','execute'].includes(options.mode)) throw Object.assign(new Error('Invalid mode'), { code: 'INVALID_MODE' });
     const id = String(deviceId);
     let actor = this.actors.get(id);
+    if (actor && options.ownerUserId && actor.ownerUserId !== options.ownerUserId) {
+      throw Object.assign(new Error('该设备已有其他用户的自动化会话'), { code: 'DEVICE_BUSY' });
+    }
 
     if (!actor) {
       const config = getEffectiveBrainConfig(id);
       const scheduler = new BrainScheduler(this.store, config);
-      actor = new DeviceActor(id, this.store, scheduler, config, this.client, this.taskAdapters);
+      const actorClient = options.accessToken
+        ? new YunmomoClient({ token: options.accessToken }) : this.client;
+      actor = new DeviceActor(id, this.store, scheduler, config, actorClient, this.taskAdapters);
+      actor.ownerUserId = options.ownerUserId || null;
       this.actors.set(id, actor);
     } else {
       // 动态同步最新生效配置 (F16)
@@ -61,8 +67,11 @@ class BrainManager {
     return this.getStatus(deviceId);
   }
 
-  async resumeDevice(deviceId) {
+  async resumeDevice(deviceId, options = {}) {
     const actor = this.getActor(deviceId);
+    if (actor && options.ownerUserId && actor.ownerUserId !== options.ownerUserId) {
+      throw Object.assign(new Error('该设备已有其他用户的自动化会话'), { code: 'DEVICE_BUSY' });
+    }
     if (actor) {
       // 动态同步最新生效配置 (F16)
       actor.config = getEffectiveBrainConfig(deviceId);
@@ -70,7 +79,7 @@ class BrainManager {
       actor.resume();
     } else {
       this.store.updateSchedule(String(deviceId), 'device_guard', { quotaUsed: 0, cooldownUntil: 0 });
-      await this.startDevice(deviceId);
+      await this.startDevice(deviceId, options);
     }
     return this.getStatus(deviceId);
   }

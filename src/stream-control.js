@@ -78,12 +78,12 @@ class StreamInput extends EventEmitter {
       };
       const timer = setTimeout(() => settle(inputError('STREAM_INPUT_TIMEOUT', '输入通道连接超时')), timeoutMs);
       ws.once('error', () => settle(inputError('STREAM_INPUT_CONNECT_FAILED', '输入通道连接失败')));
-      ws.once('close', (code, reason) => {
+      ws.once('close', code => {
         this.ws = null;
         this.videoWidth = this.videoHeight = null;
-        const text = reason && reason.length ? reason.toString('utf8') : '';
+        // 上游关闭原因可能包含凭据，不拼接进用户可见错误。
         settle(FATAL_CLOSE_CODES.has(code)
-          ? inputError('STREAM_INPUT_REJECTED', '输入通道被服务端拒绝 (' + code + '): ' + text)
+          ? inputError('STREAM_INPUT_REJECTED', '输入通道被服务端拒绝 (' + code + ')')
           : inputError('STREAM_INPUT_CONNECT_FAILED', '输入通道在就绪前断开 (' + code + ')'));
       });
       this._settleConnect = settle;

@@ -256,6 +256,18 @@ class AuthDatabase {
     stmt.run(key, String(value));
   }
 
+  transaction(work) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = work();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   // --- Users ---
   getUserByEmail(email) {
     const stmt = this.db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE');

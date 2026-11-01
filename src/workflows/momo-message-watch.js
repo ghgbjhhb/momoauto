@@ -1002,8 +1002,12 @@ class WatchHub {
         if (!err.fatal) await captureStepScreenshot(this.tools, this.healDir, `heal-${Date.now()}-crash`, '异常停止现场');
       }
     } finally {
-      defaultArbiter.releaseLease(this.lease);
-      await this.tools?.close().catch(() => {});
+      try {
+        await this.tools?.close();
+        defaultArbiter.releaseLease(this.lease);
+      } catch {
+        defaultArbiter.quarantineDevice(this.deviceId, 'Watch control cleanup not confirmed');
+      }
     }
 
     return {

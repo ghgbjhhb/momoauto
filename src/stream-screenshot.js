@@ -45,7 +45,7 @@ class StreamCapture {
       if (error instanceof StreamScreenshotError) { this.close(error); return; }
       const code = error?.status === 401 || error?.status === 403 ? 'STREAM_AUTH_FAILED' :
         error?.status === 404 ? 'STREAM_DEVICE_NOT_FOUND' :
-          error?.message === 'Cloud phone connection/initialization timed out' ? 'STREAM_CONNECT_TIMEOUT' : 'STREAM_CONNECT_FAILED';
+          error?.code === 'CLOUD_WS_TIMEOUT' ? 'STREAM_CONNECT_TIMEOUT' : 'STREAM_CONNECT_FAILED';
       this.close(failure(code, 'HD video device lookup or connection failed'));
     });
   }

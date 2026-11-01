@@ -13,7 +13,7 @@
  */
 
 const { randomUUID } = require('node:crypto');
-const { getSanitizedSettings, saveSettings, getEffectiveConfig } = require('../ai/config');
+const { getSanitizedSettings, saveSettings, saveUserSettings, getEffectiveConfig } = require('../ai/config');
 const { DeepSeekProvider } = require('../ai/provider');
 const { runMomoAiReplyOnce } = require('../workflows/momo-ai-reply');
 const { YunmomoClient } = require('../index');
@@ -29,14 +29,14 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
-function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance = null) {
+function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance = null, user = null) {
   const pathname = urlObj.pathname;
   const method = req.method.toUpperCase();
 
   // 1. GET /api/ai-reply/settings (用户侧读取：仅暴露系统提示词、话术配置及可用状态，不暴露密钥与后端配置)
   if (pathname === '/api/ai-reply/settings' && method === 'GET') {
     const deviceId = urlObj.searchParams.get('deviceId');
-    const settings = getSanitizedSettings(deviceId);
+    const settings = getSanitizedSettings(deviceId, user?.role === 'admin' ? null : user?.id);
     sendJson(res, 200, {
       ok: true,
       settings: {
@@ -66,7 +66,9 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
         // 接受数组或空行分段文本，归一化由 saveSettings/normalizeSettings 统一处理
         updates.handoffSegments = handoffSegments;
       }
-      const saved = saveSettings(updates, expectedRevision);
+      const saved = user?.role === 'admin'
+        ? saveSettings(updates, expectedRevision)
+        : saveUserSettings(user.id, updates, expectedRevision);
       sendJson(res, 200, {
         ok: true,
         settings: {
@@ -89,7 +91,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
 
   // 3. POST /api/ai-reply/test
   if (pathname === '/api/ai-reply/test' && method === 'POST') {
-    const configSnapshot = getEffectiveConfig(bodyJson?.deviceId);
+    const configSnapshot = getEffectiveConfig(bodyJson?.deviceId, user?.role === 'admin' ? null : user?.id);
     const testConfig = {
       ...configSnapshot,
       apiKey: configSnapshot.apiKey,
@@ -143,6 +145,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
       deviceId,
       mode,
       contactName,
+      ownerUserId: user?.id,
       status: 'running',
       startedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -154,7 +157,9 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
     activeRuns.set(runId, runRecord);
     const timingStarted = require('node:perf_hooks').performance.now();
 
-    const client = clientInstance || new YunmomoClient();
+    const { getAuthService } = require('./auth/service');
+    const accessToken = user?.role === 'admin' ? '' : getAuthService().getDeviceAccessToken(user, deviceId);
+    const client = accessToken ? new YunmomoClient({ token: accessToken }) : clientInstance;
 
     // 异步执行，不阻塞当前 HTTP 响应
     (async () => {
@@ -163,6 +168,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
           mode,
           runId,
           contactName,
+          userId: user?.id,
           signal: runRecord.abortController.signal
         });
         runRecord.status = runRecord.abortController.signal.aborted ? 'cancelled' : resObj.status;
@@ -188,7 +194,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
     const runId = parts[4];
     const runRecord = activeRuns.get(runId);
 
-    if (!runRecord) {
+    if (!runRecord || (user?.role !== 'admin' && runRecord.ownerUserId !== user?.id)) {
       sendJson(res, 404, { ok: false, error: { code: 'RUN_NOT_FOUND', message: `Run ${runId} not found` } });
       return true;
     }
@@ -215,7 +221,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
     const runId = parts[4];
     const runRecord = activeRuns.get(runId);
 
-    if (!runRecord) {
+    if (!runRecord || (user?.role !== 'admin' && runRecord.ownerUserId !== user?.id)) {
       sendJson(res, 404, { ok: false, error: { code: 'RUN_NOT_FOUND', message: `Run ${runId} not found` } });
       return true;
     }

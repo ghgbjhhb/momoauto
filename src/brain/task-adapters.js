@@ -26,6 +26,7 @@ async function runReply(deviceId, task, sessionContext, options = {}) {
   const result = await runMomoAiReplyOnce(client, deviceId, {
     mode,
     contactName,
+    userId: sessionContext.userId,
     signal: options.signal,
     fetchFn: options.fetchFn,
     leaseToken: sessionContext.leaseToken,

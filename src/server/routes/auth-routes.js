@@ -1,6 +1,6 @@
 'use strict';
 
-const { json, readJsonBody } = require('../http');
+const { json, readJsonBody, isSecurePublicRequest } = require('../http');
 const { getAuthService } = require('../auth/service');
 const authGuard = require('../auth/guard');
 const { listDevices } = require('../context');
@@ -10,6 +10,7 @@ const authService = getAuthService();
 async function handleAuthRoutes(ctx, request, response, url) {
   const { user } = ctx;
   const authClientIp = authGuard.clientIp(request);
+  const cookieSecure = isSecurePublicRequest(request) ? '; Secure' : '';
 
   const rejectBruteForce = (waitSeconds) => {
     json(response, 429, {
@@ -27,7 +28,7 @@ async function handleAuthRoutes(ctx, request, response, url) {
       const result = await authService.register(body?.email, body?.password);
       authGuard.registerSuccess(result.user?.email);
       json(response, 200, { ok: true, user: result.user, token: result.token }, {
-        'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
+        'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax${cookieSecure}; Max-Age=604800`
       });
     } catch (err) {
       authGuard.registerFailure(body?.email, authClientIp);
@@ -44,7 +45,7 @@ async function handleAuthRoutes(ctx, request, response, url) {
       const result = await authService.login(body?.email, body?.password);
       authGuard.registerSuccess(result.user?.email || body?.email);
       json(response, 200, { ok: true, user: result.user, token: result.token }, {
-        'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`
+        'Set-Cookie': `ym_auth_token=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax${cookieSecure}; Max-Age=604800`
       });
     } catch (err) {
       authGuard.registerFailure(body?.email, authClientIp);
@@ -62,7 +63,7 @@ async function handleAuthRoutes(ctx, request, response, url) {
       await authService.changePassword(user.id, body?.currentPassword, body?.newPassword);
       authGuard.registerSuccess(user.email);
       json(response, 200, { ok: true, message: '密码已更新，请重新登录' }, {
-        'Set-Cookie': 'ym_auth_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+        'Set-Cookie': `ym_auth_token=; Path=/; HttpOnly; SameSite=Lax${cookieSecure}; Max-Age=0`
       });
     } catch (err) {
       authGuard.registerFailure(user.email, authClientIp);
@@ -73,7 +74,7 @@ async function handleAuthRoutes(ctx, request, response, url) {
 
   if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
     json(response, 200, { ok: true }, {
-      'Set-Cookie': 'ym_auth_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+      'Set-Cookie': `ym_auth_token=; Path=/; HttpOnly; SameSite=Lax${cookieSecure}; Max-Age=0`
     });
     return true;
   }

@@ -101,7 +101,7 @@ function getCloudDiskFiles(dirName) {
 async function previewImage(deviceId, tokenOrUser = null) {
   let token = typeof tokenOrUser === 'string' ? tokenOrUser : null;
   if (!token && tokenOrUser?.id) {
-    token = authService.getUserPlatformToken(tokenOrUser.id);
+    token = authService.getDeviceAccessToken(tokenOrUser, deviceId);
   }
   const device = await selectedDevice(deviceId, token);
   const c = token ? new YunmomoClient({ token, timeoutMs: 15000 }) : client();
@@ -267,7 +267,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       return true;
     }
     const ownerUserId = await readRunOwner(scriptRunId);
-    if (user.role !== 'admin' && ownerUserId && ownerUserId !== user.id) {
+    if (user.role !== 'admin' && ownerUserId !== user.id) {
       json(response, 403, { ok: false, error: '无权读取其他用户的执行日志' });
       return true;
     }
@@ -325,7 +325,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
   if (request.method === 'GET' && url.pathname === '/api/vision-inspect') {
     const deviceId = url.searchParams.get('deviceId');
     if (!deviceId) throw new Error('缺少 deviceId 参数');
-    if (!user || !authService.canAccessDevice(user, deviceId)) {
+    if (!user || !await authService.ensureDeviceAccess(user, deviceId)) {
       json(response, 403, { ok: false, error: '无权查看此设备或该设备已到期回收' });
       return true;
     }
@@ -336,7 +336,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
 
   if (request.method === 'GET' && url.pathname === '/api/screenshot') {
     const deviceId = url.searchParams.get('deviceId');
-    if (!user || !authService.canAccessDevice(user, deviceId)) {
+    if (!user || !await authService.ensureDeviceAccess(user, deviceId)) {
       json(response, 403, { ok: false, error: '无权查看此设备画面或该设备已到期回收' });
       return true;
     }
@@ -508,7 +508,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       json(response, 400, { ok: false, error: '缺少目标文件名' });
       return true;
     }
-    if (user.role !== 'admin' && !authService.canAccessDevice(user, deviceId)) {
+    if (user.role !== 'admin' && !await authService.ensureDeviceAccess(user, deviceId)) {
       json(response, 403, { ok: false, error: '无权操作此设备或该设备已到期回收' });
       return true;
     }

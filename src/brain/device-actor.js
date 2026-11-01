@@ -306,7 +306,8 @@ class DeviceActor {
       check();
       if (!control.connected || !control.ready) throw Object.assign(new Error('Control not ready'), { code: 'NOT_CONNECTED' });
       tools = phone.tools({ control });
-      const context = { deviceId: this.deviceId, client: this.client, sessionId: this.sessionId, control, tools,
+      const context = { deviceId: this.deviceId, client: this.client, sessionId: this.sessionId,
+        userId: this.ownerUserId, control, tools,
         pool: tools._recognitionPool, generation: control.generation ?? control._generation ?? 1,
         leaseToken: lease.leaseToken, assertActive: check };
       const maxMs = ['browse','greetings'].includes(task.type) ? (this.config.maxIdleOffListMs || 15000) : 180000;

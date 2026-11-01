@@ -138,6 +138,11 @@ function errorStatus(error) {
   return 500;
 }
 
+function isSecurePublicRequest(request) {
+  const authority = String(request.headers.host || '').toLowerCase();
+  return PUBLIC_ENTRIES.some(entry => entry.authority === authority && entry.origin.startsWith('https://'));
+}
+
 function allowedRequest(request) {
   try {
     const host = new URL('http://' + request.headers.host);
@@ -169,6 +174,7 @@ module.exports = {
   staticFile,
   errorStatus,
   allowedRequest,
+  isSecurePublicRequest,
   redact,
   appendLogLine,
   appendServerLog

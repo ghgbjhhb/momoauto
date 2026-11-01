@@ -22,7 +22,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     }
     sockets.handleUpgrade(request, socket, head, ws => sockets.emit('connection', ws, request, url));
   });
-  sockets.on('connection', (ws, request, url) => {
+  sockets.on('connection', async (ws, request, url) => {
     const auth = authService || getAuthService();
     const user = auth.getUserFromRequest(request);
     if (!user) {
@@ -31,16 +31,21 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       ws.close(1008); return;
     }
     const deviceId = url.searchParams.get('deviceId');
-    if (!deviceId || !auth.canAccessDevice(user, deviceId)) {
+    if (!deviceId || deviceId.length > 128 || !await auth.ensureDeviceAccess(user, deviceId).catch(() => false)) {
       console.warn(`[WS REJECT] ${url.pathname} DEVICE_FORBIDDEN deviceId=${deviceId} user=${user.email}`);
       send(ws, { type: 'error', code: 'DEVICE_FORBIDDEN', message: '无权操作此设备或该设备租期已到期' });
       ws.close(1008); return;
     }
+    if (ws.readyState !== WebSocket.OPEN) return;
     const interactive = url.pathname === '/api/control' || url.pathname === '/api/control-input';
     const inputOnly = url.pathname === '/api/control-input';
     const pageId = /^[A-Za-z0-9_-]{8,128}$/.test(url.searchParams.get('pageId') || '')
       ? url.searchParams.get('pageId') : '';
     let deviceSession = interactive ? manualDevices.get(deviceId) : null;
+    if (deviceSession && deviceSession.ownerUserId !== user.id) {
+      send(ws, { type: 'error', code: 'DEVICE_BUSY', message: '该设备正在被其他账号操作' });
+      ws.close(1008); return;
+    }
     if (!deviceId || deviceId.length > 128 || (interactive && (busyDevices.has(deviceId) ||
         (!deviceSession && defaultArbiter.isDeviceBusy(deviceId))))) {
       console.warn(`[WS REJECT] ${url.pathname} DEVICE_BUSY deviceId=${deviceId}`);
@@ -55,7 +60,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
         send(ws, { type: 'error', code: 'DEVICE_BUSY', message: '该设备正在执行脚本，暂时无法手动操作' });
         ws.close(1008); return;
       }
-      deviceSession = { leases: new Set(), arbiterLease: acquired.lease, touchOwner: null,
+      deviceSession = { leases: new Set(), ownerUserId: user.id, arbiterLease: acquired.lease, touchOwner: null,
         keyOwners: new Map(), inputQueue: Promise.resolve(), queuedInputs: 0,
         lastInputPageId: '', lastInputAt: 0 };
       manualDevices.set(deviceId, deviceSession);
@@ -261,7 +266,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       }
     });
     (async () => {
-      const userToken = auth.getUserPlatformToken(user.id);
+      const userToken = auth.getDeviceAccessToken(user, deviceId);
       const device = await selectedDevice(deviceId, userToken);
       if (lease.closed) return;
       if (interactive && busyDevices.has(deviceId)) throw new Error('该设备正在执行脚本');

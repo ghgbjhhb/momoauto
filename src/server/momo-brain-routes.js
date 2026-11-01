@@ -25,7 +25,7 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
-function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager = null) {
+function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager = null, user = null) {
   const pathname = urlObj.pathname;
   const method = req.method.toUpperCase();
 
@@ -66,7 +66,11 @@ function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager =
 
     (async () => {
       try {
-        const status = await brainManager.startDevice(deviceId, bodyJson);
+        const { getAuthService } = require('./auth/service');
+        const accessToken = user?.role === 'admin' ? '' : getAuthService().getDeviceAccessToken(user, deviceId);
+        const status = await brainManager.startDevice(deviceId, {
+          ...bodyJson, ownerUserId: user?.id, accessToken
+        });
         sendJson(res, 200, { ok: true, status });
       } catch (err) {
         sendJson(res, 500, { ok: false, error: { code: 'START_FAILED', message: err.message } });
@@ -104,7 +108,11 @@ function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager =
 
     (async () => {
       try {
-        const status = await brainManager.resumeDevice(deviceId);
+        const { getAuthService } = require('./auth/service');
+        const accessToken = user?.role === 'admin' ? '' : getAuthService().getDeviceAccessToken(user, deviceId);
+        const status = await brainManager.resumeDevice(deviceId, {
+          ownerUserId: user?.id, accessToken
+        });
         sendJson(res, 200, { ok: true, status });
       } catch (err) {
         sendJson(res, 500, { ok: false, error: { code: 'RESUME_FAILED', message: err.message } });

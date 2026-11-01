@@ -157,12 +157,13 @@ function listProviders() {
   }));
 }
 
-function getSanitizedSettings(deviceId = null) {
+function getSanitizedSettings(deviceId = null, userId = null) {
   const settings = loadSettings();
-  const effective = getEffectiveConfig(deviceId);
+  const userSettings = userId ? loadUserSettings(userId) : null;
+  const effective = getEffectiveConfig(deviceId, userId);
 
   return {
-    revision: settings.revision,
+    revision: userId ? (userSettings?.revision ?? 1) : settings.revision,
     activeProviderId: settings.activeProviderId,
     provider: effective.provider,
     endpoint: effective.endpoint,
@@ -335,7 +336,33 @@ function setDefaultProvider(providerId) {
   });
 }
 
-function getEffectiveConfig(deviceId = null) {
+// 每个普通用户只覆盖可编辑的话术字段，供应商和 API Key 始终由管理员统一配置。
+function loadUserSettings(userId) {
+  const { getAuthService } = require('../server/auth/service');
+  const raw = getAuthService().db.getConfig('ai_user_settings:' + userId);
+  return raw ? JSON.parse(raw) : null;
+}
+
+function saveUserSettings(userId, updates, expectedRevision) {
+  const { getAuthService } = require('../server/auth/service');
+  const db = getAuthService().db;
+  return db.transaction(() => {
+    const current = loadUserSettings(userId) || { revision: 1 };
+    if (expectedRevision != null && Number(expectedRevision) !== current.revision) {
+      const err = new Error('回复配置已被其他页面修改，请刷新后重试');
+      err.code = 'REVISION_CONFLICT';
+      throw err;
+    }
+    const next = { ...current, ...updates, revision: current.revision + 1 };
+    if (next.handoffSegments !== undefined) {
+      next.handoffSegments = normalizeSettings({ ...loadSettings(), ...next }).handoffSegments;
+    }
+    db.setConfig('ai_user_settings:' + userId, JSON.stringify(next));
+    return { ...getEffectiveConfig(null, userId), revision: next.revision };
+  });
+}
+
+function getEffectiveConfig(deviceId = null, userId = null) {
   const settings = loadSettings();
   let activeProvider = null;
   if (Array.isArray(settings.providers) && settings.providers.length > 0) {
@@ -357,10 +384,18 @@ function getEffectiveConfig(deviceId = null) {
     } : {})
   };
 
-  if (deviceId && settings.deviceOverrides && settings.deviceOverrides[deviceId]) {
-    return { ...baseConfig, ...settings.deviceOverrides[deviceId] };
-  }
-  return baseConfig;
+  const deviceConfig = deviceId && settings.deviceOverrides?.[deviceId]
+    ? { ...baseConfig, ...settings.deviceOverrides[deviceId] } : baseConfig;
+  if (!userId) return deviceConfig;
+  const userSettings = loadUserSettings(userId);
+  if (!userSettings) return deviceConfig;
+  const { systemPrompt, handoffEnabled, handoffSegments } = userSettings;
+  return {
+    ...deviceConfig,
+    ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+    ...(handoffEnabled !== undefined ? { handoffEnabled } : {}),
+    ...(handoffSegments !== undefined ? { handoffSegments } : {})
+  };
 }
 
 module.exports = {
@@ -374,5 +409,7 @@ module.exports = {
   setDefaultProvider,
   getSanitizedSettings,
   saveSettings,
+  loadUserSettings,
+  saveUserSettings,
   getEffectiveConfig
 };

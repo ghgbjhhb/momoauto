@@ -1,6 +1,7 @@
 'use strict';
 
 const { WebSocket } = require('ws');
+const { createHash } = require('node:crypto');
 const { YunmomoClient } = require('../index');
 
 const SETTINGS = Object.freeze({ bitrate: 8388608, maxFps: 15, iFrameInterval: 1,
@@ -24,11 +25,13 @@ function createVideoStreams({ client }) {
   const streams = new Map();
 
   function getOrCreate(device, token = null) {
-    let entry = streams.get(device.deviceId);
+    // 不同平台账号可能拥有相同 deviceId，视频源必须按凭据隔离。
+    const key = device.deviceId + ':' + createHash('sha256').update(token || 'global').digest('hex');
+    let entry = streams.get(key);
     if (!entry) {
       if (streams.size >= 16) throw Object.assign(new Error('视频连接数量已达上限'), { code: 'VIDEO_LIMIT' });
-      entry = create(device, token);
-      streams.set(device.deviceId, entry);
+      entry = create(device, token, key);
+      streams.set(key, entry);
     }
     return entry;
   }
@@ -77,7 +80,7 @@ function createVideoStreams({ client }) {
     };
   }
 
-  function create(device, token = null) {
+  function create(device, token = null, key) {
     const c = token ? new YunmomoClient({ token, timeoutMs: 20000 }) : client();
     const control = c.openControl({ deviceId: device.deviceId, udid: device.udid,
       autoRefresh: false, inputOverStream: false, videoSettings: { ...SETTINGS, bounds: { ...SETTINGS.bounds } } });
@@ -104,7 +107,7 @@ function createVideoStreams({ client }) {
       clearTimeout(entry.idle);
       clearInterval(entry.timer);
       if (entry.upstream) entry.upstream.removeListener('pong', entry.onPong);
-      if (streams.get(device.deviceId) === entry) streams.delete(device.deviceId);
+      if (streams.get(key) === entry) streams.delete(key);
       for (const viewer of [...entry.viewers]) {
         if (code) viewer.onError(code, message);
         viewer.onClose();

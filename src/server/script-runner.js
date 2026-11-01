@@ -71,7 +71,9 @@ async function writeRunOwner(scriptRunId, ownerUserId) {
     const target = runOwnerFilePath(scriptRunId);
     await fs.promises.mkdir(path.dirname(target), { recursive: true });
     await fs.promises.writeFile(target, ownerUserId, 'utf8');
-  } catch {}
+  } catch (error) {
+    throw new Error('无法保存脚本日志归属信息: ' + error.message);
+  }
 }
 
 async function readRunOwner(scriptRunId) {
@@ -280,7 +282,7 @@ async function stopActiveScript(body = {}, user = null) {
     }
   }
   // 停止是写操作：非管理员只能停自己发起的运行，否则可打断他人云机上的脚本
-  if (run && user && user.role !== 'admin' && run.ownerUserId && run.ownerUserId !== user.id) {
+  if (run && user && user.role !== 'admin' && run.ownerUserId !== user.id) {
     return { ok: false, forbidden: true, message: '无权停止其他用户的脚本运行' };
   }
   if (!run) {
@@ -358,8 +360,8 @@ async function executeScriptMeasured(body, user = null) {
   run.pageId = pageId;
   run.deviceId = script.requiresDevice ? String(body?.deviceId || '') : '';
   run.stopRequested = pendingScriptStops.delete(scriptRunId);
+  await writeRunOwner(scriptRunId, ownerUserId);
   activeScriptRuns.set(scriptRunId, run);
-  writeRunOwner(scriptRunId, ownerUserId);
   let selected = null;
   let lockedDeviceId = '';
   let accountScriptLocked = false;
@@ -378,7 +380,9 @@ async function executeScriptMeasured(body, user = null) {
       env.YUNMOMO_USER_ROLE = user?.role || 'user';
     }
     const userToken = user?.id ? authService.getUserPlatformToken(user.id) : '';
-    const token = userToken || activeToken();
+    const token = user && script.requiresDevice
+      ? authService.getDeviceAccessToken(user, body?.deviceId) || activeToken()
+      : (userToken || activeToken());
     if (token) env.YUNMOMO_TOKEN = token;
     configureScript(script, body, env);
     if (!script.requiresDevice && busyAccountScripts.has(script.id)) {
