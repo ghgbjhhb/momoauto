@@ -1,7 +1,7 @@
 'use strict';
 
 // MOMO AI 自动回复：消息回复页的配置读写。
-// 配置写入为管理员全局接口；普通用户只读并显示说明。
+// 所有用户均可配置提示词与话术（无角色限制）。
 
 (function () {
   let currentRevision = 1;
@@ -17,7 +17,13 @@
     note: document.getElementById('aiReplyNote')
   };
 
-  function canManage() { return Boolean(state.isAdmin); }
+  function getAuthHeaders() {
+    const token = localStorage.getItem('yunmomo.auth_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+    };
+  }
 
   function setSaveBadge(text, tone = '') {
     if (!els.saveBadge) return;
@@ -32,24 +38,18 @@
   }
 
   function applyRole() {
-    const manage = canManage();
-    if (els.systemPrompt) {
-      if (manage) els.systemPrompt.removeAttribute('readonly');
-      else els.systemPrompt.setAttribute('readonly', '');
-    }
-    if (els.handoffEnabled) els.handoffEnabled.disabled = !manage;
-    if (els.handoffSegments) {
-      if (manage) els.handoffSegments.removeAttribute('readonly');
-      else els.handoffSegments.setAttribute('readonly', '');
-    }
-    if (els.btnSave) els.btnSave.hidden = !manage;
-    if (els.btnTest) els.btnTest.hidden = !manage;
-    if (els.note) els.note.hidden = manage;
+    // 所有登录用户均可自由编辑与保存
+    if (els.systemPrompt) els.systemPrompt.removeAttribute('readonly');
+    if (els.handoffEnabled) els.handoffEnabled.disabled = false;
+    if (els.handoffSegments) els.handoffSegments.removeAttribute('readonly');
+    if (els.btnSave) els.btnSave.hidden = false;
+    if (els.btnTest) els.btnTest.hidden = false;
+    if (els.note) els.note.hidden = true;
   }
 
   async function loadSettings() {
     try {
-      const res = await fetch('/api/ai-reply/settings');
+      const res = await fetch('/api/ai-reply/settings', { headers: getAuthHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       if (data.ok && data.settings) {
@@ -65,7 +65,6 @@
   }
 
   async function saveConfig() {
-    if (!canManage()) return;
     try {
       setSaveBadge('保存中…', 'run');
       const payload = {
@@ -76,7 +75,7 @@
       };
       const res = await fetch('/api/ai-reply/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -87,7 +86,7 @@
         showToast('回复配置已保存');
       } else {
         setSaveBadge('保存失败', 'err');
-        showToast(data.error || '保存提示词失败');
+        showToast(data.error?.message || data.error || '保存提示词失败');
       }
     } catch (err) {
       setSaveBadge('保存出错', 'err');
@@ -96,12 +95,11 @@
   }
 
   async function testApi() {
-    if (!canManage()) return;
     try {
       setSaveBadge('测试连接…', 'run');
       const res = await fetch('/api/ai-reply/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({})
       });
       const data = await res.json();

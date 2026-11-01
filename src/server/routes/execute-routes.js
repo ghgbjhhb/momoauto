@@ -60,8 +60,6 @@ async function handleExecuteRoutes(ctx, request, response, url) {
 
     const isGlobalWrite = request.method === 'POST' && (
       url.pathname === '/api/momo-brain/config'
-      || url.pathname === '/api/ai-reply/settings'
-      || url.pathname === '/api/ai-reply/test'
     );
     const isAggregateRead = request.method === 'GET' && (
       (url.pathname === '/api/momo-brain/status' || url.pathname === '/api/momo-brain/config') && !deviceId
