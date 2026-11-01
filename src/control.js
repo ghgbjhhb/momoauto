@@ -4,6 +4,7 @@ const { EventEmitter } = require('node:events');
 const { readFile, stat } = require('node:fs/promises');
 const { basename } = require('node:path');
 const { inspect } = require('node:util');
+const { performance } = require('node:perf_hooks');
 const WebSocket = require('ws');
 const p = require('./protocol');
 const { sharedStreamInput, closeStreamInput } = require('./stream-control');
@@ -49,6 +50,7 @@ class CloudPhoneControl extends EventEmitter {
     this.ready = false;
     this.info = null;
     this.initialFrame = null;
+    this.lastConnectionDiagnostic = null;
     this.autoRefresh = false;
     this.retryDelays = [500, 2000, 5000, 10000, 30000];
     this._retryIndex = 0;
@@ -99,51 +101,103 @@ class CloudPhoneControl extends EventEmitter {
     if (previous) previous.terminate();
     this.ready = this.connected = false;
     this.info = this.initialFrame = null;
+    const started = performance.now();
+    const trace = { generation, stage: 'connecting', upgradeMs: null, openMs: null,
+      firstMessageMs: null, readyMs: null, httpStatus: null, closeCode: null, networkCode: null };
+    const allowedNetworkCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT',
+      'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH',
+      'ERR_TLS_CERT_ALTNAME_INVALID', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'CERT_HAS_EXPIRED']);
+    const record = outcome => {
+      const details = { ...trace, outcome, elapsedMs: Math.round(performance.now() - started) };
+      this.lastConnectionDiagnostic = details;
+      this.emit('connection-diagnostic', details);
+      return details;
+    };
+    const failure = (code, description) => {
+      const d = record('failed');
+      const details = Object.entries(d).filter(([k, v]) =>
+        v !== null && k !== 'outcome' && k !== 'generation').map(([k, v]) => k + '=' + v).join(', ');
+      const error = new Error(description + ' (' + details + ')');
+      error.code = code;
+      error.diagnostic = d;
+      return error;
+    };
     const socket = this.socket = new WebSocket(address, { origin: this.origin });
     let finish;
     const pending = new Promise((resolve, reject) => {
       let settled = false;
       const timer = setTimeout(() => {
-        finish(new Error('Cloud phone connection/initialization timed out'));
+        finish(failure('CLOUD_WS_TIMEOUT', 'Cloud phone connection/initialization timed out'));
         socket.terminate();
       }, timeoutMs);
       finish = error => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (error) reject(error); else resolve(this);
+        if (error) reject(error);
+        else {
+          if (this.ready) {
+            trace.stage = 'ready';
+            trace.readyMs = Math.round(performance.now() - started);
+          }
+          record('connected');
+          resolve(this);
+        }
       };
+      socket.on('upgrade', response => {
+        if (generation !== this._generation) return;
+        trace.stage = 'upgraded';
+        trace.upgradeMs = Math.round(performance.now() - started);
+        if (Number.isInteger(response.statusCode)) trace.httpStatus = response.statusCode;
+      });
+      socket.on('unexpected-response', (_req, response) => {
+        if (generation !== this._generation) return;
+        trace.stage = 'handshake_rejected';
+        if (Number.isInteger(response.statusCode) && response.statusCode >= 100 &&
+            response.statusCode <= 599) trace.httpStatus = response.statusCode;
+        response.resume(); // Never log server headers or response bodies.
+        finish(failure('CLOUD_WS_HANDSHAKE_REJECTED', 'Cloud phone WebSocket handshake rejected'));
+        socket.terminate();
+      });
       socket.on('open', () => {
         if (generation !== this._generation) return;
+        trace.stage = 'await_initial';
+        trace.openMs = Math.round(performance.now() - started);
         this.connected = true;
         this.emit('open');
         if (options.waitForInitial === false) finish();
       });
       socket.on('message', (data, isBinary) => {
         if (generation !== this._generation) return;
+        if (trace.firstMessageMs === null) trace.firstMessageMs = Math.round(performance.now() - started);
         try {
           this.handleMessage(isBinary ? data : data.toString('utf8'));
           if (this.ready) finish();
         } catch {
-          const error = new Error('Invalid cloud phone protocol frame');
+          trace.stage = 'invalid_protocol_frame';
+          const error = failure('CLOUD_WS_PROTOCOL_INVALID', 'Invalid cloud phone protocol frame');
           this.emit('protocol-error', error);
           finish(error);
           socket.terminate();
         }
       });
-      socket.on('error', () => {
+      socket.on('error', rawError => {
         if (generation !== this._generation) return;
-        const error = new Error('Cloud phone WebSocket error (check token, device and network)');
+        if (allowedNetworkCodes.has(rawError?.code)) trace.networkCode = rawError.code;
+        const error = failure('CLOUD_WS_TRANSPORT_ERROR', 'Cloud phone WebSocket transport error');
         finish(error);
         this.emit('connection-error', error);
         if (this.listenerCount('error')) this.emit('error', error);
       });
       socket.on('close', code => {
         if (generation !== this._generation) return;
-        finish(new Error('Cloud phone connection closed before initialization'));
+        trace.closeCode = Number.isInteger(code) ? code : null;
+        if (!settled) finish(failure('CLOUD_WS_CLOSED_BEFORE_INITIAL',
+          'Cloud phone connection closed before initialization'));
+        else record('closed');
         this.connected = this.ready = false;
         this.socket = null;
-        // Remote close reasons may contain credentials; do not forward them into logs.
+        // Server close reason may contain credentials: never log it.
         this.emit('close', { code });
         this._scheduleReconnect();
       });

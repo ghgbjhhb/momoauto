@@ -11,6 +11,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { YunmomoClient } = require('../index');
+const { imageExtension } = require('../automation/image-format');
 const { PROJECT_ROOT, redact } = require('../automation/runtime');
 
 function formatLogTime() {
@@ -38,8 +39,10 @@ async function captureStepScreenshot(phone, dir, filename, desc, log = null) {
   try {
     const shot = await phone.screenshot({ level: 2 }).catch(() => null);
     if (!shot?.data) return null;
+    const extension = imageExtension(shot.data);
+    if (!extension) { if (log) log(`【截图保存失败】: ${desc} (未知图片格式)`); return null; }
     await fs.mkdir(dir, { recursive: true });
-    const targetPath = path.join(dir, `${filename}.png`);
+    const targetPath = path.join(dir, `${filename}${extension}`);
     await fs.writeFile(targetPath, shot.data);
     const rel = path.relative(PROJECT_ROOT, targetPath);
     if (log) log(`【保存截图】: ${desc} -> ${rel}`);

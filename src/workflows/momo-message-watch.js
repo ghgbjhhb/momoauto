@@ -35,6 +35,7 @@ const { extractChatContactName, normalize } = require('../tools/momo/chat-histor
 const { getDeviceDatabasePath } = require('../tools/momo/db');
 const { defaultArbiter } = require('../server/device-arbiter');
 const { sleep } = require('../automation/cancellation');
+const { imageExtension } = require('../automation/image-format');
 const { PROJECT_ROOT, targetDeviceId } = require('../automation/runtime');
 
 const DESCRIPTION = 'MOMO 监听中枢：支持挂机巡检模式与全量翻底模式，执行入库 -> AI回复 -> 二次入库闭环';
@@ -91,8 +92,10 @@ async function captureStepScreenshot(tools, dir, filename, desc) {
       || (Buffer.isBuffer(shot?.data) ? shot.data : null)
       || shot?.image;
     if (!imgBuf || (!Buffer.isBuffer(imgBuf) && !(imgBuf instanceof Uint8Array))) return null;
+    const extension = imageExtension(imgBuf);
+    if (!extension) { await log('WARN', `截图 [${desc}] 格式未知，未保存`); return null; }
     await fs.mkdir(dir, { recursive: true });
-    const targetPath = path.join(dir, `${filename}.png`);
+    const targetPath = path.join(dir, `${filename}${extension}`);
     await fs.writeFile(targetPath, imgBuf);
     await log('DEBUG', `保存截图 [${desc}]: ${path.relative(PROJECT_ROOT, targetPath)}`);
     return targetPath;
