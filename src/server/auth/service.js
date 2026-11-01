@@ -59,6 +59,7 @@ class AuthService {
   constructor(db = getAuthDb()) {
     this.db = db;
     this.jwtSecret = this.initSecret();
+    this.db.setTokenEncryptionKey(this.jwtSecret);
     this.initDefaultAdmin();
   }
 
@@ -546,6 +547,16 @@ class AuthService {
         remainingText: formatRemainingTime(remainingMs)
       };
     });
+  }
+
+  // --- Per-User Platform Token ---
+
+  setUserPlatformToken(userId, plainToken) {
+    this.db.setUserToken(userId, plainToken);
+  }
+
+  getUserPlatformToken(userId) {
+    return this.db.getUserToken(userId);
   }
 
   canAccessDevice(user, deviceId) {

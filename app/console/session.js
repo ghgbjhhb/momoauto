@@ -69,7 +69,7 @@ async function checkAuth() {
     if (elements.dockTabTerminalSystem) elements.dockTabTerminalSystem.hidden = !state.isAdmin;
     if (elements.diagReportBtn) elements.diagReportBtn.hidden = !state.isAdmin;
     const sessionPanel = byId('sessionPanel');
-    if (sessionPanel) sessionPanel.hidden = !state.isAdmin;
+    if (sessionPanel) sessionPanel.hidden = false;
     const adminEntryPanel = byId('adminEntryPanel');
     if (adminEntryPanel) adminEntryPanel.hidden = !state.isAdmin;
 
@@ -108,11 +108,11 @@ async function loadStatus() {
     const status = await requestJson('/api/status');
     state.tokenConfigured = status.tokenConfigured === true;
     const sessionPanel = byId('sessionPanel');
-    if (sessionPanel) sessionPanel.hidden = !state.isAdmin;
+    if (sessionPanel) sessionPanel.hidden = false;
     if (state.tokenConfigured) {
-      setService('ready', status.sessionSource === 'local-session' ? '网页登录态已就绪' : '已连接');
+      setService('ready', (status.sessionSource === 'local-session' || status.sessionSource === 'user-db') ? '网页登录态已就绪' : '已连接');
     } else {
-      setService('error', '平台会话待同步，请联系管理员在「设置 → 平台会话」导入');
+      setService('error', '平台会话未配置，请在「设置 → 平台会话」粘贴您的云 momo Token');
       state.devices = [];
       state.selectedDeviceId = '';
       eventBus.dispatchEvent(new CustomEvent('devices:changed'));
@@ -453,7 +453,7 @@ function initSettingsPage() {
     }
   });
 
-  // 平台会话（管理员）
+  // 平台会话（每用户独立配置）
   byId('connectSession')?.addEventListener('click', async event => {
     event.preventDefault();
     const input = byId('sessionToken');

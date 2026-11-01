@@ -208,10 +208,12 @@ async function handleConsoleRoutes(ctx, request, response, url) {
   if (request.method === 'GET' && url.pathname === '/api/status') {
     const runtimeTok = getRuntimeToken();
     const lEnv = getLocalEnv();
+    const userToken = user ? authService.getUserPlatformToken(user.id) : '';
+    const effectiveToken = userToken || activeToken();
     json(response, 200, {
       ok: true,
-      tokenConfigured: Boolean(activeToken()),
-      sessionSource: runtimeTok || lEnv.YUNMOMO_TOKEN ? 'local-session' : activeToken() ? 'environment' : 'none',
+      tokenConfigured: Boolean(effectiveToken),
+      sessionSource: userToken ? 'user-db' : (runtimeTok || lEnv.YUNMOMO_TOKEN ? 'local-session' : activeToken() ? 'environment' : 'none'),
       host: HOST
     });
     return true;
@@ -360,7 +362,8 @@ async function handleConsoleRoutes(ctx, request, response, url) {
     // 若本地不存在且为头像图片，尝试从云机平台私有网盘回源拉取
     if (!exists && dir === '头像') {
       try {
-        const token = user.role === 'admin' ? getRuntimeToken() : (process.env.YUNMOMO_TOKEN || getRuntimeToken());
+        const userToken = user ? authService.getUserPlatformToken(user.id) : '';
+        const token = userToken || (user.role === 'admin' ? getRuntimeToken() : (process.env.YUNMOMO_TOKEN || getRuntimeToken()));
         if (token) {
           const c = new YunmomoClient({ token, timeoutMs: 15000 });
           const disk = c.cloudDisk();

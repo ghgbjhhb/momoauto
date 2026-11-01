@@ -33,6 +33,35 @@
 - `npm run index` — 重新生成代码符号索引（符号取自 Serena LSP 缓存；改动代码结构后先执行 `serena project index` 刷新缓存）
 - `npm run flow:NN` — 业务脚本（01~16）；`npm run timing:report` — 慢步骤报告
 
+## GitHub 同步（仓库：https://github.com/ghgbjhhb/momoauto）
+
+### 本机推送更新（每次改完验证通过后执行）
+
+```powershell
+Set-Location "d:\AA-project\自动化"
+git add .
+git commit -m "feat/fix/chore: 描述改了什么"
+git push
+```
+
+### 另一台电脑首次克隆
+
+```powershell
+git clone https://github.com/ghgbjhhb/momoauto.git "d:\AA-project\自动化"
+Set-Location "d:\AA-project\自动化"
+npm install
+# 然后手动配置 .env 文件（凭据不入库）
+```
+
+### 另一台电脑拉取最新代码
+
+```powershell
+Set-Location "d:\AA-project\自动化"
+git pull
+```
+
+> **注意**：`.env`、`node_modules/`、`.runtime/`（OCR 模型）不入库，另一台电脑需单独配置。
+
 ## 工程守则
 
 完整守则见 **GEMINI.md**，与本文件一致且必须遵守。硬性要点：

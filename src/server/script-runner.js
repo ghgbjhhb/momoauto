@@ -377,7 +377,8 @@ async function executeScriptMeasured(body, user = null) {
       env.YUNMOMO_USER_ID = ownerUserId;
       env.YUNMOMO_USER_ROLE = user?.role || 'user';
     }
-    const token = activeToken();
+    const userToken = user?.id ? authService.getUserPlatformToken(user.id) : '';
+    const token = userToken || activeToken();
     if (token) env.YUNMOMO_TOKEN = token;
     configureScript(script, body, env);
     if (!script.requiresDevice && busyAccountScripts.has(script.id)) {

@@ -6,6 +6,35 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 
+// AES-256-GCM 对称加密，用于在 DB 中安全存储每用户的平台 Token。
+// 密钥由 AuthDatabase 实例通过 setTokenEncryptionKey() 注入（来自 jwt_secret）。
+// 存储格式: iv(24hex):tag(32hex):ciphertext(hex)
+function encryptToken(plaintext, keyHex) {
+  const key = Buffer.from(keyHex.slice(0, 64), 'hex'); // 取前 32 字节 → 256-bit
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return iv.toString('hex') + ':' + tag.toString('hex') + ':' + ct.toString('hex');
+}
+
+function decryptToken(stored, keyHex) {
+  if (!stored || typeof stored !== 'string') return '';
+  const parts = stored.split(':');
+  if (parts.length !== 3) return '';
+  try {
+    const key = Buffer.from(keyHex.slice(0, 64), 'hex');
+    const iv = Buffer.from(parts[0], 'hex');
+    const tag = Buffer.from(parts[1], 'hex');
+    const ct = Buffer.from(parts[2], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
 const AUTH_DB_DIR = path.join(PROJECT_ROOT, '.runtime', 'auth-system');
 const AUTH_DB_PATH = path.join(AUTH_DB_DIR, 'management.sqlite');
 
@@ -63,6 +92,7 @@ class AuthDatabase {
         role TEXT NOT NULL DEFAULT 'user',
         status TEXT NOT NULL DEFAULT 'active',
         token_version INTEGER NOT NULL DEFAULT 0,
+        yunmomo_token TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -193,6 +223,10 @@ class AuthDatabase {
       if (!userCols.includes('token_version')) {
         this.db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`);
       }
+      // 每用户独立平台 Token（AES-256-GCM 加密存储）
+      if (!userCols.includes('yunmomo_token')) {
+        this.db.exec(`ALTER TABLE users ADD COLUMN yunmomo_token TEXT`);
+      }
     } catch {}
 
     // 平滑升级已有 cards 表字段
@@ -278,6 +312,25 @@ class AuthDatabase {
     const stmt = this.db.prepare("SELECT COUNT(1) AS cnt FROM users WHERE role = 'admin'");
     const row = stmt.get();
     return row ? row.cnt : 0;
+  }
+
+  // --- Per-User Platform Token (encrypted) ---
+
+  setTokenEncryptionKey(keyHex) {
+    this._tokenKeyHex = keyHex;
+  }
+
+  setUserToken(userId, plainToken) {
+    const now = Date.now();
+    const encrypted = plainToken ? encryptToken(plainToken, this._tokenKeyHex || '') : null;
+    this.db.prepare('UPDATE users SET yunmomo_token = ?, updated_at = ? WHERE id = ?')
+      .run(encrypted, now, userId);
+  }
+
+  getUserToken(userId) {
+    const row = this.db.prepare('SELECT yunmomo_token FROM users WHERE id = ?').get(userId);
+    if (!row || !row.yunmomo_token) return '';
+    return decryptToken(row.yunmomo_token, this._tokenKeyHex || '');
   }
 
   // --- Cards ---

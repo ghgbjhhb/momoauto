@@ -121,30 +121,35 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     return true;
   }
 
-  // --- Platform Session Switch ---
+  // --- Platform Session Switch (per-user) ---
   if (request.method === 'POST' && url.pathname === '/api/session') {
-    if (!requireAdmin(user, response)) return true;
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
     const body = await readJsonBody(request);
     if (typeof body?.token !== 'string' || !body.token.trim() || body.token.length > 4096 || /[\r\n]/.test(body.token)) {
-      throw new Error('浏览器会话令牌无效');
-    }
-    if (busyDevices.size || busyAccountScripts.size) throw new Error('设备或账号正在执行脚本，请等待结束后切换会话');
-    const brainMgr = getSharedBrainManager();
-    if (defaultArbiter.locks.size || [...activeRuns.values()].some(run => ['running','cancelling'].includes(run.status)) || brainMgr?.actors.size) {
-      throw new Error('自动化会话尚未停止，不能切换账号');
+      throw new Error('会话令牌无效');
     }
     const token = body.token.trim();
+    // 验证 Token 可用（试调 listDevices）
     await new YunmomoClient({ token, timeoutMs: 12000 }).listDevices({ current: 1, size: 1 });
-    for (const bridge of manualBridges) await bridge.closeAll();
-    await resetSharedClient();
-    await resetSharedBrainManager();
-    await persistToken(token);
-    setRuntimeToken(token);
-    clearDeviceCache();
-    json(response, 200, { ok: true, tokenConfigured: true, storage: 'local-env' });
+    // 每用户独立保存
+    authService.setUserPlatformToken(user.id, token);
+    // admin 额外同步到全局（保持向后兼容：全局 client/脚本 fallback 用）
+    if (user.role === 'admin') {
+      if (busyDevices.size || busyAccountScripts.size) throw new Error('设备或账号正在执行脚本，请等待结束后切换会话');
+      const brainMgr = getSharedBrainManager();
+      if (defaultArbiter.locks.size || [...activeRuns.values()].some(run => ['running','cancelling'].includes(run.status)) || brainMgr?.actors.size) {
+        throw new Error('自动化会话尚未停止，不能切换账号');
+      }
+      for (const bridge of manualBridges) await bridge.closeAll();
+      await resetSharedClient();
+      await resetSharedBrainManager();
+      await persistToken(token);
+      setRuntimeToken(token);
+      clearDeviceCache();
+    }
+    json(response, 200, { ok: true, tokenConfigured: true, storage: 'user-db' });
     return true;
   }
-
   // --- Script Execution ---
   if (request.method === 'POST' && url.pathname === '/api/execute') {
     const body = await readJsonBody(request);
