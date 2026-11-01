@@ -394,7 +394,7 @@ async function executeScriptMeasured(body, user = null) {
       if (!defaultArbiter.acquireDevice(requestedDeviceId, run.ownerId, { scriptId: script.id })) {
         throw new Error('该设备当前不可用，请稍后重试');
       }
-      selected = await selectedDevice(requestedDeviceId);
+      selected = await selectedDevice(requestedDeviceId, token);
       if (run.stopRequested) {
         return { ok: false, cancelled: true, scriptRunId, scriptId: script.id, title: script.title,
           selectedDevice: selected, exitCode: null, stdout: '', stderr: '' };

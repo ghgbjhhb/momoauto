@@ -22,6 +22,7 @@ const {
   screenshotJobs,
   client,
   listDevices,
+  listDevicesWithToken,
   clearDeviceCache
 } = require('../context');
 
@@ -97,10 +98,16 @@ function getCloudDiskFiles(dirName) {
   return files;
 }
 
-async function previewImage(deviceId) {
-  const device = await selectedDevice(deviceId);
-  if (screenshotJobs.has(deviceId)) return screenshotJobs.get(deviceId);
-  const pending = client().screenshot(deviceId, {
+async function previewImage(deviceId, tokenOrUser = null) {
+  let token = typeof tokenOrUser === 'string' ? tokenOrUser : null;
+  if (!token && tokenOrUser?.id) {
+    token = authService.getUserPlatformToken(tokenOrUser.id);
+  }
+  const device = await selectedDevice(deviceId, token);
+  const c = token ? new YunmomoClient({ token, timeoutMs: 15000 }) : client();
+  const jobKey = `${deviceId}_${token || 'global'}`;
+  if (screenshotJobs.has(jobKey)) return screenshotJobs.get(jobKey);
+  const pending = c.screenshot(deviceId, {
     source: 'stream',
     udid: device.udid || undefined,
     maxSize: 1280,
@@ -108,11 +115,11 @@ async function previewImage(deviceId) {
     maxAgeMs: 400,
     timeoutMs: 15000
   });
-  screenshotJobs.set(deviceId, pending);
+  screenshotJobs.set(jobKey, pending);
   try {
     return await pending;
   } finally {
-    if (screenshotJobs.get(deviceId) === pending) screenshotJobs.delete(deviceId);
+    if (screenshotJobs.get(jobKey) === pending) screenshotJobs.delete(jobKey);
   }
 }
 
@@ -124,8 +131,8 @@ function getOcrWorker() {
   return sharedOcrWorker;
 }
 
-async function inspectVision(deviceId) {
-  const result = await previewImage(deviceId);
+async function inspectVision(deviceId, tokenOrUser = null) {
+  const result = await previewImage(deviceId, tokenOrUser);
   try {
     const worker = getOcrWorker();
     const ocr = await worker.recognize(result.data);
@@ -296,6 +303,19 @@ async function handleConsoleRoutes(ctx, request, response, url) {
     if (user.role === 'admin') {
       json(response, 200, { ok: true, devices: await listDevices() });
     } else {
+      // 用户填入的 token 为第一位优先级
+      const userToken = authService.getUserPlatformToken(user.id);
+      if (userToken) {
+        try {
+          const userDevices = await listDevicesWithToken(userToken);
+          authService.setUserOwnedDevices(user.id, userDevices.map(d => d.deviceId));
+          json(response, 200, { ok: true, devices: userDevices });
+          return true;
+        } catch (err) {
+          console.warn(`[User Devices] 用户 ${user.email} 自有云机拉取异常: ${err.message}`);
+        }
+      }
+      // 未填 Token 时回退到通过卡密分配的管理员云手机
       const master = await listDevices();
       json(response, 200, { ok: true, devices: authService.getUserDevices(user.id, master) });
     }
@@ -309,7 +329,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       json(response, 403, { ok: false, error: '无权查看此设备或该设备已到期回收' });
       return true;
     }
-    const inspection = await inspectVision(deviceId);
+    const inspection = await inspectVision(deviceId, user);
     json(response, 200, inspection);
     return true;
   }
@@ -320,7 +340,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       json(response, 403, { ok: false, error: '无权查看此设备画面或该设备已到期回收' });
       return true;
     }
-    const result = await previewImage(deviceId);
+    const result = await previewImage(deviceId, user);
     response.writeHead(200, {
       'Content-Type': result.contentType || 'image/jpeg',
       'Cache-Control': 'no-store',

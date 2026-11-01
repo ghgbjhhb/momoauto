@@ -60,6 +60,7 @@ class AuthService {
     this.db = db;
     this.jwtSecret = this.initSecret();
     this.db.setTokenEncryptionKey(this.jwtSecret);
+    this._userOwnedDevices = new Map();
     this.initDefaultAdmin();
   }
 
@@ -553,18 +554,31 @@ class AuthService {
 
   setUserPlatformToken(userId, plainToken) {
     this.db.setUserToken(userId, plainToken);
+    this._userOwnedDevices?.delete(userId);
   }
 
   getUserPlatformToken(userId) {
     return this.db.getUserToken(userId);
   }
 
+  setUserOwnedDevices(userId, deviceIds) {
+    if (!this._userOwnedDevices) this._userOwnedDevices = new Map();
+    this._userOwnedDevices.set(userId, new Set((deviceIds || []).map(String)));
+  }
+
   canAccessDevice(user, deviceId) {
     if (!user) return false;
     if (user.role === 'admin') return true;
+    const devStr = String(deviceId || '');
+    const userToken = this.getUserPlatformToken(user.id);
+    if (userToken) {
+      const owned = this._userOwnedDevices?.get(user.id);
+      if (owned && owned.has(devStr)) return true;
+      if (!owned) return true;
+    }
     this.sweepExpiredAllocations();
     const allocations = this.db.getActiveAllocationsForUser(user.id);
-    return allocations.some(a => a.device_id === deviceId && a.expire_at > Date.now());
+    return allocations.some(a => String(a.device_id) === devStr && a.expire_at > Date.now());
   }
 
   getUserZhencanBalance(userId) {

@@ -1,6 +1,7 @@
 'use strict';
 
 const { WebSocket } = require('ws');
+const { YunmomoClient } = require('../index');
 
 const SETTINGS = Object.freeze({ bitrate: 8388608, maxFps: 15, iFrameInterval: 1,
   bounds: Object.freeze({ width: 720, height: 1280 }), sendFrameMeta: false });
@@ -22,11 +23,11 @@ function physicalDisplayBounds(control) {
 function createVideoStreams({ client }) {
   const streams = new Map();
 
-  function getOrCreate(device) {
+  function getOrCreate(device, token = null) {
     let entry = streams.get(device.deviceId);
     if (!entry) {
       if (streams.size >= 16) throw Object.assign(new Error('视频连接数量已达上限'), { code: 'VIDEO_LIMIT' });
-      entry = create(device);
+      entry = create(device, token);
       streams.set(device.deviceId, entry);
     }
     return entry;
@@ -38,8 +39,8 @@ function createVideoStreams({ client }) {
     entry.idle.unref();
   }
 
-  function subscribe(device, ws, { onSize, onClose, onError }) {
-    const entry = getOrCreate(device);
+  function subscribe(device, ws, { onSize, onClose, onError }, token = null) {
+    const entry = getOrCreate(device, token);
     if (entry.viewers.size >= 8) throw Object.assign(new Error('该设备的视频观看连接已达上限，请关闭其他网页的预览后刷新'), { code: 'VIEWER_LIMIT' });
     clearTimeout(entry.idle);
     const viewer = { ws, onSize, onClose, onError, pongAt: Date.now() };
@@ -59,8 +60,8 @@ function createVideoStreams({ client }) {
     };
   }
 
-  function hold(device, { onSize = () => {}, onClose = () => {}, onError = () => {} } = {}) {
-    const entry = getOrCreate(device);
+  function hold(device, { onSize = () => {}, onClose = () => {}, onError = () => {} } = {}, token = null) {
+    const entry = getOrCreate(device, token);
     clearTimeout(entry.idle);
     const holder = { onSize, onClose, onError };
     entry.holders.add(holder);
@@ -76,8 +77,9 @@ function createVideoStreams({ client }) {
     };
   }
 
-  function create(device) {
-    const control = client().openControl({ deviceId: device.deviceId, udid: device.udid,
+  function create(device, token = null) {
+    const c = token ? new YunmomoClient({ token, timeoutMs: 20000 }) : client();
+    const control = c.openControl({ deviceId: device.deviceId, udid: device.udid,
       autoRefresh: false, inputOverStream: false, videoSettings: { ...SETTINGS, bounds: { ...SETTINGS.bounds } } });
     const entry = { control, viewers: new Set(), holders: new Set(), closed: false, lastPacketAt: 0, lastRefreshAt: 0,
       refreshBit: false, startedAt: 0, pingAt: 0, lastPingAt: 0 };

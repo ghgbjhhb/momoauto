@@ -261,7 +261,8 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       }
     });
     (async () => {
-      const device = await selectedDevice(deviceId);
+      const userToken = auth.getUserPlatformToken(user.id);
+      const device = await selectedDevice(deviceId, userToken);
       if (lease.closed) return;
       if (interactive && busyDevices.has(deviceId)) throw new Error('该设备正在执行脚本');
       const callbacks = {
@@ -274,8 +275,8 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
         onClose() { if (!lease.closed) { close().catch(() => {}); ws.close(1011); } }
       };
       const videoLease = lease.videoLease = inputOnly
-        ? videos.hold(device, callbacks)
-        : videos.subscribe(device, ws, callbacks);
+        ? videos.hold(device, callbacks, userToken)
+        : videos.subscribe(device, ws, callbacks, userToken);
       const control = lease.control = await videoLease.ready;
       if (lease.closed) { videoLease.release(); return; }
       lease.generation = control._generation;

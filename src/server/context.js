@@ -237,13 +237,63 @@ async function listDevices() {
   return listing.pending;
 }
 
-async function selectedDevice(deviceId) {
+async function listDevicesWithToken(token) {
+  if (!token) return [];
+  const c = new YunmomoClient({ token, timeoutMs: 15000 });
+  const result = await c.listDevices({ current: 1, size: 50000 });
+  const rawRecords = Array.isArray(result?.records) ? result.records : (Array.isArray(result) ? result : []);
+  const records = await Promise.all(rawRecords.map(async raw => {
+    const base = publicDevice(raw);
+    if (!base.deviceId) return null;
+    try {
+      const proxy = await resolveDeviceProxy(c, base.deviceId, raw.useIp);
+      base.currentIp = proxy?.host || null;
+      base.proxyAddress = proxy?.raw || null;
+    } catch {
+      base.currentIp = null;
+      base.proxyAddress = null;
+    }
+    return base;
+  }));
+  return records.filter(Boolean);
+}
+
+async function selectedDevice(deviceId, tokenOrUser = null) {
   if (typeof deviceId !== 'string' || !deviceId.trim()) {
     throw new Error('请选择一台云机');
   }
+  let token = typeof tokenOrUser === 'string' ? tokenOrUser : null;
+  if (!token && tokenOrUser?.id) {
+    token = authService.getUserPlatformToken(tokenOrUser.id);
+  }
+
+  if (token) {
+    const c = new YunmomoClient({ token, timeoutMs: 15000 });
+    try {
+      const raw = await c.getDevice(deviceId);
+      const data = raw?.data ?? raw;
+      if (data && (data.id || data.deviceId)) {
+        const base = publicDevice(data);
+        if (!base.udid) base.udid = String(data?.udid ?? '');
+        return base;
+      }
+    } catch {}
+  }
+
   const records = await listDevices();
   const record = records.find(item => item.deviceId === deviceId);
-  if (!record) throw new Error('所选云机不在当前账号设备列表中');
+  if (!record) {
+    try {
+      const raw = await client().getDevice(deviceId);
+      const data = raw?.data ?? raw;
+      if (data && (data.id || data.deviceId)) {
+        const base = publicDevice(data);
+        if (!base.udid) base.udid = String(data?.udid ?? '');
+        return base;
+      }
+    } catch {}
+    throw new Error('所选云机不在当前账号设备列表中');
+  }
   if (!record.udid) {
     const raw = await client().getDevice(deviceId);
     const data = raw?.data ?? raw;
@@ -301,5 +351,6 @@ module.exports = {
   resolveDeviceProxy,
   publicDevice,
   listDevices,
+  listDevicesWithToken,
   selectedDevice
 };
