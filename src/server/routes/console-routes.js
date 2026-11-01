@@ -161,6 +161,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
 
   // --- Client & Server Logs ---
   if (request.method === 'POST' && url.pathname === '/api/client-logs') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
     const body = await readJsonBody(request);
     const level = String(body?.level || 'info').toUpperCase();
     const flatten = value => String(value).replace(/[\r\n]+/g, ' | ');
@@ -356,7 +357,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
 
   // --- Cloud Disk Routes ---
   if (request.method === 'GET' && url.pathname === '/api/cloud-disk/files') {
-    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    if (!requireAdmin(user, response)) return true;
     const dir = safeCloudDiskDir(url.searchParams.get('dir'));
     const files = getCloudDiskFiles(dir);
     const counts = {
@@ -368,7 +369,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
   }
 
   if (request.method === 'GET' && (url.pathname === '/api/cloud-disk/file' || url.pathname === '/api/cloud-disk/preview' || url.pathname === '/api/cloud-disk/download')) {
-    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    if (!requireAdmin(user, response)) return true;
     const dir = safeCloudDiskDir(url.searchParams.get('dir'));
     const rawName = url.searchParams.get('name') || '';
     const name = path.basename(rawName);

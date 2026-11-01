@@ -11,7 +11,29 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
   const sockets = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false });
   const manualDevices = new Map();
   const sessions = new Set();
+  const auth = authService || getAuthService();
   const videos = createVideoStreams({ client });
+
+  // 唯一授权入口：每条 WebSocket 在建立、输入派发和存活期间均使用同一套规则。
+  function hasAccess(lease) {
+    const current = auth.getUserFromRequest(lease.request);
+    return Boolean(current && current.id === lease.user.id &&
+      auth.canAccessDevice(current, lease.deviceId));
+  }
+  function revokeSessions(predicate, code) {
+    for (const lease of [...sessions]) {
+      if (!predicate(lease)) continue;
+      lease.authorized = false;
+      send(lease.ws, { type: 'error', code, message: '设备使用权限已失效' });
+      lease.ws.terminate();
+      lease.close?.().catch(() => {});
+    }
+  }
+  const accessMonitor = setInterval(() => {
+    revokeSessions(lease => !lease.closed && !hasAccess(lease), 'DEVICE_ACCESS_REVOKED');
+  }, 2000);
+  accessMonitor.unref();
+  server.once('close', () => clearInterval(accessMonitor));
   const send = (ws, value) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value)); };
   server.on('upgrade', (request, socket, head) => {
     let url;
@@ -23,7 +45,6 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     sockets.handleUpgrade(request, socket, head, ws => sockets.emit('connection', ws, request, url));
   });
   sockets.on('connection', async (ws, request, url) => {
-    const auth = authService || getAuthService();
     const user = auth.getUserFromRequest(request);
     if (!user) {
       console.warn(`[WS REJECT] ${url.pathname} UNAUTHORIZED`);
@@ -66,7 +87,8 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       manualDevices.set(deviceId, deviceSession);
     }
     const lease = { ws, control: null, videoLease: null, point: null, keys: new Set(), closed: false,
-      generation: null, deviceSession, pageId, deviceId, user, idleTimer: null, heartbeatTimer: null, pongAt: Date.now() };
+      generation: null, deviceSession, pageId, deviceId, user, request, authorized: true,
+      idleTimer: null, heartbeatTimer: null, pongAt: Date.now() };
     if (interactive) deviceSession.leases.add(lease);
     sessions.add(lease);
     if (inputOnly) {
@@ -75,10 +97,6 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       lease.heartbeatTimer = setInterval(() => {
         if (lease.closed || ws.readyState !== WebSocket.OPEN) return;
         if (Date.now() - lease.pongAt > 10000) { ws.terminate(); return; }
-        if (!auth.canAccessDevice(lease.user, lease.deviceId)) {
-          send(ws, { type: 'error', code: 'DEVICE_EXPIRED', message: '云机有效期已结束，系统已自动回收' });
-          ws.terminate(); return;
-        }
         ws.ping(undefined, undefined, error => { if (error) ws.terminate(); });
         send(ws, { type: 'heartbeat' });
       }, 2000);
@@ -125,6 +143,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     function processInput(message) {
       if (!message || typeof message !== 'object') throw new Error('输入格式无效');
       if (message.type === 'release') { resetInput(); return; }
+      if (!lease.authorized) throw new Error('设备使用权限已失效');
       const control = lease.control;
       if (!canSendInput(lease)) throw new Error('控制连接尚未就绪或已经断开');
       if (message.type === 'touch') {
@@ -225,8 +244,8 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     async function close() {
       if (lease.closed) return;
       lease.closed = true;
-      if (interactive) await queueInput({ type: 'release' }, true);
       clearInterval(lease.heartbeatTimer);
+      if (interactive) await queueInput({ type: 'release' }, true);
       if (lease.onPong) ws.removeListener('pong', lease.onPong);
       lease.videoLease?.release();
       sessions.delete(lease);
@@ -296,14 +315,11 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
   });
   return {
     isBusy: deviceId => manualDevices.has(deviceId),
-    closeDevice(targetDeviceId, reason = 'DEVICE_EXPIRED') {
-      for (const item of [...sessions]) {
-        if (item.deviceId === targetDeviceId) {
-          send(item.ws, { type: 'error', code: 'DEVICE_EXPIRED', message: '云机有效期已结束，系统已自动回收' });
-          item.ws.terminate();
-          item.close?.().catch(() => {});
-        }
-      }
+    closeDevice(deviceId, reason = 'DEVICE_EXPIRED', userId = null) {
+      revokeSessions(lease => lease.deviceId === deviceId && (!userId || lease.user.id === userId), reason);
+    },
+    closeUser(userId) {
+      revokeSessions(lease => lease.user.id === userId, 'ACCOUNT_BANNED');
     },
     getState(pageId) {
       return [...manualDevices].map(([deviceId, session]) => ({

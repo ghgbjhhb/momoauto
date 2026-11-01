@@ -283,13 +283,18 @@ class BrainStore {
     `).run(deviceId, eventType, JSON.stringify(details), now);
   }
 
-  getRecentEvents(deviceId, limit = 50) {
+  getLatestEventId(deviceId) {
+    return this.db.prepare('SELECT MAX(id) AS id FROM brain_events WHERE deviceId = ?')
+      .get(deviceId)?.id || 0;
+  }
+
+  getRecentEvents(deviceId, limit = 50, afterId = 0) {
     return this.db.prepare(`
       SELECT * FROM brain_events
-      WHERE deviceId = ?
+      WHERE deviceId = ? AND id > ?
       ORDER BY id DESC
       LIMIT ?
-    `).all(deviceId, limit);
+    `).all(deviceId, afterId, limit);
   }
 
   updateSchedule(deviceId, taskType, data = {}) {

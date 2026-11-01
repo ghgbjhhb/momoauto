@@ -89,7 +89,9 @@ function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager =
 
     (async () => {
       try {
-        const status = await brainManager.pauseDevice(deviceId);
+        const status = await brainManager.pauseDevice(deviceId, {
+          ownerUserId: user?.role === 'admin' ? null : user?.id
+        });
         sendJson(res, 200, { ok: true, status });
       } catch (err) {
         sendJson(res, 500, { ok: false, error: { code: 'PAUSE_FAILED', message: err.message } });
@@ -131,7 +133,9 @@ function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager =
 
     (async () => {
       try {
-        const status = await brainManager.stopDevice(deviceId, bodyJson?.reason || 'API requested stop');
+        const status = await brainManager.stopDevice(deviceId, bodyJson?.reason || 'API requested stop', {
+          ownerUserId: user?.role === 'admin' ? null : user?.id
+        });
         sendJson(res, 200, { ok: true, status });
       } catch (err) {
         sendJson(res, 500, { ok: false, error: { code: 'STOP_FAILED', message: err.message } });
@@ -144,6 +148,11 @@ function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager =
   if (pathname === '/api/momo-brain/status' && method === 'GET') {
     const deviceId = urlObj.searchParams.get('deviceId');
     if (deviceId) {
+      const actor = brainManager.getActor(deviceId);
+      if (user?.role !== 'admin' && actor && actor.ownerUserId !== user?.id) {
+        sendJson(res, 403, { ok: false, error: { code: 'DEVICE_FORBIDDEN', message: '无权查看其他用户的调度状态' } });
+        return true;
+      }
       const status = brainManager.getStatus(deviceId);
       sendJson(res, 200, { ok: true, status });
     } else {
@@ -160,8 +169,15 @@ function handleMomoBrainRoutes(req, res, urlObj, bodyJson = null, brainManager =
       sendJson(res, 400, { ok: false, error: { code: 'DEVICE_REQUIRED', message: 'deviceId is required' } });
       return true;
     }
+    const actor = brainManager.getActor(deviceId);
+    // 历史事件目前只按设备号存储，无法安全判断之前的租户，普通用户仅可查看当前本人会话。
+    if (user?.role !== 'admin' && (!actor || actor.ownerUserId !== user?.id)) {
+      sendJson(res, 403, { ok: false, error: { code: 'DEVICE_FORBIDDEN', message: '无权查看该调度会话历史' } });
+      return true;
+    }
     const limit = Math.min(Number(urlObj.searchParams.get('limit') || 50), 200);
-    const events = brainManager.store.getRecentEvents(deviceId, limit);
+    const events = brainManager.store.getRecentEvents(deviceId, limit,
+      user?.role === 'admin' ? 0 : actor.eventMinId);
     sendJson(res, 200, { ok: true, events });
     return true;
   }

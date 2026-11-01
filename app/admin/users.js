@@ -32,7 +32,7 @@ async function loadUsers() {
         <td>${formatDate(u.created_at)}</td>
         <td>
           ${u.role === 'admin' ? '<span style="color:#8c8c8c; font-size:12px;">主账号 (不可操作)</span>' : `
-            <button class="btn-action-sm ${u.status === 'active' ? 'danger' : ''}" onclick="toggleUserStatus('${u.id}', '${u.status === 'active' ? 'banned' : 'active'}', '${escapeHtml(u.email)}')">
+            <button class="btn-action-sm ${u.status === 'active' ? 'danger' : ''}" data-user-status-action data-user-id="${escapeHtml(u.id)}" data-user-email="${escapeHtml(u.email)}" data-target-status="${u.status === 'active' ? 'banned' : 'active'}">
               ${u.status === 'active' ? '封禁' : '解封'}
             </button>
           `}
@@ -43,6 +43,12 @@ async function loadUsers() {
     usersTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#ff4d4f; padding:30px;">加载失败: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
+
+usersTableBody?.addEventListener('click', event => {
+  const button = event.target.closest('[data-user-status-action]');
+  if (!button || !usersTableBody.contains(button)) return;
+  toggleUserStatus(button.dataset.userId, button.dataset.targetStatus, button.dataset.userEmail);
+});
 
 window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
   const isBan = targetStatus === 'banned';

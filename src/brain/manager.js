@@ -46,6 +46,7 @@ class BrainManager {
         ? new YunmomoClient({ token: options.accessToken }) : this.client;
       actor = new DeviceActor(id, this.store, scheduler, config, actorClient, this.taskAdapters);
       actor.ownerUserId = options.ownerUserId || null;
+      actor.eventMinId = this.store.getLatestEventId(id);
       this.actors.set(id, actor);
     } else {
       // 动态同步最新生效配置 (F16)
@@ -57,8 +58,11 @@ class BrainManager {
     return this.getStatus(id);
   }
 
-  async pauseDevice(deviceId) {
+  async pauseDevice(deviceId, options = {}) {
     const actor = this.getActor(deviceId);
+    if (actor && options.ownerUserId && actor.ownerUserId !== options.ownerUserId) {
+      throw Object.assign(new Error('无权暂停其他用户的调度会话'), { code: 'DEVICE_BUSY' });
+    }
     if (actor) {
       actor.pause();
     } else {
@@ -84,8 +88,11 @@ class BrainManager {
     return this.getStatus(deviceId);
   }
 
-  async stopDevice(deviceId, reason = 'User requested stop') {
+  async stopDevice(deviceId, reason = 'User requested stop', options = {}) {
     const actor = this.getActor(deviceId);
+    if (actor && options.ownerUserId && actor.ownerUserId !== options.ownerUserId) {
+      throw Object.assign(new Error('无权停止其他用户的调度会话'), { code: 'DEVICE_BUSY' });
+    }
     if (actor) {
       await actor.stop(reason);
       if (this.store.getSession(deviceId)?.actualState === 'stopped') this.actors.delete(String(deviceId));

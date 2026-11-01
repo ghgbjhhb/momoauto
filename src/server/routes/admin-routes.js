@@ -4,7 +4,7 @@ const { json, readJsonBody } = require('../http');
 const { getAuthService } = require('../auth/service');
 const { getSmsService } = require('../sms/service');
 const urlGuard = require('../../automation/url-guard');
-const { listDevices, manualBridges } = require('../context');
+const { listDevices, revokeDeviceAccess, revokeUserAccess } = require('../context');
 
 const authService = getAuthService();
 
@@ -29,7 +29,21 @@ async function handleAdminRoutes(ctx, request, response, url) {
     if (!requireAdmin(user, response)) return true;
     try {
       const body = await readJsonBody(request);
-      authService.db.updateUserStatus(body.userId, body.status);
+      if (!['active', 'banned'].includes(body?.status)) throw new Error('无效的账号状态');
+      const target = authService.db.getUserById(body?.userId);
+      if (!target) throw new Error('用户不存在');
+      if (target.role === 'admin') throw new Error('管理员账号不可通过该接口封禁');
+      authService.db.updateUserStatus(target.id, body.status);
+      if (body.status === 'banned') {
+        try {
+          await revokeUserAccess(target.id);
+        } catch (error) {
+          console.error('[Admin] 封禁已生效，但会话回收失败:', error);
+          json(response, 503, { ok: false, statusApplied: true,
+            error: '账号已封禁，但部分运行任务未成功停止，请检查设备隔离状态' });
+          return true;
+        }
+      }
       json(response, 200, { ok: true });
     } catch (err) {
       json(response, 400, { ok: false, error: err.message });
@@ -100,9 +114,16 @@ async function handleAdminRoutes(ctx, request, response, url) {
   if (request.method === 'POST' && url.pathname === '/api/admin/devices/recycle') {
     if (!requireAdmin(user, response)) return true;
     const body = await readJsonBody(request);
-    authService.db.recycleAllocationManually(body?.allocationId);
-    if (body?.deviceId) {
-      for (const bridge of manualBridges) bridge.closeDevice?.(body.deviceId);
+    const allocation = authService.db.getAllocationById(body?.allocationId);
+    if (!allocation) { json(response, 404, { ok: false, error: '设备租赁记录不存在' }); return true; }
+    authService.db.recycleAllocationManually(allocation.id);
+    try {
+      await revokeDeviceAccess(allocation.device_id, allocation.user_id);
+    } catch (error) {
+      console.error('[Admin] 设备权益已回收，但会话关闭失败:', error);
+      json(response, 503, { ok: false, statusApplied: true,
+        error: '设备权益已回收，但仍有运行任务未成功停止，请检查设备隔离状态' });
+      return true;
     }
     json(response, 200, { ok: true });
     return true;

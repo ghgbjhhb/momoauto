@@ -70,9 +70,12 @@ async function writeRunOwner(scriptRunId, ownerUserId) {
   try {
     const target = runOwnerFilePath(scriptRunId);
     await fs.promises.mkdir(path.dirname(target), { recursive: true });
-    await fs.promises.writeFile(target, ownerUserId, 'utf8');
+    await fs.promises.writeFile(target, ownerUserId, { encoding: 'utf8', flag: 'wx' });
   } catch (error) {
-    throw new Error('无法保存脚本日志归属信息: ' + error.message);
+    if (error.code === 'EEXIST') {
+      throw Object.assign(new Error('脚本运行编号已存在，请重新执行'), { status: 409 });
+    }
+    throw Object.assign(new Error('无法保存脚本日志归属信息'), { cause: error });
   }
 }
 
@@ -85,8 +88,8 @@ async function readRunOwner(scriptRunId) {
 }
 
 function pruneScriptStopState(now = Date.now()) {
-  for (const [scriptRunId, expiresAt] of pendingScriptStops) {
-    if (expiresAt <= now) pendingScriptStops.delete(scriptRunId);
+  for (const [scriptRunId, intent] of pendingScriptStops) {
+    if (intent.expiresAt <= now) pendingScriptStops.delete(scriptRunId);
   }
   for (const [scriptRunId, expiresAt] of completedScriptRuns) {
     if (expiresAt <= now) completedScriptRuns.delete(scriptRunId);
@@ -287,7 +290,10 @@ async function stopActiveScript(body = {}, user = null) {
   }
   if (!run) {
     if (scriptRunId && /^[A-Za-z0-9_-]{8,128}$/.test(scriptRunId) && !completedScriptRuns.has(scriptRunId)) {
-      rememberScriptRun(pendingScriptStops, scriptRunId, Date.now() + SCRIPT_STOP_INTENT_TTL_MS);
+      rememberScriptRun(pendingScriptStops, scriptRunId, {
+        expiresAt: Date.now() + SCRIPT_STOP_INTENT_TTL_MS,
+        ownerUserId: user?.role === 'admin' ? '*' : user?.id || ''
+      });
       return {
         ok: true,
         stopped: true,
@@ -359,9 +365,19 @@ async function executeScriptMeasured(body, user = null) {
   const run = createScriptRunRecord(scriptRunId, script, ownerUserId);
   run.pageId = pageId;
   run.deviceId = script.requiresDevice ? String(body?.deviceId || '') : '';
-  run.stopRequested = pendingScriptStops.delete(scriptRunId);
-  await writeRunOwner(scriptRunId, ownerUserId);
+  const pendingStop = pendingScriptStops.get(scriptRunId);
+  run.stopRequested = Boolean(pendingStop &&
+    (pendingStop.ownerUserId === ownerUserId || pendingStop.ownerUserId === '*'));
+  pendingScriptStops.delete(scriptRunId);
+  // 同步登记先于任何 await，避免两个 HTTP 请求同时认领同一运行编号。
   activeScriptRuns.set(scriptRunId, run);
+  try {
+    await writeRunOwner(scriptRunId, ownerUserId);
+  } catch (error) {
+    activeScriptRuns.delete(scriptRunId);
+    run.resolveDone();
+    throw error;
+  }
   let selected = null;
   let lockedDeviceId = '';
   let accountScriptLocked = false;

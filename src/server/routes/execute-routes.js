@@ -91,7 +91,7 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
     const scriptRunId = String(url.searchParams.get('scriptRunId') || '');
     const run = activeScriptRuns.get(scriptRunId);
-    if (run && user.role !== 'admin' && run.ownerUserId && run.ownerUserId !== user.id) {
+    if (run && user.role !== 'admin' && run.ownerUserId !== user.id) {
       json(response, 403, { ok: false, error: '无权查看其他用户的脚本输出' });
       return true;
     }
@@ -129,9 +129,8 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     const token = body.token.trim();
     // 验证 Token 可用（试调 listDevices）
     await new YunmomoClient({ token, timeoutMs: 12000 }).listDevices({ current: 1, size: 1 });
-    // 每用户独立保存
-    authService.setUserPlatformToken(user.id, token);
-    // admin 额外同步到全局（保持向后兼容：全局 client/脚本 fallback 用）
+    // 管理员须先确认系统空闲，不能出现“返回失败但数据库 Token 已更新”。
+    // 普通用户仍只更新本人独立的会话。
     if (user.role === 'admin') {
       if (busyDevices.size || busyAccountScripts.size) throw new Error('设备或账号正在执行脚本，请等待结束后切换会话');
       const brainMgr = getSharedBrainManager();
@@ -142,8 +141,11 @@ async function handleExecuteRoutes(ctx, request, response, url) {
       await resetSharedClient();
       await resetSharedBrainManager();
       await persistToken(token);
+      authService.setUserPlatformToken(user.id, token);
       setRuntimeToken(token);
       clearDeviceCache();
+    } else {
+      authService.setUserPlatformToken(user.id, token);
     }
     json(response, 200, { ok: true, tokenConfigured: true, storage: 'user-db' });
     return true;

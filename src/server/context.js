@@ -1,7 +1,8 @@
 'use strict';
 
 const fs = require('node:fs');
-const { readFile, writeFile } = require('node:fs/promises');
+const { readFile, writeFile, rename, unlink } = require('node:fs/promises');
+const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 const { YunmomoClient } = require('../index');
 const { BrainManager } = require('../brain/manager');
@@ -42,15 +43,49 @@ function brainManager() {
   return sharedBrainManager ||= new BrainManager({ client: client() });
 }
 
-// 自动轮询到期云机并执行实时连接熔断
+// 唯一的会话撤销入口：账号封禁或设备权益失效都从这里收敛。
+// 只按租户归属清理系统会话，绝不按设备号盲目终止其他客户的任务。
+async function revokeAccess(userId, { deviceId = null, reason = 'Access revoked' } = {}) {
+  if (deviceId) {
+    const user = authService.db.getUserById(userId);
+    if (user?.status === 'active' && authService.canAccessDevice(user, deviceId)) return;
+  }
+
+  for (const bridge of manualBridges) {
+    if (deviceId) bridge.closeDevice?.(deviceId, 'DEVICE_EXPIRED', userId);
+    else bridge.closeUser?.(userId);
+  }
+
+  const { stopActiveScript } = require('./script-runner');
+  const runs = [...activeScriptRuns.values()].filter(run =>
+    run.ownerUserId === userId && (!deviceId || run.deviceId === deviceId));
+  const actors = [...(sharedBrainManager?.actors.values() || [])].filter(actor =>
+    actor.ownerUserId === userId && (!deviceId || actor.deviceId === deviceId));
+  const results = await Promise.allSettled([
+    ...runs.map(run => stopActiveScript({ scriptRunId: run.scriptRunId }, { role: 'admin' })),
+    ...actors.map(actor => sharedBrainManager.stopDevice(actor.deviceId, reason))
+  ]);
+  const failures = results.filter(result => result.status === 'rejected');
+  if (failures.length) throw new AggregateError(failures.map(result => result.reason),
+    '部分设备会话未能正常停止，需人工确认隔离状态');
+}
+
+function revokeDeviceAccess(deviceId, userId) {
+  return revokeAccess(userId, { deviceId, reason: 'Device access revoked' });
+}
+
+function revokeUserAccess(userId) {
+  return revokeAccess(userId, { reason: 'Account banned' });
+}
+
+// 任意请求触发租期回收时也必须切断会话，不能只依赖后台计时器。
+authService.onAllocationExpired = (deviceId, userId) => {
+  revokeDeviceAccess(deviceId, userId)
+    .catch(error => console.error('[Sweeper Revoke Failed]', error.message));
+};
 setInterval(() => {
   try {
-    authService.sweepExpiredAllocations(deviceId => {
-      console.log(`[Sweeper] 云机 ${deviceId} 租期已到期，执行实时切断与回收`);
-      for (const bridge of manualBridges) {
-        bridge.closeDevice?.(deviceId);
-      }
-    });
+    authService.sweepExpiredAllocations();
   } catch (err) {
     console.error('[Sweeper Error]', err.message);
   }
@@ -100,7 +135,15 @@ async function persistToken(token) {
   const source = Object.entries(values)
     .map(([name, value]) => name + '=' + quoteEnvValue(value))
     .join('\n') + '\n';
-  await writeFile(LOCAL_ENV_FILE, source, { encoding: 'utf8', mode: 0o600 });
+  const pendingFile = LOCAL_ENV_FILE + '.' + randomUUID() + '.tmp';
+  try {
+    await writeFile(pendingFile, source, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    await rename(pendingFile, LOCAL_ENV_FILE);
+  } finally {
+    await unlink(pendingFile).catch(error => {
+      if (error.code !== 'ENOENT') console.warn('[Session] 临时配置清理失败:', error.code);
+    });
+  }
   localEnv = parseLocalEnv(source);
 }
 
@@ -334,6 +377,8 @@ module.exports = {
     await sharedBrainManager?.close();
     sharedBrainManager = null;
   },
+  revokeDeviceAccess,
+  revokeUserAccess,
   resetSharedClient: async () => {
     await sharedClient?.closeScreenshots();
   },

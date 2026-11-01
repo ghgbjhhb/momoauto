@@ -640,10 +640,11 @@ class AuthService {
 
   sweepExpiredAllocations(onExpired) {
     const expired = this.db.expireAndRecycleDevices(Date.now());
-    if (expired.length > 0 && typeof onExpired === 'function') {
+    const notify = onExpired || this.onAllocationExpired;
+    if (expired.length > 0 && typeof notify === 'function') {
       for (const item of expired) {
         try {
-          onExpired(item.device_id, item.user_id);
+          notify(item.device_id, item.user_id);
         } catch (err) {
           console.error(`[AuthService] 回收通知失败 ${item.device_id}:`, err.message);
         }
