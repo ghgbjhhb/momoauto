@@ -361,9 +361,8 @@ function parameterChoiceLabel(field, value) {
   if (field.name === 'action') return ({ set: '设置代理', show: '展示当前', close: '关闭代理' })[value] || String(value);
   if (field.name === 'mode') return ({ random: '随机', button: '底部按钮', pull: '下拉刷新', execute: '执行发送', draft: '生成并输入', watch: '挂机模式 (巡查前几页)', drain: '全量模式 (必须翻到底)', ip: '定位到IP所在地', search: '搜索地点穿越' })[value] || String(value);
   if (field.name === 'maxContacts') return ({ xx: '持续运行(无上限)', '1': '1人(单次测试)', '3': '3人', '5': '5人', '10': '10人' })[value] || String(value);
-  if (field.name === 'warmupInterval') return ({ default: '默认(10~25分随机)', '0': '立即养号(测试)', '60000': '1分钟后养号', '300000': '5分钟后养号' })[value] || String(value);
   if (field.name === 'maxApproved') return value + ' 人';
-  if (field.name === 'maxDistance') return ({ none: '不限距离', '3': '≤ 3公里', '5': '≤ 5公里', '10': '≤ 10公里', '20': '≤ 20公里', '50': '≤ 50公里' })[value] || String(value);
+  if (field.name === 'maxDistance') return value ? `≤ ${value}公里` : '不限距离';
   if (field.name === 'approveProbability') return Math.round(Number(value) * 100) + '%';
   if (field.name === 'androidVersion') return value === 'all' ? '全部版本' : 'Android ' + value;
   return String(value);
@@ -1301,12 +1300,14 @@ function syncBundleStepOptionsFromDom() {
 
 function normalizeBundleStepOptions() {
   return editingBundleStepOptions.map((options, index) => {
+    const script = state.scripts.find(s => s.id === editingBundleSteps[index]);
+    const allowed = new Set((script?.parameters || []).map(field => field.name));
     const clean = {};
     for (const [name, value] of Object.entries(options || {})) {
+      if (!allowed.has(name)) continue;
       const text = String(value ?? '').trim();
       if (text) clean[name] = text;
     }
-    const script = state.scripts.find(s => s.id === editingBundleSteps[index]);
     for (const field of (script?.parameters || [])) {
       if (field.required && !clean[field.name]) {
         throw new Error(`步骤 ${index + 1}（${script.title}）的「${field.label}」为必填项`);

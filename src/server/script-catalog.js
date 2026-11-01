@@ -116,9 +116,7 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     parameters: [
       { name: 'mode', label: '运行模式', choices: ['watch', 'drain'], defaultValue: 'watch' },
       { name: 'maxContacts', label: '处理人数上限', choices: ['xx', '1', '3', '5', '10'], defaultValue: 'xx' },
-      { name: 'maxGreetings', label: '招呼处理单次上限', choices: ['3', '5', '10'], defaultValue: '5' },
-      { name: 'warmupInterval', label: '首页养号间隔', choices: ['default', '0', '60000', '300000'], defaultValue: 'default' },
-      { name: 'maxDistance', label: '打招呼距离', choices: ['none', '3', '5', '10', '20', '50'], defaultValue: 'none' }
+      { name: 'maxDistance', label: '打招呼距离(km)', defaultValue: '', placeholder: '留空不限制', maxLength: 5 }
     ]
   },
   {

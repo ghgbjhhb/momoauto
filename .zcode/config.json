@@ -1,0 +1,20 @@
+{
+  "mcp": {
+    "servers": {
+      "serena": {
+        "type": "stdio",
+        "command": "C:\\Users\\Administrator\\.local\\bin\\uvx.exe",
+        "args": [
+          "--from",
+          "git+https://github.com/oraios/serena",
+          "serena",
+          "start-mcp-server",
+          "--context",
+          "zcode",
+          "--project",
+          "D:\\AA-project\\自动化"
+        ]
+      }
+    }
+  }
+}

@@ -533,11 +533,11 @@ function configureScript(script, body, env) {
   if (script.id === 'flow-15') {
     if (options.mode?.trim()) env.YUNMOMO_MOMO_WATCH_MODE = options.mode.trim();
     if (options.maxContacts?.trim()) env.YUNMOMO_MOMO_MAX_CONTACTS = options.maxContacts.trim();
-    if (options.maxGreetings?.trim()) env.YUNMOMO_MOMO_MAX_GREETINGS = options.maxGreetings.trim();
-    if (options.warmupInterval?.trim()) env.YUNMOMO_MOMO_WARMUP_INTERVAL = options.warmupInterval.trim();
-    const rawDist = options.maxDistance ?? options.maxDistanceKm;
-    if (rawDist && String(rawDist).trim() && String(rawDist).trim() !== 'none') {
-      env.YUNMOMO_MOMO_MAX_DISTANCE = String(rawDist).trim();
+    const rawDist = String(options.maxDistance ?? '').trim();
+    if (rawDist) {
+      const dist = Number(rawDist);
+      if (!Number.isFinite(dist) || dist <= 0) throw invalidOptions('打招呼距离必须为正数（公里），留空则不限制');
+      env.YUNMOMO_MOMO_MAX_DISTANCE = String(dist);
     }
   }
   if (script.id === 'flow-18') {

@@ -44,7 +44,8 @@ const DEFAULT_GREETINGS_MAX_MINUTES = 30;   // 招呼处理间隔上限
 const DEFAULT_WARMUP_MIN_MINUTES = 10;
 const DEFAULT_WARMUP_MAX_MINUTES = 25;
 const DEFAULT_MAX_WATCH_PAGES = 5;          // 挂机模式顺着本批未读往下看的最多屏数（含首屏）
-const DEFAULT_MAX_GREETINGS = 5;            // 每次招呼处理最多通过人数
+const MIN_APPROVED_GREETINGS = 3;           // 每次招呼处理通过人数下限
+const MAX_APPROVED_GREETINGS = 6;           // 每次招呼处理通过人数上限
 const DEFAULT_IDLE_INTERVAL_MS = 2500;      // 挂机空闲时两次看首屏的间隔
 const DRAIN_MAX_PAGES = 40;                 // 全量模式单遍最多翻屏数
 const DRAIN_MAX_ROUNDS = 5;                 // 全量模式最多复查遍数
@@ -114,13 +115,9 @@ function minutes(ms) {
   return Math.round(ms / 60000);
 }
 
-function calcNextWarmupIntervalMs(options = {}) {
-  if (options.warmupIntervalOverrideMs !== null && options.warmupIntervalOverrideMs !== undefined) {
-    return Math.max(0, Number(options.warmupIntervalOverrideMs));
-  }
-  const minMin = options.warmupMinMinutes ?? DEFAULT_WARMUP_MIN_MINUTES;
-  const maxMin = options.warmupMaxMinutes ?? DEFAULT_WARMUP_MAX_MINUTES;
-  return Math.round((minMin + Math.random() * (maxMin - minMin)) * 60 * 1000);
+function calcNextWarmupIntervalMs() {
+  return Math.round((DEFAULT_WARMUP_MIN_MINUTES + Math.random() *
+    (DEFAULT_WARMUP_MAX_MINUTES - DEFAULT_WARMUP_MIN_MINUTES)) * 60 * 1000);
 }
 
 function calcNextGreetingsIntervalMs() {
@@ -844,7 +841,7 @@ class WatchHub {
     await this.toTop(DRAIN_MAX_PAGES + 5);  // 清理结束时停在列表底部，先回到顶部
 
     const now = Date.now();
-    const warmupMs = calcNextWarmupIntervalMs(this.options);
+    const warmupMs = calcNextWarmupIntervalMs();
     const greetingsMs = calcNextGreetingsIntervalMs();
     this.nextWarmupAt = now + warmupMs;
     this.nextGreetingsAt = now + greetingsMs;
@@ -922,7 +919,7 @@ class WatchHub {
     } else {
       await log('WARN', `首页养号未成功: ${res?.error?.code || 'UNKNOWN'} ${res?.error?.message || ''}`.trim());
     }
-    const nextMs = calcNextWarmupIntervalMs(this.options);
+    const nextMs = calcNextWarmupIntervalMs();
     this.nextWarmupAt = Date.now() + nextMs;
     await log('INFO', `下次首页养号约 ${minutes(nextMs)} 分钟后`);
   }
@@ -943,7 +940,8 @@ class WatchHub {
     if (!await this.tap(entry.box, ready.obs, '收到的招呼')) return;
     await this.pause(1000);
 
-    const maxApproved = this.options.maxApprovedGreetings ?? DEFAULT_MAX_GREETINGS;
+    const maxApproved = MIN_APPROVED_GREETINGS +
+      Math.floor(Math.random() * (MAX_APPROVED_GREETINGS - MIN_APPROVED_GREETINGS + 1));
     await log('INFO', `开始处理打招呼 (最多通过 ${maxApproved} 人)...`);
     if (this.maxDistanceKm !== null) {
       await log('INFO', `距离筛选: 仅通过 <= ${this.maxDistanceKm} 公里 (超出自动拒绝)`);
@@ -1043,11 +1041,7 @@ function parseArgs(argv) {
     mode: env.YUNMOMO_MOMO_WATCH_MODE || 'watch', // 'watch' (挂机模式) | 'drain' (全量模式)
     maxContacts: Infinity,
     maxDistanceKm: null,
-    warmupMinMinutes: DEFAULT_WARMUP_MIN_MINUTES,
-    warmupMaxMinutes: DEFAULT_WARMUP_MAX_MINUTES,
-    warmupIntervalOverrideMs: null,
     maxWatchPages: DEFAULT_MAX_WATCH_PAGES,
-    maxApprovedGreetings: DEFAULT_MAX_GREETINGS,
   };
 
   if (env.YUNMOMO_MOMO_MAX_CONTACTS && env.YUNMOMO_MOMO_MAX_CONTACTS !== 'xx') {
@@ -1057,12 +1051,6 @@ function parseArgs(argv) {
     const dist = Number(env.YUNMOMO_MOMO_MAX_DISTANCE);
     if (!Number.isNaN(dist) && dist > 0) options.maxDistanceKm = dist;
   }
-  if (env.YUNMOMO_MOMO_WARMUP_INTERVAL && env.YUNMOMO_MOMO_WARMUP_INTERVAL !== 'default') {
-    options.warmupIntervalOverrideMs = intOption(env.YUNMOMO_MOMO_WARMUP_INTERVAL, 0, null);
-  }
-  if (env.YUNMOMO_MOMO_MAX_GREETINGS) {
-    options.maxApprovedGreetings = intOption(env.YUNMOMO_MOMO_MAX_GREETINGS, 1, DEFAULT_MAX_GREETINGS);
-  }
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -1070,12 +1058,10 @@ function parseArgs(argv) {
     if (arg === '--mode') options.mode = argv[++i];
     else if (arg === '--device') options.deviceId = argv[++i];
     else if (arg === '--max-contacts') options.maxContacts = intOption(argv[++i], 1, Infinity);
-    else if (arg === '--max-greetings') options.maxApprovedGreetings = intOption(argv[++i], 1, DEFAULT_MAX_GREETINGS);
     else if (arg === '--max-distance' || arg === '--distance') {
       const dist = Number(argv[++i]);
       if (!Number.isNaN(dist) && dist > 0) options.maxDistanceKm = dist;
     }
-    else if (arg === '--warmup-interval') options.warmupIntervalOverrideMs = intOption(argv[++i], 0, null);
     else if (arg === '--watch-pages') options.maxWatchPages = intOption(argv[++i], 1, DEFAULT_MAX_WATCH_PAGES);
     else if (arg === '--run-dir') options.runDir = argv[++i];
   }
@@ -1095,9 +1081,6 @@ async function main(argv = process.argv.slice(2)) {
   activeLogFile = path.join(activeRunDir, 'watch.log');
 
   const isDrain = options.mode === 'drain';
-  const warmupDesc = options.warmupIntervalOverrideMs === null
-    ? `每 ${options.warmupMinMinutes}~${options.warmupMaxMinutes} 分钟随机触发`
-    : options.warmupIntervalOverrideMs === 0 ? '每轮空闲时触发' : `每 ${minutes(options.warmupIntervalOverrideMs)} 分钟触发`;
   const banner = [
     '--------------------------------------------------',
     'MOMO 监听中枢启动',
@@ -1105,8 +1088,8 @@ async function main(argv = process.argv.slice(2)) {
     `工作模式  : ${isDrain ? '全量模式 (翻到底，复查到没有未读)' : '挂机模式 (先清积压，再盯首屏)'}`,
     `处理上限  : ${options.maxContacts === Infinity ? '无限制' : `${options.maxContacts} 位联系人`}`,
     isDrain ? '定时支线  : 全量模式不执行招呼处理与首页养号' :
-      `招呼处理  : 一次最多通过 ${options.maxApprovedGreetings} 人${options.maxDistanceKm !== null ? ` (距离≤${options.maxDistanceKm}km)` : ''} (间隔 ${DEFAULT_GREETINGS_MIN_MINUTES}~${DEFAULT_GREETINGS_MAX_MINUTES} 分钟随机)`,
-    ...(isDrain ? [] : [`首页养号  : ${warmupDesc}`]),
+      `招呼处理  : 一次最多通过 ${MIN_APPROVED_GREETINGS}~${MAX_APPROVED_GREETINGS} 人${options.maxDistanceKm !== null ? ` (距离≤${options.maxDistanceKm}km)` : ''} (间隔 ${DEFAULT_GREETINGS_MIN_MINUTES}~${DEFAULT_GREETINGS_MAX_MINUTES} 分钟随机)`,
+    ...(isDrain ? [] : [`首页养号  : 每 ${DEFAULT_WARMUP_MIN_MINUTES}~${DEFAULT_WARMUP_MAX_MINUTES} 分钟随机触发`]),
     `日志文件  : ${path.relative(PROJECT_ROOT, activeLogFile)}`,
     '--------------------------------------------------\n',
   ].join('\n');
