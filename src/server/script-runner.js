@@ -456,6 +456,93 @@ async function executeScriptMeasured(body, user = null) {
   }
 }
 
+// 浏览器任务的状态由服务端管理，连接断开不再影响子进程。
+const webRunResults = new Map();
+const WEB_RUN_RESULT_TTL_MS = 30 * 60 * 1000;
+function webRunResultPath(id) {
+  return path.join(PROJECT_ROOT, 'logs', 'runs', id + '.result.json');
+}
+function compactWebRunResults() {
+  const now = Date.now();
+  for (const [id, entry] of webRunResults) {
+    if (entry.expiresAt <= now) webRunResults.delete(id);
+  }
+  while (webRunResults.size > 256) webRunResults.delete(webRunResults.keys().next().value);
+}
+function launchWebScript(body, user) {
+  const id = String(body?.scriptRunId || '');
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw invalidOptions('脚本运行编号无效');
+  compactWebRunResults();
+  if (webRunResults.has(id) || activeScriptRuns.has(id) || completedScriptRuns.has(id) ||
+      fs.existsSync(runOwnerFilePath(id)) || fs.existsSync(webRunResultPath(id))) {
+    throw Object.assign(new Error('运行编号已存在，请通过运行状态接口查询，不要重复下发'), { status: 409 });
+  }
+  const entry = { ownerUserId: user.id, state: 'starting', expiresAt: Date.now() + WEB_RUN_RESULT_TTL_MS };
+  webRunResults.set(id, entry);
+  // 不等待任务完成：后台任务的生命周期与 HTTP / FRP 连接脱钩。
+  executeScript(body, user).then(result => {
+    entry.state = 'finished';
+    entry.result = {
+      ok: Boolean(result.ok), cancelled: Boolean(result.cancelled), exitCode: result.exitCode ?? null,
+      durationMs: result.durationMs ?? null, logFile: result.logFile || null,
+      stdout: redact(result.stdout || ''), stderr: redact(result.stderr || '')
+    };
+  }, error => {
+    entry.state = 'finished';
+    entry.result = { ok: false, cancelled: false, exitCode: null, message: redact(error.message || '执行失败') };
+  }).then(async () => {
+    require('./context').clearDeviceCache();
+    entry.expiresAt = Date.now() + WEB_RUN_RESULT_TTL_MS;
+    // 只落盘最终状态，不复制可能包含私密输出的日志内容。
+    const { stdout, stderr, ...safeOutcome } = entry.result;
+    const file = webRunResultPath(id);
+    const tmp = file + '.' + randomUUID() + '.tmp';
+    try {
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(tmp, JSON.stringify({ ownerUserId: user.id, state: entry.state,
+        result: safeOutcome }), { encoding: 'utf8', flag: 'wx' });
+      await fs.promises.rename(tmp, file);
+    } catch (error) {
+      console.error('[WebRun] 无法持久化任务终态:', error.code || 'IO_FAILED');
+    } finally {
+      await fs.promises.unlink(tmp).catch(() => {});
+    }
+  }).catch(error => console.error('[WebRun] 状态处理异常:', error.message));
+  return { ok: true, accepted: true, scriptRunId: id };
+}
+async function getWebScriptState(id, user) {
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw invalidOptions('脚本运行编号无效');
+  const active = activeScriptRuns.get(id);
+  const recent = webRunResults.get(id);
+  const owner = active?.ownerUserId || recent?.ownerUserId || await readRunOwner(id);
+  if (owner && user.role !== 'admin' && owner !== user.id) {
+    throw Object.assign(new Error('无权查看其他用户的任务'), { status: 403 });
+  }
+  if (active) {
+    return { ok: true, scriptRunId: id, state: 'running', phase: active.status,
+      logFile: active.logFile || null, stdout: redact(active.stdout), stderr: redact(active.stderr) };
+  }
+  if (recent?.state === 'starting') {
+    return { ok: true, scriptRunId: id, state: 'running', phase: 'starting', stdout: '', stderr: '' };
+  }
+  if (recent?.state === 'finished') {
+    return { ok: true, scriptRunId: id, state: 'finished', result: recent.result };
+  }
+  try {
+    const final = JSON.parse(await fs.promises.readFile(webRunResultPath(id), 'utf8'));
+    if (user.role !== 'admin' && final.ownerUserId !== user.id) {
+      throw Object.assign(new Error('无权查看其他用户的任务'), { status: 403 });
+    }
+    return { ok: true, scriptRunId: id, state: final.state, result: final.result, recovered: true };
+  } catch (error) {
+    if (error.status === 403) throw error;
+    if (owner) return { ok: true, scriptRunId: id, state: 'unknown',
+      message: '服务端无法确认任务终态，请检查设备占用和原始运行日志，禁止直接重试' };
+    return { ok: false, scriptRunId: id, state: 'not_found',
+      message: '运行编号尚未被服务端确认，不要直接重复下发' };
+  }
+}
+
 function invalidOptions(message) {
   return Object.assign(new Error(message), { status: 400 });
 }
@@ -572,6 +659,8 @@ module.exports = {
   writeRunOwner,
   stopActiveScript,
   executeScript,
+  launchWebScript,
+  getWebScriptState,
   executeScriptMeasured,
   invalidOptions,
   assertScriptVisibleToUser,

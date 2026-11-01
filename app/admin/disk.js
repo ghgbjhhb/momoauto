@@ -153,27 +153,18 @@ function renderAdminDiskFileList() {
       }
     };
 
-    const diskToken = localStorage.getItem('yunmomo.auth_token') || '';
-    const diskTokenQuery = diskToken ? '&token=' + encodeURIComponent(diskToken) : '';
-
     listEl.innerHTML = adminDiskFiles.map(file => {
-      const isSelected = file.name === adminDiskSelectedFile;
-      const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) + '&name=' + encodeURIComponent(file.name) + diskTokenQuery;
-      return '<div class="disk-grid-item ' + (isSelected ? 'selected' : '') + '" data-filename="' + escapeHtml(file.name) + '" onclick="selectAdminDiskFile(\'' + escapeHtml(file.name) + '\', event)" ondblclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();" title="单击选中，双击放大预览">' +
-        '<div class="disk-grid-check">✓</div>' +
-        '<div class="disk-grid-thumb">' +
-          '<img src="' + previewUrl + '" alt="' + escapeHtml(file.name) + '" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML=\'<div style=\\\'font-size:26px; opacity:0.35; display:flex; align-items:center; justify-content:center; width:100%; height:100%;\\\'>🖼️</div>\';" />' +
-          '<div class="disk-grid-overlay">' +
-            '<button type="button" class="disk-grid-action-btn" title="查看原图" onclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', true, false); event.stopPropagation();">' +
-              '🔍' +
-            '</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="disk-grid-info">' +
-          '<div class="disk-grid-name" title="' + escapeHtml(file.name) + '">' + escapeHtml(file.name) + '</div>' +
-          '<div class="disk-grid-size">' + file.sizeFormatted + '</div>' +
-        '</div>' +
-      '</div>';
+      const selected = file.name === adminDiskSelectedFile;
+      const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) +
+        '&name=' + encodeURIComponent(file.name);
+      return '<div class="disk-grid-item ' + (selected ? 'selected' : '') +
+        '" data-filename="' + escapeHtml(file.name) + '" title="单击选中，双击放大预览">' +
+        '<div class="disk-grid-check">✓</div><div class="disk-grid-thumb">' +
+        '<img src="' + escapeHtml(previewUrl) + '" alt="' + escapeHtml(file.name) + '" loading="lazy" />' +
+        '<div class="disk-grid-overlay"><button type="button" class="disk-grid-action-btn" data-disk-action="preview" title="查看原图">🔍</button></div>' +
+        '</div><div class="disk-grid-info"><div class="disk-grid-name" title="' + escapeHtml(file.name) + '">' +
+        escapeHtml(file.name) + '</div><div class="disk-grid-size">' +
+        escapeHtml(file.sizeFormatted) + '</div></div></div>';
     }).join('');
     return;
   }
@@ -198,10 +189,10 @@ function renderAdminDiskFileList() {
       const parts = [];
       if (p.brand || p.model) parts.push('<strong>' + escapeHtml(p.brand) + ' ' + escapeHtml(p.model) + '</strong>');
       if (p.androidVersion) parts.push('Android ' + escapeHtml(p.androidVersion));
-      parts.push(file.sizeFormatted);
+      parts.push(escapeHtml(file.sizeFormatted));
       metaText = parts.join(' · ');
     } else {
-      metaText = file.sizeFormatted;
+      metaText = escapeHtml(file.sizeFormatted);
     }
 
     let statusBadge = '';
@@ -209,11 +200,11 @@ function renderAdminDiskFileList() {
     if (file.zhencanStatus) {
       if (file.zhencanStatus.status === 'used') {
         const titleTip = '使用时间: ' + (file.zhencanStatus.usedAtFormatted || '此前') + ' | 目标云机: ' + (file.zhencanStatus.usedOnDeviceName || file.zhencanStatus.usedOnDeviceId || '未知');
-        statusBadge = '<span class="badge-status-used" style="background:#fff2f0; color:#cf1322; border:1px solid #ffccc7; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;" title="' + escapeHtml(titleTip) + '">🔴 已使用 (' + (file.zhencanStatus.usedAtFormatted ? file.zhencanStatus.usedAtFormatted.slice(5, 16) : '已导入') + ')</span>';
-        toggleBtn = '<button type="button" class="disk-action-btn success" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; padding:4px 10px; font-size:12px;" onclick="toggleZhencanStatus(\'' + escapeHtml(file.name) + '\', \'available\')" title="将该真参重置为可用状态，允许再次导入">🔄 重新启用</button>';
+        statusBadge = '<span class="badge-status-used" style="background:#fff2f0; color:#cf1322; border:1px solid #ffccc7; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;" title="' + escapeHtml(titleTip) + '">🔴 已使用 (' + (file.zhencanStatus.usedAtFormatted ? escapeHtml(file.zhencanStatus.usedAtFormatted.slice(5, 16)) : '已导入') + ')</span>';
+        toggleBtn = '<button type="button" class="disk-action-btn success" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; padding:4px 10px; font-size:12px;" data-disk-action="available" title="将该真参重置为可用状态，允许再次导入">🔄 重新启用</button>';
       } else {
         statusBadge = '<span class="badge-status-avail" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;">🟢 可用</span>';
-        toggleBtn = '<button type="button" class="disk-action-btn subtle" style="color:#8c8c8c; border:1px solid #d9d9d9; padding:4px 10px; font-size:12px;" onclick="toggleZhencanStatus(\'' + escapeHtml(file.name) + '\', \'used\')" title="将该真参标记为已使用">🚫 设为已用</button>';
+        toggleBtn = '<button type="button" class="disk-action-btn subtle" style="color:#8c8c8c; border:1px solid #d9d9d9; padding:4px 10px; font-size:12px;" data-disk-action="used" title="将该真参标记为已使用">🚫 设为已用</button>';
       }
     }
 
@@ -227,13 +218,13 @@ function renderAdminDiskFileList() {
       '</div>' +
       '<div class="disk-file-actions">' +
         toggleBtn +
-        '<button type="button" class="disk-action-btn primary push-btn" onclick="sendAdminDiskFileToDevice(\'' + escapeHtml(file.name) + '\')">' +
+        '<button type="button" class="disk-action-btn primary push-btn" data-disk-action="push">' +
           '🚀 推送到云机' +
         '</button>' +
-        '<button type="button" class="disk-action-btn view-btn" onclick="previewAdminDiskFile(\'' + escapeHtml(file.name) + '\', false, ' + file.isText + ')">' +
+        '<button type="button" class="disk-action-btn view-btn" data-disk-action="preview">' +
           '预览' +
         '</button>' +
-        '<button type="button" class="disk-action-btn danger delete-btn" onclick="deleteAdminDiskFile(\'' + escapeHtml(file.name) + '\')">' +
+        '<button type="button" class="disk-action-btn danger delete-btn" data-disk-action="delete">' +
           '删除' +
         '</button>' +
       '</div>' +
@@ -273,16 +264,15 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
     '<div style="font-size:14px; font-weight:500;">正在加载内容…</div>' +
     '<div style="font-size:12px; color:#8c8c8c; margin-top:4px;">' + escapeHtml(fileName) + '</div>' +
   '</div>';
-  dialog.showModal();
+  if (!dialog.open) dialog.showModal();
 
-  const token = localStorage.getItem('yunmomo.auth_token') || '';
-  const tokenQuery = token ? '&token=' + encodeURIComponent(token) : '';
   const fileUrl = '/api/cloud-disk/file?dir=' + encodeURIComponent(currentDir) + '&name=' + encodeURIComponent(fileName);
-  const authHeaders = token ? { 'Authorization': 'Bearer ' + token } : {};
+  dialog.dataset.retryFile = fileName;
+  dialog.dataset.retryDir = currentDir;
 
   if (isImage) {
     try {
-      const res = await fetch(fileUrl, { headers: authHeaders });
+      const res = await fetch(fileUrl);
       if (!res.ok) {
         let errMsg = 'HTTP ' + res.status;
         try {
@@ -293,7 +283,7 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
           '<div style="font-size:42px; margin-bottom:12px;">🖼️❌</div>' +
           '<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">图片加载失败</div>' +
           '<div style="font-size:13px; color:#8c8c8c; margin-bottom:20px; word-break:break-all;">' + escapeHtml(errMsg) + '</div>' +
-          '<button type="button" class="btn-action-sm" onclick="previewAdminDiskFile(\'' + escapeHtml(fileName) + '\', true, false, \'' + escapeHtml(currentDir) + '\')">🔄 重试加载</button>' +
+          '<button type="button" class="btn-action-sm" data-disk-retry>🔄 重试加载</button>' +
         '</div>';
         return;
       }
@@ -316,12 +306,12 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
         '<div style="font-size:42px; margin-bottom:12px;">⚠️</div>' +
         '<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">网络异常，无法获取图片</div>' +
         '<div style="font-size:13px; color:#8c8c8c; margin-bottom:20px;">' + escapeHtml(err.message) + '</div>' +
-        '<button type="button" class="btn-action-sm" onclick="previewAdminDiskFile(\'' + escapeHtml(fileName) + '\', true, false, \'' + escapeHtml(currentDir) + '\')">🔄 重试加载</button>' +
+        '<button type="button" class="btn-action-sm" data-disk-retry>🔄 重试加载</button>' +
       '</div>';
     }
   } else if (isText) {
     try {
-      const res = await fetch(fileUrl, { headers: authHeaders });
+      const res = await fetch(fileUrl);
       if (!res.ok) {
         let errMsg = 'HTTP ' + res.status;
         try {
@@ -551,6 +541,43 @@ function loadAdminDisk() {
         }
       });
     }
+
+    const list = document.getElementById('adminDiskFileList');
+    list?.addEventListener('click', event => {
+      const node = event.target.closest('[data-filename]');
+      if (!node) return;
+      const fileName = node.dataset.filename;
+      const action = event.target.closest('[data-disk-action]')?.dataset.diskAction;
+      if (action) {
+        event.stopPropagation();
+        if (action === 'preview') {
+          const file = adminDiskFiles.find(item => item.name === fileName);
+          previewAdminDiskFile(fileName, adminDiskCurrentDir === '头像', Boolean(file?.isText));
+        } else if (action === 'push') sendAdminDiskFileToDevice(fileName);
+        else if (action === 'delete') deleteAdminDiskFile(fileName);
+        else if (action === 'used' || action === 'available') toggleZhencanStatus(fileName, action);
+      } else if (node.classList.contains('disk-grid-item')) {
+        selectAdminDiskFile(fileName, event);
+      }
+    });
+    list?.addEventListener('dblclick', event => {
+      const node = event.target.closest('.disk-grid-item');
+      if (node && !event.target.closest('[data-disk-action]')) {
+        previewAdminDiskFile(node.dataset.filename, true, false);
+      }
+    });
+    list?.addEventListener('error', event => {
+      if (event.target.tagName !== 'IMG' || !event.target.closest('.disk-grid-thumb')) return;
+      const thumb = event.target.parentElement;
+      thumb.replaceChildren(document.createTextNode('🖼️'));
+    }, true);
+    document.getElementById('adminDiskPreviewBody')?.addEventListener('click', event => {
+      if (!event.target.closest('[data-disk-retry]')) return;
+      const dialog = document.getElementById('adminDiskPreviewDialog');
+      if (dialog?.dataset.retryFile) {
+        previewAdminDiskFile(dialog.dataset.retryFile, true, false, dialog.dataset.retryDir);
+      }
+    });
 
     const dropArea = document.getElementById('adminDiskFileList');
     if (dropArea && fileInput) {

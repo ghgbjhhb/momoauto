@@ -34,15 +34,14 @@ function renderSharedActivity() {
 
 async function checkAuth() {
   try {
-    const savedToken = localStorage.getItem('yunmomo.auth_token');
-    const headers = savedToken ? { Authorization: `Bearer ${savedToken}` } : {};
-    const res = await fetch('/api/auth/me', { headers });
+    const res = await fetch('/api/auth/me');
     const data = await res.json();
     if (!data.ok || !data.user) {
       if (!isEmbedMode) location.href = '/login.html';
       return null;
     }
     state.currentUser = data.user;
+    try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
     state.isAdmin = data.user.role === 'admin';
 
     const email = elements.userEmail;
@@ -480,8 +479,14 @@ function initSettingsPage() {
 }
 
 async function doLogout() {
-  await fetch('/api/auth/logout', { method: 'POST' });
-  location.href = '/login.html';
+  try {
+    const response = await fetch('/api/auth/logout', { method: 'POST' });
+    if (!response.ok) throw new Error('退出请求失败');
+    localStorage.removeItem('yunmomo.auth_token');
+    location.href = '/login.html';
+  } catch {
+    showToast('无法确认退出登录，请检查网络后重试');
+  }
 }
 
 /* ---------- 兑换卡密 ---------- */
@@ -559,6 +564,7 @@ async function init() {
       window.AppLogger?.info('Devices', `已同步云机实例 ${state.devices.length} 台`);
     }
     await loadSharedRuntimeState();
+    if (typeof resumePendingWebRun === 'function') resumePendingWebRun();
     const initialPage = isEmbedMode ? 'overview' : (typeof getPageFromUrl === 'function' ? getPageFromUrl() : 'overview');
     setPage(initialPage, { updateHash: true });
 

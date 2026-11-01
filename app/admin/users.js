@@ -69,6 +69,11 @@ window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
       body: JSON.stringify({ userId, status: targetStatus })
     });
     const data = await res.json();
+    if (!data.ok && data.statusApplied) {
+      showToast('账号状态已变更，但部分任务未能停止：' + (data.error || '请检查设备'), 'error');
+      loadUsers();
+      return;
+    }
     if (!data.ok) throw new Error(data.error);
     showToast(`已成功${isBan ? '封禁' : '解封'}该用户`, 'success');
     loadUsers();
@@ -413,6 +418,11 @@ window.recycleDevice = async (allocationId, deviceId, devName = '') => {
       body: JSON.stringify({ allocationId, deviceId })
     });
     const data = await res.json();
+    if (!data.ok && data.statusApplied) {
+      showToast('设备已回收，但部分任务仍未确认停止：' + (data.error || '请检查设备'), 'error');
+      loadPool();
+      return;
+    }
     if (!data.ok) throw new Error(data.error);
     showToast('已成功解绑并回收该云机', 'success');
     loadPool();

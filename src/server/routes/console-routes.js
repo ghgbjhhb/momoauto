@@ -429,8 +429,10 @@ async function handleConsoleRoutes(ctx, request, response, url) {
     response.writeHead(200, {
       'Content-Type': contentType,
       'Content-Length': fileBuffer.length,
-      'Cache-Control': 'public, max-age=3600',
-      ...(url.pathname.includes('download') ? { 'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"` } : {})
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      ...(url.pathname.includes('download') || ext === '.svg'
+        ? { 'Content-Disposition': `attachment; filename="${encodeURIComponent(name)}"` } : {})
     });
     response.end(fileBuffer);
     return true;

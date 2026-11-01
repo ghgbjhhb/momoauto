@@ -25,7 +25,8 @@
   class CloudVideoPlayer {
     static canReconnect(code) {
       return !['DEVICE_FORBIDDEN', 'UNAUTHORIZED', 'DEVICE_BUSY', 'VIDEO_LIMIT', 'VIEWER_LIMIT', 'VIDEO_CLOSED',
-        'VIDEO_DECODER_UNSUPPORTED', 'VIDEO_CODEC_UNSUPPORTED', 'INPUT_BACKPRESSURE'].includes(code);
+        'VIDEO_DECODER_UNSUPPORTED', 'VIDEO_CODEC_UNSUPPORTED', 'INPUT_BACKPRESSURE',
+        'DEVICE_ACCESS_REVOKED', 'DEVICE_EXPIRED', 'ACCOUNT_BANNED'].includes(code);
     }
 
     constructor({ canvas, deviceId, interactive = false, onMessage = () => {}, onFrame = () => {},
@@ -49,10 +50,6 @@
       const url = new URL(interactive ? '/api/control' : '/api/video', location.href);
       url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       url.searchParams.set('deviceId', deviceId);
-      try {
-        const token = localStorage.getItem('yunmomo.auth_token');
-        if (token) url.searchParams.set('token', token);
-      } catch {}
       this.socket = new WebSocket(url);
       this.socket.binaryType = 'arraybuffer';
       this.socket.onopen = () => {

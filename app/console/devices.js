@@ -351,9 +351,7 @@ async function fetchTileShot(device) {
   state.tileShots.set(id, entry);
   shotActive++;
   try {
-    const response = await fetch(`/api/screenshot?deviceId=${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('yunmomo.auth_token') || ''}` }
-    });
+    const response = await fetch(`/api/screenshot?deviceId=${encodeURIComponent(id)}`);
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const blob = await response.blob();
     const bitmap = await createImageBitmap(blob);

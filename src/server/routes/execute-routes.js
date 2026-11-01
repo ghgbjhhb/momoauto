@@ -6,7 +6,7 @@ const { YunmomoClient } = require('../../index');
 const { handleMomoBrainRoutes } = require('../momo-brain-routes');
 const { handleAiReplyRoutes, activeRuns } = require('../ai-reply-routes');
 const { defaultArbiter } = require('../device-arbiter');
-const { executeScript, stopActiveScript } = require('../script-runner');
+const { executeScript, stopActiveScript, launchWebScript, getWebScriptState } = require('../script-runner');
 const {
   busyDevices,
   busyAccountScripts,
@@ -150,7 +150,25 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     json(response, 200, { ok: true, tokenConfigured: true, storage: 'user-db' });
     return true;
   }
-  // --- Script Execution ---
+  // 网页采用后台任务 + 状态查询，HTTP/FRP 连接不承担任务生命周期。
+  if (request.method === 'GET' && url.pathname === '/api/execute/status') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    const result = await getWebScriptState(String(url.searchParams.get('scriptRunId') || ''), user);
+    json(response, result.state === 'not_found' ? 404 : 200, result);
+    return true;
+  }
+  if (request.method === 'POST' && url.pathname === '/api/execute/start') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    const body = await readJsonBody(request);
+    if (user.role !== 'admin' && body?.deviceId && !await authService.ensureDeviceAccess(user, body.deviceId)) {
+      json(response, 403, { ok: false, error: '无权操作此设备或该设备已到期回收' });
+      return true;
+    }
+    json(response, 202, launchWebScript(body, user));
+    return true;
+  }
+
+  // --- Script Execution (兼容原有同步接口) ---
   if (request.method === 'POST' && url.pathname === '/api/execute') {
     const body = await readJsonBody(request);
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }

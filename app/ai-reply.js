@@ -18,11 +18,7 @@
   };
 
   function getAuthHeaders() {
-    const token = localStorage.getItem('yunmomo.auth_token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': 'Bearer ' + token } : {})
-    };
+    return { 'Content-Type': 'application/json' };
   }
 
   function setSaveBadge(text, tone = '') {

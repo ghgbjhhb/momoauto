@@ -4,7 +4,7 @@
 // 页面数据逻辑分布在 devices.js / scripts.js / ai-reply.js / momo-brain.js / session.js。
 
 // 构建标记：改动前端后递增，用于确认浏览器加载的是否为新版（控制台输出 + window.YunMomoConsoleBuild）
-window.YunMomoConsoleBuild = '20261101-1';
+window.YunMomoConsoleBuild = '20261102-web-state';
 console.info(`[yunmomo-console] build ${window.YunMomoConsoleBuild}`);
 
 // 全局防御：封杀浏览器原生 alert / confirm / prompt
@@ -23,7 +23,7 @@ document.body.classList.toggle('embed', isEmbedMode);
 
 function getPageFromUrl() {
   const hash = String(location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
-  if (['tasks', 'messages', 'logs', 'settings'].includes(hash)) return hash;
+  if (['devices', 'tasks', 'messages', 'logs', 'settings'].includes(hash)) return hash;
   return 'overview';
 }
 window.getPageFromUrl = getPageFromUrl;
@@ -175,11 +175,8 @@ function fallbackCopy(text, successToast) {
 
 let sessionRecheck = null;
 
-// 401 复检：本地令牌可能已失效（其他标签页退出/改密令牌版本失效/账号变更），
-// 而 Cookie 会话仍然有效。若放任失效令牌以 Bearer 头遮蔽 Cookie 会话，
-// 所有带鉴权请求都会 401（设备列表为空、状态乱跳），画面流却正常——状态与画面矛盾。
-// 处理：用无头请求探测 Cookie 会话；有效则清掉脏令牌并整页重载恢复，
-// 会话彻底失效则清理并回登录页。
+// 浏览器只使用 HttpOnly Cookie；出现 401 时复查会话，明确失效才退出。
+// 网络抖动不主动清除正在执行的任务状态。
 function revalidateSession() {
   if (sessionRecheck || isEmbedMode) return;
   sessionRecheck = (async () => {
@@ -187,14 +184,7 @@ function revalidateSession() {
       await new Promise(resolve => setTimeout(resolve, 300));
       const res = await fetch('/api/auth/me');
       const data = await res.json().catch(() => ({}));
-      const hadLocalToken = Boolean(localStorage.getItem('yunmomo.auth_token'));
-      if (!data.ok || !data.user) {
-        try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
-        location.href = '/login.html';
-      } else if (hadLocalToken) {
-        try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
-        location.reload();
-      }
+      if (!data.ok || !data.user) location.href = '/login.html';
     } catch { /* 网络抖动不在此处理，由轮询自行重试 */ }
     finally {
       setTimeout(() => { sessionRecheck = null; }, 5000);
@@ -203,12 +193,7 @@ function revalidateSession() {
 }
 
 async function requestJson(url, options = {}) {
-  const token = localStorage.getItem('yunmomo.auth_token');
-  const headers = new Headers(options.headers || {});
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, options);
   if (response.status === 401 && !url.includes('/api/auth/')) {
     revalidateSession();
   }
@@ -504,7 +489,7 @@ function setPage(page, { updateHash = true } = {}) {
     }
   }
 
-  if (page === 'devices' || page === 'overview') {
+  if (page === 'overview') {
     // 聚焦总览实时操控与任务工作台
     for (const section of document.querySelectorAll('.page-section')) {
       section.hidden = section.id !== 'page-overview';

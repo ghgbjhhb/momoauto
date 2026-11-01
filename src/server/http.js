@@ -128,6 +128,7 @@ async function staticFile(request, response, pathname) {
 }
 
 function errorStatus(error) {
+  if (error.status === 409) return 409;
   if (error.status === 400) return 400;
   if (/正在执行脚本|手动控制/.test(error.message)) return 409;
   if (error.status === 401) return 401;

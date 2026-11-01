@@ -253,6 +253,8 @@
   <script src="/logger.js"></script>
   <script>
     'use strict';
+    // 旧版保存在 localStorage 的长期 Token 已停用，统一使用 HttpOnly Cookie。
+    try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
     let mode = 'login';
 
     const tabLogin = document.getElementById('tabLogin');
@@ -269,11 +271,12 @@
     function showAlert(text, type = 'error') {
       alertBox.textContent = text;
       alertBox.className = `alert-box ${type}`;
+      alertBox.style.display = '';
     }
 
     function hideAlert() {
       alertBox.className = 'alert-box';
-      alertBox.style.display = 'none';
+      alertBox.style.display = '';
       alertBox.textContent = '';
     }
 

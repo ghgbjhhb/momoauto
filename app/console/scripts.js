@@ -32,7 +32,7 @@ const GROUPS = [
   { key: 'custom', title: '自定义组合脚本' }
 ];
 
-const RUN_STATE_TEXT = { ok: '已完成', failed: '执行失败', cancelled: '已停止', skipped: '已跳过', pending: '排队中', running: '执行中' };
+const RUN_STATE_TEXT = { ok: '已完成', failed: '执行失败', cancelled: '已停止', skipped: '已跳过', pending: '排队中', running: '执行中', unknown: '状态未知' };
 
 function formatStepOrder(order) {
   if (typeof order !== 'number') return String(order || '');
@@ -560,11 +560,11 @@ async function startBundleBatch() {
     const result = await executeBundle(bundle, ids[i], stepOptions);
     const record = state.batchResults[i];
     if (record) {
-      record.status = result?.cancelled ? 'cancelled' : result?.ok ? 'ok' : 'failed';
+      record.status = result?.unknown ? 'unknown' : result?.cancelled ? 'cancelled' : result?.ok ? 'ok' : 'failed';
       record.message = result?.message || '';
     }
     renderBatchResultsOnly();
-    if (result?.cancelled) state.batchStopRequested = true;
+    if (result?.cancelled || result?.unknown) state.batchStopRequested = true;
     if (typeof loadDevices === 'function') loadDevices(true);
   }
 
@@ -572,7 +572,9 @@ async function startBundleBatch() {
   renderTaskDetail();
   loadSharedRuntimeState();
   const ok = state.batchResults.filter(r => r.status === 'ok').length;
-  showToast(`组合任务结束：${ok}/${state.batchResults.length} 台成功`);
+  showToast(state.batchResults.some(r => r.status === 'unknown')
+    ? '组合任务存在状态未知的设备，已停止后续调度，请先核查现场'
+    : `组合任务结束：${ok}/${state.batchResults.length} 台成功`);
 }
 
 function renderDevicePicker() {
@@ -606,7 +608,7 @@ function renderBatchResults() {
   const rows = state.batchResults.map(result => {
     const device = state.devices.find(d => d.deviceId === result.deviceId);
     const cls = result.status === 'ok' ? 'ok' : result.status === 'running' ? 'run'
-      : result.status === 'failed' || result.status === 'cancelled' ? 'err' : '';
+      : result.status === 'failed' || result.status === 'cancelled' ? 'err' : result.status === 'unknown' ? 'warn' : '';
     const note = result.message ? `<span class="hint">${escapeHtml(result.message)}</span>` : '';
     return `<div class="run-result-row">
       <span class="result-name">${device ? `${deviceIndexLabel(device)} ${escapeHtml(device.name)}` : escapeHtml(result.deviceId)}</span>
@@ -778,12 +780,12 @@ async function startTaskBatch() {
     const result = await runScriptOnDevice(script, deviceId, options);
     const record = state.batchResults[i];
     if (record) {
-      record.status = result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed';
+      record.status = result.unknown ? 'unknown' : result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed';
       record.durationMs = result.durationMs;
       record.message = result.message || '';
     }
     renderBatchResultsOnly();
-    if (result.cancelled) state.batchStopRequested = true;
+    if (result.cancelled || result.unknown) state.batchStopRequested = true;
     if (typeof loadDevices === 'function') loadDevices(true);
   }
 
@@ -791,10 +793,14 @@ async function startTaskBatch() {
   renderTaskDetail();
   loadSharedRuntimeState();
   const ok = state.batchResults.filter(r => r.status === 'ok').length;
-  showToast(`批量任务结束：${ok}/${state.batchResults.length} 台成功`);
+  showToast(state.batchResults.some(r => r.status === 'unknown')
+    ? '批量任务存在状态未知的设备，已停止后续调度，请先核查现场'
+    : `批量任务结束：${ok}/${state.batchResults.length} 台成功`);
 }
 
 function stopTaskBatch() {
+  if (!state.batchRunning && state.activeBundleRun) { stopRunningBundle(); return; }
+  if (!state.batchRunning && state.activeRun) { stopRunningScript(); return; }
   if (!state.batchRunning) return;
   state.batchStopRequested = true;
   showToast('正在停止当前设备上的脚本…');
@@ -823,7 +829,10 @@ async function runScriptDirect(script, deviceId) {
   let options = {};
   try {
     options = collectTaskOptions(script);
-  } catch { options = {}; }
+  } catch (error) {
+    showToast(error.message || '任务参数不完整');
+    return null;
+  }
   if (isVpcProxyScript(script) && options.action !== 'show' && options.action !== 'close') {
     const vpcData = await promptVpcProxyDialog();
     if (!vpcData) return null;
@@ -839,7 +848,7 @@ async function runScriptDirect(script, deviceId) {
   const result = await runScriptOnDevice(script, deviceId, options);
   state.batchResults[0] = {
     deviceId,
-    status: result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed',
+    status: result.unknown ? 'unknown' : result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed',
     durationMs: result.durationMs,
     message: result.message || ''
   };
@@ -870,65 +879,164 @@ async function runScriptOnDevice(script, deviceId, options = {}) {
 
   if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'running');
 
-  let polling = false;
-  const outputPollTimer = setInterval(async () => {
-    if (!state.activeRun || state.activeRun.id !== scriptRunId) { clearInterval(outputPollTimer); return; }
-    if (polling) return;
-    polling = true;
-    try {
-      const live = await requestJson('/api/execute/output?scriptRunId=' + encodeURIComponent(scriptRunId));
-      if (live.ok && (live.stdout || live.stderr) && state.activeRun?.id === scriptRunId) {
-        writeOutput(`[设备 ${label}] 执行中：${script.title}`, cleanScriptLines(live.stdout, live.stderr), { runId: scriptRunId, logFile: live.logFile });
-      }
-    } catch { /* 轮询异常静默忽略 */ }
-    finally { polling = false; }
-  }, 300);
-
+  const pendingKey = 'yunmomo.webRun';
+  const taskState = { id: scriptRunId, scriptId: script.id, deviceId,
+    title: script.title, order: script.order, userId: state.currentUser?.id };
+  try { sessionStorage.setItem(pendingKey, JSON.stringify(taskState)); } catch {}
+  let unknown = false;
   try {
-    const result = await requestJson('/api/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scriptRunId, scriptId: script.id, deviceId, pageId: state.pageId, options, resetConfirmed: options.resetConfirmed === true })
-    });
-    const durationMs = Number.isFinite(result.durationMs) ? result.durationMs : null;
-    const title = result.cancelled ? `脚本已停止：${script.title}`
-      : result.ok ? `执行成功：${script.title}${durationMs ? ' (' + (durationMs / 1000).toFixed(1) + 's)' : ''}`
-      : `执行失败：${script.title}${result.exitCode !== null && result.exitCode !== undefined ? ' (退出码: ' + result.exitCode + ')' : ''}`;
-    writeOutput(`[设备 ${label}] ${title}`, cleanScriptLines(result.stdout, result.stderr), { runId: scriptRunId, logFile: result.logFile });
-
-    if (script.order >= 1 && script.order <= 8) {
-      setStepState(deviceId, script.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
+    // 同一个运行编号只允许提交一次；网络断开后仅查询状态，不重试写操作。
+    try {
+      await requestJson('/api/execute/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptRunId, scriptId: script.id, deviceId,
+          pageId: state.pageId, options, resetConfirmed: options.resetConfirmed === true })
+      });
+    } catch (error) {
+      if (error.status && error.status !== 409 && error.status < 500) throw error;
+      writeOutput(`[设备 ${label}] 提交响应断开，正在按运行编号核查实际状态…`,
+        [`调用编号：${scriptRunId}；禁止重复提交执行请求。`], { runId: scriptRunId });
     }
 
-    if (result.cancelled) showToast(`[${label}] 脚本已停止，请核对设备状态`);
-    else if (!result.ok) showToast(`[${label}] 脚本执行失败，请查看运行日志`);
-    else window.AppLogger?.info('Script', `脚本执行成功 [${script.title}] @ ${label}`);
-
-    return { ok: Boolean(result.ok), cancelled: Boolean(result.cancelled), exitCode: result.exitCode, durationMs, logFile: result.logFile };
+    let lastOutput = '';
+    let connectionLost = false;
+    while (true) {
+      let snapshot;
+      try {
+        snapshot = await requestJson('/api/execute/status?scriptRunId=' + encodeURIComponent(scriptRunId));
+        connectionLost = false;
+      } catch (error) {
+        if (error.status === 404) {
+          unknown = true;
+          break;
+        }
+        if (error.status && error.status !== 502 && error.status !== 503 && error.status !== 504) throw error;
+        if (!connectionLost) {
+          writeOutput(`[设备 ${label}] 无法获取任务状态：网络断开，不代表脚本已停止`,
+            [`调用编号：${scriptRunId}，连接恢复后自动重新查询，不会重复执行。`], { runId: scriptRunId });
+          connectionLost = true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
+      if (snapshot.state === 'unknown' || snapshot.state === 'not_found') {
+        unknown = true;
+        break;
+      }
+      if (snapshot.state === 'finished') {
+        const result = snapshot.result || { ok: false, message: '缺少执行结果' };
+        const durationMs = Number.isFinite(result.durationMs) ? result.durationMs : null;
+        const title = result.cancelled ? `脚本已停止：${script.title}`
+          : result.ok ? `执行成功：${script.title}${durationMs ? ' (' + (durationMs / 1000).toFixed(1) + 's)' : ''}`
+          : `执行失败：${script.title}${result.exitCode != null ? ' (退出码: ' + result.exitCode + ')' : ''}`;
+        writeOutput(`[设备 ${label}] ${title}`,
+          [...cleanScriptLines(result.stdout, result.stderr), ...(result.message ? [result.message] : [])],
+          { runId: scriptRunId, logFile: result.logFile });
+        if (script.order >= 1 && script.order <= 8) {
+          setStepState(deviceId, script.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
+        }
+        if (result.cancelled) showToast(`[${label}] 脚本已停止，请核对设备状态`);
+        else if (!result.ok) showToast(`[${label}] 脚本执行失败，请查看运行日志`);
+        return { ok: Boolean(result.ok), cancelled: Boolean(result.cancelled), exitCode: result.exitCode,
+          durationMs, logFile: result.logFile, message: result.message };
+      }
+      const output = (snapshot.stdout || '') + '\n' + (snapshot.stderr || '');
+      if (output.trim() && output !== lastOutput) {
+        lastOutput = output;
+        writeOutput(`[设备 ${label}] 执行中：${script.title}`,
+          cleanScriptLines(snapshot.stdout, snapshot.stderr), { runId: scriptRunId, logFile: snapshot.logFile });
+      }
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
   } catch (error) {
     if (run.stopConfirmed) {
-      writeOutput(`[设备 ${label}] 脚本已停止：${script.title}`, [
-        '服务端已确认脚本进程退出并释放设备占用。',
-        '脚本中断时设备状态可能只完成了部分操作；请核对设备后再继续。'
-      ], { runId: scriptRunId });
+      writeOutput(`[设备 ${label}] 脚本已停止：${script.title}`,
+        ['服务端已确认脚本进程退出并释放设备占用。'], { runId: scriptRunId });
       if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'cancelled');
       return { ok: false, cancelled: true, durationMs: null };
     }
-    if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'failed');
-    const isNetwork = error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError');
-    const display = isNetwork ? '网络连接失败：后端控制台服务暂时断开或重启中，请稍后重试。' : error.message;
-    writeOutput(`[设备 ${label}] 执行请求失败：${script.title}`, [display, `调用编号：${scriptRunId}`], { runId: scriptRunId });
-    showToast(display);
-    return { ok: false, cancelled: false, durationMs: null, message: display };
+    if (error.status && error.status < 500) {
+      if (script.order >= 1 && script.order <= 8) setStepState(deviceId, script.order, 'failed');
+      writeOutput(`[设备 ${label}] 执行被服务端拒绝：${script.title}`, [error.message], { runId: scriptRunId });
+      showToast(error.message);
+      return { ok: false, cancelled: false, message: error.message };
+    }
+    unknown = true;
   } finally {
-    clearInterval(outputPollTimer);
-    if (state.activeRun?.id === scriptRunId) {
-      state.activeRun = null;
-      state.runningScript = '';
+    if (!unknown) {
+      try { if (JSON.parse(sessionStorage.getItem(pendingKey) || '{}').id === scriptRunId) sessionStorage.removeItem(pendingKey); } catch {}
+      if (state.activeRun?.id === scriptRunId) {
+        state.activeRun = null;
+        state.runningScript = '';
+      }
+    } else {
+      run.unknown = true;
     }
     if (typeof requestAllPreviews === 'function') requestAllPreviews();
   }
+  const warning = '任务结果无法确认：请先核查服务端日志和设备实际状态，禁止直接重复执行';
+  writeOutput(`[设备 ${label}] ${warning}`, [`运行编号：${scriptRunId}`], { runId: scriptRunId });
+  showToast(warning);
+  return { ok: false, unknown: true, message: warning };
+
 }
+
+// 刷新页面后只恢复状态订阅，绝不重新发起已提交的写操作。
+async function resumePendingWebRun() {
+  let saved;
+  try { saved = JSON.parse(sessionStorage.getItem('yunmomo.webRun') || 'null'); } catch { return; }
+  if (!saved?.id || saved.userId !== state.currentUser?.id) {
+    try { sessionStorage.removeItem('yunmomo.webRun'); } catch {}
+    return;
+  }
+  if (state.activeRun) return;
+  const run = { id: saved.id, scriptId: saved.scriptId, deviceId: saved.deviceId,
+    stopping: false, stopConfirmed: false };
+  state.activeRun = run;
+  state.runningScript = saved.scriptId;
+  updateStopButton();
+  writeOutput('页面已恢复：正在查询 Windows 后台任务状态',
+    [`运行编号：${saved.id}。只查询状态，不重新执行脚本。`], { runId: saved.id });
+  while (state.activeRun === run) {
+    try {
+      const snapshot = await requestJson('/api/execute/status?scriptRunId=' + encodeURIComponent(saved.id));
+      if (snapshot.state === 'running') {
+        if (snapshot.stdout || snapshot.stderr) {
+          writeOutput(`执行中：${saved.title}`, cleanScriptLines(snapshot.stdout, snapshot.stderr),
+            { runId: saved.id, logFile: snapshot.logFile });
+        }
+      } else if (snapshot.state === 'finished') {
+        const result = snapshot.result || { ok: false };
+        writeOutput(result.cancelled ? `已停止：${saved.title}` : result.ok ? `执行完成：${saved.title}` : `执行失败：${saved.title}`,
+          [...cleanScriptLines(result.stdout, result.stderr), ...(result.message ? [result.message] : [])],
+          { runId: saved.id, logFile: result.logFile });
+        if (saved.order >= 1 && saved.order <= 8) {
+          setStepState(saved.deviceId, saved.order, result.cancelled ? 'cancelled' : result.ok ? 'completed' : 'failed');
+        }
+        sessionStorage.removeItem('yunmomo.webRun');
+        state.activeRun = null;
+        state.runningScript = '';
+        updateStopButton();
+        break;
+      } else {
+        run.unknown = true;
+        writeOutput('运行状态未知，禁止重复执行', [snapshot.message || '请核查云机实际状态及服务端日志'],
+          { runId: saved.id });
+        break;
+      }
+    } catch (error) {
+      if (error.status === 401 || error.status === 403) break;
+      if (error.status === 404) {
+        run.unknown = true;
+        writeOutput('服务端未确认此运行编号，禁止盲目重试', [saved.id], { runId: saved.id });
+        break;
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+window.resumePendingWebRun = resumePendingWebRun;
 
 async function confirmDestructive(script, options, deviceIds) {
   const isBlock = script.id === 'flow-18';
@@ -958,6 +1066,7 @@ async function confirmDestructive(script, options, deviceIds) {
 async function stopRunningScript() {
   const run = state.activeRun;
   if (!run) { showToast('当前没有正在执行的脚本'); return; }
+  if (run.unknown) { showToast('任务状态未知，请先核查设备实际状态，不能盲目停止'); return; }
   if (run.stopping || run.stopConfirmed) return;
   run.stopping = true;
   try {
@@ -1021,6 +1130,7 @@ async function executeBundle(bundle, targetId = null, stepOptions = null) {
   const total = steps.length;
   let ok = true;
   let cancelled = false;
+  let unknown = false;
   writeOutput(`【开始执行组合脚本】: ${bundle.name}`, [
     `功能备注：${bundle.description || '无'}`,
     `目标设备：${deviceId ? deviceLabel(state.devices.find(d => d.deviceId === deviceId)) : '无需设备'}`,
@@ -1051,6 +1161,13 @@ async function executeBundle(bundle, targetId = null, stepOptions = null) {
       }
       writeOutput(`▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [`正在运行子脚本 ${script.id}...`]);
       const stepRes = await executeSingleStep(script, deviceId, step.options);
+      if (stepRes.unknown) {
+        writeOutput(`【组合脚本状态未知】: 步骤 ${i + 1} (${script.title}) 无法确认`,
+          ['后续步骤已停止调度，禁止直接重新执行，请先人工核查云机实际状态。']);
+        ok = false;
+        unknown = true;
+        break;
+      }
       if (bundleRunState.stopped || stepRes.cancelled) {
         writeOutput(`【组合脚本中断】: 步骤 ${i + 1} (${script.title}) 已停止。`, ['终止后续执行。']);
         showToast(`组合脚本已在步骤 ${i + 1} 停止`);
@@ -1081,7 +1198,7 @@ async function executeBundle(bundle, targetId = null, stepOptions = null) {
     loadSharedRuntimeState();
     if (typeof requestAllPreviews === 'function') requestAllPreviews();
   }
-  return { ok, cancelled };
+  return { ok, cancelled, unknown };
 }
 
 function describeStepOptions(step) {
@@ -1470,7 +1587,7 @@ function renderOverviewTasks() {
   // 渲染任务列表
   const scriptItems = scripts.map(s => {
     const active = state.taskScriptId === s.id ? 'active' : '';
-    const scriptRunning = isRunning && (state.activeRun?.scriptId === s.id || currentDevRunning);
+    const scriptRunning = state.activeRun?.scriptId === s.id;
     return `
       <div class="ov-task-card ${active} ${scriptRunning ? 'running' : ''}" data-ov-card="script:${escapeHtml(s.id)}" title="${escapeHtml(s.description || s.title)}">
         <div class="ov-task-card-left">
@@ -1492,7 +1609,7 @@ function renderOverviewTasks() {
 
   const bundleItems = bundles.map(b => {
     const active = state.taskBundleId === b.id ? 'active' : '';
-    const bRunning = isRunning && state.activeBundleRun?.bundleId === b.id;
+    const bRunning = state.activeBundleRun?.bundleId === b.id;
     return `
       <div class="ov-task-card ${active} ${bRunning ? 'running' : ''}" data-ov-card="bundle:${escapeHtml(b.id)}" title="${escapeHtml(b.description || b.name)}">
         <div class="ov-task-card-left">
@@ -1532,16 +1649,17 @@ function updateOverviewWorkbenchFooter(currentDev, isRunning) {
   if (!footer) return;
 
   const isBundle = Boolean(state.taskBundleId);
-  if (isRunning) {
+  const canStop = Boolean(state.batchRunning || state.activeRun || state.activeBundleRun);
+  if (canStop) {
     if (!footer.querySelector('#ovCfgStopBtn')) {
       footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
     }
   } else {
     const runBtn = footer.querySelector('#ovCfgRunBtn');
     if (!runBtn) {
-      footer.innerHTML = `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}</button>`;
+      footer.innerHTML = `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev || isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}</button>`;
     } else {
-      runBtn.disabled = !currentDev;
+      runBtn.disabled = !currentDev || isRunning;
       const expectedText = `${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}`;
       if (runBtn.innerHTML !== expectedText) {
         runBtn.innerHTML = expectedText;
@@ -1563,6 +1681,7 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
   container.dataset.renderedTask = currentTaskId;
   const devLabel = currentDev ? `${deviceIndexLabel(currentDev)} ${currentDev.name}` : '未选择云机';
   const devId = currentDev ? currentDev.deviceId : '';
+  const canStop = Boolean(state.batchRunning || state.activeRun || state.activeBundleRun);
 
   if (state.taskScriptId) {
     const script = state.scripts.find(s => s.id === state.taskScriptId);
@@ -1612,9 +1731,9 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
         `}
       </div>
       <div class="ov-wb-footer">
-        ${isRunning
+        ${canStop
           ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行</button>`
+          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev || isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行</button>`
         }
       </div>
     `;
@@ -1649,9 +1768,9 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
         </div>
       </div>
       <div class="ov-wb-footer">
-        ${isRunning
+        ${canStop
           ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`
-          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行组合</button>`
+          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev || isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行组合</button>`
         }
       </div>
     `;
@@ -1678,9 +1797,9 @@ function updateOverviewRuntime() {
       const [type, id] = raw.split(':');
       let running = false;
       if (type === 'script') {
-        running = isRunning && (state.activeRun?.scriptId === id || currentDevRunning);
+        running = state.activeRun?.scriptId === id;
       } else if (type === 'bundle') {
-        running = isRunning && state.activeBundleRun?.bundleId === id;
+        running = state.activeBundleRun?.bundleId === id;
       }
       card.classList.toggle('running', running);
       const actionBox = card.querySelector('.ov-task-card-actions');

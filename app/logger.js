@@ -145,9 +145,9 @@
     },
     http(method, url, status, durationMs, errorMsg = '') {
       const level = !status || status >= 400 ? 'ERROR' : 'INFO';
-      const cleanUrl = url.replace(/^[a-z]+:\/\/[^/]+/i, '');
+      const cleanUrl = new URL(url, location.href).pathname;
       const msg = `${method.toUpperCase()} ${cleanUrl} -> ${status || 'FAILED'} (${Math.round(durationMs)}ms)${errorMsg ? ' ' + errorMsg : ''}`;
-      return record(level, 'HTTP', msg, errorMsg ? { url, status, error: errorMsg } : null);
+      return record(level, 'HTTP', msg, errorMsg ? { path: cleanUrl, status, error: errorMsg } : null);
     },
     getLogs() {
       return [...inMemoryLogs];
@@ -179,7 +179,7 @@
           viewport: `${window.innerWidth}x${window.innerHeight}`,
           devicePixelRatio: window.devicePixelRatio || 1,
           online: navigator.onLine,
-          location: window.location.href
+          location: window.location.origin + window.location.pathname
         },
         state: {
           tokenConfigured: stateObj.tokenConfigured ?? null,
@@ -229,7 +229,7 @@
     });
   });
 
-  // 全局 Fetch 自动监听拦截器 (静默代理，自动注入鉴权令牌)
+  // 全局 Fetch 自动监听拦截器（只监测本源 API，不修改认证头）
   if (typeof window.fetch === 'function') {
     const rawFetch = window.fetch;
     window.fetch = async function (...args) {
@@ -244,33 +244,24 @@
         return rawFetch.apply(this, args);
       }
 
-      // 对本源 /api/ 请求自动注入 Bearer 令牌（若未显式指定），保障各子模块与弹窗免密/鉴权一致
-      if (url.includes('/api/')) {
-        try {
-          const token = localStorage.getItem('yunmomo.auth_token');
-          if (token) {
-            const headers = new Headers(init.headers || (typeof input === 'object' && input?.headers) || {});
-            if (!headers.has('Authorization')) {
-              headers.set('Authorization', `Bearer ${token}`);
-              init = { ...init, headers };
-              args[1] = init;
-            }
-          }
-        } catch {}
-      }
+      // 浏览器登录态由 HttpOnly Cookie 承担，日志代理不注入 Bearer。
+      const isApi = (() => {
+        try { const u = new URL(url, location.href); return u.origin === location.origin && u.pathname.startsWith('/api/'); }
+        catch { return false; }
+      })();
 
       const start = performance.now();
       try {
         const response = await rawFetch.apply(this, args);
         const duration = performance.now() - start;
         // 仅对 API 请求进行追踪记录
-        if (url.includes('/api/')) {
+        if (isApi) {
           AppLogger.http(method, url, response.status, duration, response.ok ? '' : `HTTP ${response.status}`);
         }
         return response;
       } catch (err) {
         const duration = performance.now() - start;
-        if (url.includes('/api/')) {
+        if (isApi) {
           AppLogger.http(method, url, 0, duration, err.message || '网络断开或超时');
         }
         throw err;
@@ -278,22 +269,12 @@
     };
   }
 
-  // 全局 WebSocket 自动监听拦截器 (监控视频流与手势控制通道，自动注入鉴权令牌)
+  // 全局 WebSocket 自动监听拦截器（仅监测连接与关闭码）
   if (typeof window.WebSocket === 'function') {
     const RawWebSocket = window.WebSocket;
     class InstrumentedWebSocket extends RawWebSocket {
       constructor(url, protocols) {
-        let finalUrl = url;
-        try {
-          const u = new URL(url, location.href);
-          if (u.pathname.startsWith('/api/') && !u.searchParams.has('token')) {
-            const token = localStorage.getItem('yunmomo.auth_token');
-            if (token) {
-              u.searchParams.set('token', token);
-              finalUrl = u.toString();
-            }
-          }
-        } catch {}
+        const finalUrl = url;
 
         if (protocols !== undefined) {
           super(finalUrl, protocols);
@@ -303,7 +284,7 @@
 
         const urlStr = String(finalUrl || '');
         if (urlStr.includes('/api/')) {
-          const cleanUrl = urlStr.replace(/^[a-z]+:\/\/[^/]+/i, '').replace(/([?&]token=)[^&]+/i, '$1***');
+          const cleanUrl = new URL(urlStr, location.href).pathname;
           const start = performance.now();
           AppLogger.info('WebSocket', `发起连接 -> ${cleanUrl}`);
 
@@ -317,8 +298,7 @@
           });
 
           this.addEventListener('close', event => {
-            const reasonMsg = event.reason ? ` (${event.reason})` : '';
-            AppLogger.warn('WebSocket', `连接断开 [${event.code}] -> ${cleanUrl}${reasonMsg}`);
+            AppLogger.warn('WebSocket', `连接断开 [${event.code}] -> ${cleanUrl}`);
           });
         }
       }
@@ -340,7 +320,11 @@
 
     RawXHR.prototype.send = function (...args) {
       const url = this._ymUrl || '';
-      if (url.includes('/api/') && !url.includes(REPORT_ENDPOINT)) {
+      const isApi = (() => {
+        try { const u = new URL(url, location.href); return u.origin === location.origin && u.pathname.startsWith('/api/') && u.pathname !== REPORT_ENDPOINT; }
+        catch { return false; }
+      })();
+      if (isApi) {
         const start = performance.now();
         this.addEventListener('loadend', () => {
           const duration = performance.now() - start;

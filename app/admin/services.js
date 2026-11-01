@@ -209,8 +209,13 @@ if (clearAdminLogSearchBtn) {
 if (adminLogClearBtn) {
   adminLogClearBtn.addEventListener('click', async () => {
     try {
-      await fetch('/api/server-logs/clear', { method: 'POST' });
-    } catch {}
+      const response = await fetch('/api/server-logs/clear', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || '清理请求失败');
+    } catch (error) {
+      showToast('日志清理未成功：' + error.message, 'error');
+      return;
+    }
     allSystemLogs = [];
     window.AppLogger?.clear();
     renderSystemLogs();
@@ -828,8 +833,10 @@ if (testSmsConnBtn) {
 }
 
 // 脚本调用日志列表与详情展开
+let smsLogsRequestId = 0;
 async function loadSmsLogs() {
   if (!smsRecordsTableBody) return;
+  const requestId = ++smsLogsRequestId;
   try {
     const search = getSanitizedSmsSearch();
     syncSmsSearchClearBtn();
@@ -841,7 +848,8 @@ async function loadSmsLogs() {
 
     const res = await fetch(`/api/admin/sms/logs?${params.toString()}`);
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error);
+    if (requestId !== smsLogsRequestId) return;
+    if (!res.ok || !data.ok) throw new Error(data.error || '请求失败');
 
     const logs = data.logs || [];
     if (smsLogTotalCount) {
@@ -869,11 +877,11 @@ async function loadSmsLogs() {
         : '<span class="badge-status revoked">失败</span>';
 
       const phoneDisplay = l.phone_number
-        ? `<code style="color:#1677ff; font-weight:700; cursor:pointer;" title="点击复制号码" onclick="copyCardCode('${escapeHtml(l.phone_number)}')">${escapeHtml(l.phone_number)}</code>`
+        ? `<code style="color:#1677ff; font-weight:700; cursor:pointer;" title="点击复制号码" data-copy-sms="${escapeHtml(l.phone_number)}">${escapeHtml(l.phone_number)}</code>`
         : '<span style="color:#bfbfbf;">--</span>';
 
       const codeDisplay = l.sms_code
-        ? `<code style="color:#52c41a; font-weight:800; font-size:14px; cursor:pointer;" title="点击复制验证码" onclick="copyCardCode('${escapeHtml(l.sms_code)}')">${escapeHtml(l.sms_code)}</code>`
+        ? `<code style="color:#52c41a; font-weight:800; font-size:14px; cursor:pointer;" title="点击复制验证码" data-copy-sms="${escapeHtml(l.sms_code)}">${escapeHtml(l.sms_code)}</code>`
         : '<span style="color:#bfbfbf;">--</span>';
 
       // 格式化参数与返回值
@@ -894,7 +902,7 @@ async function loadSmsLogs() {
       }
 
       return `
-        <tr style="cursor: pointer;" onclick="toggleLogDetail('${l.id}', event)">
+        <tr style="cursor: pointer;" data-sms-row="${escapeHtml(l.id)}">
           <td>${formatDate(l.created_at)}</td>
           <td>${actionTag}</td>
           <td>${phoneDisplay}</td>
@@ -902,12 +910,12 @@ async function loadSmsLogs() {
           <td>${statusTag}</td>
           <td><span style="font-family:monospace; font-size:12px; color:#595959;">${l.latency_ms || 0}ms</span></td>
           <td style="text-align: center;">
-            <button class="btn-action-sm" id="btn-toggle-${l.id}" type="button" style="height:24px; padding:0 8px; font-size:12px;" onclick="event.stopPropagation(); toggleLogDetail('${l.id}')">
+            <button class="btn-action-sm" id="btn-toggle-${escapeHtml(l.id)}" type="button" style="height:24px; padding:0 8px; font-size:12px;" data-sms-toggle="${escapeHtml(l.id)}">
               展开详情 ▾
             </button>
           </td>
         </tr>
-        <tr id="detail-row-${l.id}" class="log-detail-row" style="display: none;">
+        <tr id="detail-row-${escapeHtml(l.id)}" class="log-detail-row" style="display: none;">
           <td colspan="7" style="padding: 0 16px 16px;">
             <div class="log-detail-box">
               <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 10px; color: #595959; font-size: 12px; border-bottom: 1px solid #f0f0f0; padding-bottom: 8px;">
@@ -937,9 +945,28 @@ async function loadSmsLogs() {
       `;
     }).join('');
   } catch (err) {
-    smsRecordsTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4d4f; padding:30px;">加载日志失败: ${escapeHtml(err.message)}</td></tr>`;
+    if (requestId === smsLogsRequestId) {
+      smsRecordsTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4d4f; padding:30px;">加载日志失败: ${escapeHtml(err.message)}</td></tr>`;
+    }
   }
 }
+
+smsRecordsTableBody?.addEventListener('click', event => {
+  const copy = event.target.closest('[data-copy-sms]');
+  if (copy) {
+    event.stopPropagation();
+    copyCardCode(copy.dataset.copySms);
+    return;
+  }
+  const toggle = event.target.closest('[data-sms-toggle]');
+  if (toggle) {
+    event.stopPropagation();
+    toggleLogDetail(toggle.dataset.smsToggle);
+    return;
+  }
+  const row = event.target.closest('[data-sms-row]');
+  if (row) toggleLogDetail(row.dataset.smsRow);
+});
 
 // 展开 / 收起调用详情
 window.toggleLogDetail = (logId, event) => {
@@ -960,9 +987,10 @@ if (refreshSmsRecordsBtn) refreshSmsRecordsBtn.addEventListener('click', () => {
   loadSmsLogs();
 });
 if (smsRecordSearch) {
+  const debouncedSmsSearch = debounce(loadSmsLogs, 300);
   smsRecordSearch.addEventListener('input', () => {
     syncSmsSearchClearBtn();
-    debounce(loadSmsLogs, 300)();
+    debouncedSmsSearch();
   });
 }
 if (clearSmsSearchBtn) {

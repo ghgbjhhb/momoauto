@@ -519,11 +519,6 @@ function startManualInput() {
   url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   url.searchParams.set('deviceId', deviceId);
   url.searchParams.set('pageId', window.state?.pageId || '');
-  try {
-    const token = localStorage.getItem('yunmomo.auth_token');
-    if (token) url.searchParams.set('token', token);
-  } catch {}
-
   const socket = manual.socket = new WebSocket(url);
   socket.onmessage = event => {
     if (generation !== manual.inputGeneration || manual.socket !== socket) return;
