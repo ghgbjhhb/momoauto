@@ -31,6 +31,7 @@ const TAB_CONFIG = {
   cards: { title: '卡密生成与分发', path: '/admin/cards' },
   pool: { title: '设备池调度映射', path: '/admin/pool' },
   ai: { title: 'AI全局设置', path: '/admin/ai' },
+  assistant: { title: 'AI 回复调试', path: '/admin/assistant' },
   logs: { title: '系统运行日志', path: '/admin/logs' },
   sms: { title: '接码平台管理 (玄武API)', path: '/admin/sms' },
 };
@@ -310,6 +311,7 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   // Trigger Data Loaders
   if (targetTab === 'disk') loadAdminDisk();
   else if (targetTab === 'ai') loadAdminAiSettings();
+  else if (targetTab === 'assistant') initAdminAiDebug();
   else if (targetTab === 'sms') loadSmsManagement();
   else if (targetTab === 'users') loadUsers();
   else if (targetTab === 'cards') loadCards();

@@ -73,6 +73,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7zm5 4v2m6-2v2"/></svg>
         <span>AI 服务设置</span>
       </a>
+      <a class="nav-item" data-tab="assistant" href="/admin/assistant" title="AI 调试对话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a3 3 0 0 1-3 3H9l-6 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3z"/><path d="M8 10h8M8 14h5"/></svg>
+        <span>AI 调试对话</span>
+      </a>
       <a class="nav-item" data-tab="logs" href="/admin/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         <span>系统运行日志</span>
@@ -389,6 +393,51 @@
         </div>
       </section>
 
+      <!-- 管理员专属：真实 AI 生成链路的提示词调试，仅隔离的测试对话 -->
+      <section class="tab-content" id="tab-assistant">
+        <div class="admin-ai-lab">
+          <div class="admin-ai-lab-chat">
+            <div class="admin-ai-lab-header">
+              <div>
+                <h2>AI 回复调试</h2>
+                <p>调用真实回复生成服务；只显示最终 reply，不发送到云机。</p>
+              </div>
+              <button type="button" class="btn-action-sm danger" id="aiDebugClear">清空测试聊天</button>
+            </div>
+            <div class="admin-ai-lab-conversation" id="aiDebugMessages" role="log" aria-live="polite" aria-label="测试对话">
+              <div class="admin-ai-lab-empty">输入一条对方的消息，查看实际 AI 回复内容。</div>
+            </div>
+            <div class="admin-ai-lab-bottom">
+              <div id="aiDebugStatus" class="admin-ai-lab-status" role="status">当前测试历史与真实联系人数据完全隔离。</div>
+              <form id="aiDebugForm" class="admin-ai-lab-form">
+                <label for="aiDebugInput">模拟对方发来的消息</label>
+                <textarea id="aiDebugInput" class="form-input" rows="3" maxlength="1200" placeholder="例如：你今天在干嘛？" required></textarea>
+                <div class="admin-ai-lab-submit">
+                  <span>Enter 发送 · Shift+Enter 换行</span>
+                  <button class="btn-action-sm admin-ai-lab-send" id="aiDebugSend" type="submit">生成回复</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          <aside class="admin-ai-lab-prompt">
+            <div class="admin-ai-lab-header">
+              <div>
+                <h2>系统提示词</h2>
+                <p>默认加载当前正式配置，可以先修改草稿测试。</p>
+              </div>
+            </div>
+            <div class="admin-ai-lab-provider" id="aiDebugProvider">正在读取模型配置…</div>
+            <label for="aiDebugPrompt">当前提示词（可编辑测试草稿）</label>
+            <textarea id="aiDebugPrompt" class="form-input" maxlength="6000" spellcheck="false" placeholder="正在读取当前系统提示词…"></textarea>
+            <div class="admin-ai-lab-prompt-actions">
+              <button type="button" class="btn-action-sm" id="aiDebugReloadPrompt">恢复线上提示词</button>
+              <button type="button" class="btn-action-sm admin-ai-lab-send" id="aiDebugSavePrompt">保存为正式提示词</button>
+            </div>
+            <p class="admin-ai-lab-footnote">只编辑文本不会影响真实 AI 回复；点击“保存为正式提示词”才会更新共享配置。每次测试都会使用编辑框里的提示词，以及正式回复服务固定的 JSON 意图契约。</p>
+          </aside>
+        </div>
+      </section>
+
       <!-- Tab 6: AI全局设置 -->
       <section class="tab-content" id="tab-ai">
         <div class="table-container" style="margin-bottom: var(--sp-24)">
@@ -659,6 +708,7 @@
   <script src="/admin/users.js"></script>
   <script src="/admin/disk.js"></script>
   <script src="/admin/services.js"></script>
+  <script src="/admin/assistant.js"></script>
   <script src="/admin/boot.js"></script>
 </body>
 </html>

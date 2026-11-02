@@ -7,6 +7,7 @@ const urlGuard = require('../../automation/url-guard');
 const { listDevices, revokeDeviceAccess, revokeUserAccess } = require('../context');
 
 const authService = getAuthService();
+const aiDebugInFlight = new Set();
 
 function requireAdmin(user, response) {
   if (!user || user.role !== 'admin') {
@@ -141,6 +142,91 @@ async function handleAdminRoutes(ctx, request, response, url) {
       return true;
     }
     json(response, 200, { ok: true });
+    return true;
+  }
+
+  // 管理员 AI 调试：复用正式生成服务，不读取设备联系人数据库，也不向云机发送内容。
+  // 浏览器维护独立的测试历史；API 只接收有限且已验证的纯文本消息。
+  if (request.method === 'GET' && url.pathname === '/api/admin/ai-debug/config') {
+    if (!requireAdmin(user, response)) return true;
+    const { getSanitizedSettings } = require('../../ai/config');
+    const cfg = getSanitizedSettings();
+    json(response, 200, {
+      ok: true, systemPrompt: cfg.systemPrompt,
+      revision: cfg.revision, model: cfg.model, provider: cfg.provider,
+      hasApiKey: cfg.hasApiKey, contextMaxMessages: cfg.contextMaxMessages
+    });
+    return true;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/admin/ai-debug/reply') {
+    if (!requireAdmin(user, response)) return true;
+    const adminId = String(user.id);
+    if (aiDebugInFlight.has(adminId)) {
+      json(response, 409, { ok: false, error: '已有调试回复正在生成，请等待当前请求完成' });
+      return true;
+    }
+    aiDebugInFlight.add(adminId);
+    const controller = new AbortController();
+    const abortOnClose = () => {
+      if (!response.writableEnded) controller.abort();
+    };
+    response.on('close', abortOnClose);
+    try {
+      const body = await readJsonBody(request, 64000);
+      const { getEffectiveConfig } = require('../../ai/config');
+      const { generateReply } = require('../../ai/reply-service');
+      const config = getEffectiveConfig();
+      const prompt = body?.systemPrompt;
+      if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 6000) {
+        json(response, 400, { ok: false, error: '请输入不超过 6000 字的系统提示词' });
+        return true;
+      }
+      const source = body?.history;
+      const maxMessages = Math.min(60, Number(config.contextMaxMessages) || 60);
+      if (!Array.isArray(source) || source.length < 1 || source.length > maxMessages) {
+        json(response, 400, { ok: false, error: '测试对话条数超过模型上下文限制，请清空测试历史后重试' });
+        return true;
+      }
+      let totalChars = prompt.length;
+      const history = [];
+      for (const message of source) {
+        if (!message || !['peer', 'self'].includes(message.sender) ||
+          typeof message.text !== 'string' || !message.text.trim() || message.text.length > 1200) {
+          json(response, 400, { ok: false, error: '测试消息格式错误或单条消息过长' });
+          return true;
+        }
+        totalChars += message.text.length;
+        history.push({ sender: message.sender, text: message.text });
+      }
+      if (history[history.length - 1].sender !== 'peer' || totalChars > 8000) {
+        json(response, 400, { ok: false, error: '对话必须以对方发言结束，且历史总字数不得超过 8000' });
+        return true;
+      }
+      // 与 momo-ai-reply.js 调用相同的生成服务、上下文契约和进度统计。
+      // 真实联系人的 stickyIntent 来自设备数据库，此调试对话完全隔离，不借用真实数据。
+      const selfSentCount = history.filter(item => item.sender === 'self').length;
+      const result = await generateReply(history, { ...config, systemPrompt: prompt }, {
+        signal: controller.signal,
+        progress: { selfSentCount, minSelfMessages: config.handoffMinSelfMessages, stickyIntent: false }
+      });
+      if (!response.destroyed) json(response, 200, { ok: true, reply: result.text });
+    } catch (error) {
+      const invalid = /请求内容过大|请求 JSON 格式不正确/.test(error.message);
+      const status = invalid ? 400 : error.code === 'CONFIG_INCOMPLETE' ? 422 :
+        error.code === 'CONTEXT_BUDGET_EXCEEDED' ? 400 : error.code === 'API_TIMEOUT' ? 504 : 503;
+      if (!response.destroyed) {
+        json(response, status, { ok: false,
+          error: invalid ? '请求格式错误或超出上限' :
+            error.code === 'CONFIG_INCOMPLETE' ? '当前 AI 供应商未配置 API Key' :
+              error.code === 'CONTEXT_BUDGET_EXCEEDED' ? '聊天历史已超过模型上下文限制，请清空历史' :
+                error.code === 'API_TIMEOUT' ? 'AI 生成超时，请稍后重试' :
+                  'AI 回复生成失败，请检查当前供应商配置与连接状态' });
+      }
+    } finally {
+      response.removeListener('close', abortOnClose);
+      aiDebugInFlight.delete(adminId);
+    }
     return true;
   }
 
