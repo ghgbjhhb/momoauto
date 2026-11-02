@@ -51,6 +51,28 @@ function ensureConfigDir() {
   }
 }
 
+// A provider has one production default model plus any number of extra
+// model IDs for the administrator test selector. Old config files with only
+// "model" remain valid and are upgraded in memory without changing the default.
+const MAX_PROVIDER_MODELS = 80;
+const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:\/-]{0,127}$/;
+function normalizeProviderModels(defaultModel, rawModels) {
+  const model = String(defaultModel || '').trim();
+  const extra = rawModels == null ? [] : rawModels;
+  if (!MODEL_ID_RE.test(model)) {
+    throw Object.assign(new Error('默认模型 ID 格式无效'), { code: 'INVALID_MODELS' });
+  }
+  if (!Array.isArray(extra)) {
+    throw Object.assign(new Error('多个模型 ID 必须是数组'), { code: 'INVALID_MODELS' });
+  }
+  const models = [...new Set([model, ...extra.map(item => String(item).trim())].filter(Boolean))];
+  if (models.length < 1 || models.length > MAX_PROVIDER_MODELS ||
+      models.some(item => !MODEL_ID_RE.test(item))) {
+    throw Object.assign(new Error('模型 ID 格式无效或超过 80 个，请检查输入'), { code: 'INVALID_MODELS' });
+  }
+  return models;
+}
+
 function normalizeSettings(parsed) {
   const settings = { ...DEFAULT_SETTINGS, ...(parsed || {}) };
   const rawProviders = Array.isArray(parsed?.providers) ? parsed.providers : null;
@@ -62,6 +84,7 @@ function normalizeSettings(parsed) {
       endpoint: settings.endpoint || 'https://api.deepseek.com',
       apiKey: settings.apiKey || '',
       model: settings.model || 'deepseek-chat',
+      models: normalizeProviderModels(settings.model || 'deepseek-chat', settings.models),
       temperature: Number(settings.temperature ?? 0.7),
       maxTokens: Number(settings.maxTokens ?? 150),
       timeoutMs: Number(settings.timeoutMs ?? 15000),
@@ -78,6 +101,7 @@ function normalizeSettings(parsed) {
       endpoint: p.endpoint || 'https://api.deepseek.com',
       apiKey: p.apiKey || '',
       model: p.model || 'deepseek-chat',
+      models: normalizeProviderModels(p.model || 'deepseek-chat', p.models),
       temperature: Number(p.temperature ?? 0.7),
       maxTokens: Number(p.maxTokens ?? 150),
       timeoutMs: Number(p.timeoutMs ?? 15000),
@@ -146,6 +170,7 @@ function listProviders() {
     provider: p.provider,
     endpoint: p.endpoint,
     model: p.model,
+    models: p.models,
     apiKeyMasked: maskApiKey(p.apiKey),
     hasApiKey: Boolean(p.apiKey && p.apiKey.trim()),
     temperature: p.temperature ?? 0.7,
@@ -242,13 +267,21 @@ function saveProvider(providerData = {}) {
     }
   }
 
+  const defaultModel = providerData.model ? String(providerData.model).trim() :
+    (existing ? existing.model : 'deepseek-chat');
+  const modelIds = normalizeProviderModels(
+    defaultModel,
+    providerData.models === undefined ? (existing?.models || []) : providerData.models
+  );
+
   const updatedProvider = {
     id: existing ? existing.id : (targetId || `prov_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`),
     name: providerData.name ? String(providerData.name).trim() : (existing ? existing.name : '新供应商'),
     provider: providerData.provider ? String(providerData.provider).trim() : (existing ? existing.provider : 'openai'),
     endpoint: providerData.endpoint ? String(providerData.endpoint).trim() : (existing ? existing.endpoint : 'https://api.deepseek.com'),
     apiKey: finalApiKey,
-    model: providerData.model ? String(providerData.model).trim() : (existing ? existing.model : 'deepseek-chat'),
+    model: defaultModel,
+    models: modelIds,
     temperature: Number(providerData.temperature ?? (existing ? existing.temperature : 0.7)),
     maxTokens: Number(providerData.maxTokens ?? (existing ? existing.maxTokens : 150)),
     timeoutMs: Number(providerData.timeoutMs ?? (existing ? existing.timeoutMs : 15000)),

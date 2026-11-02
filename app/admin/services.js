@@ -440,6 +440,7 @@ function openAiProviderModal(providerId = null) {
   const endpointEl = document.getElementById('editProviderEndpoint');
   const apiKeyEl = document.getElementById('editProviderApiKey');
   const modelEl = document.getElementById('editProviderModel');
+  const modelsEl = document.getElementById('editProviderModels');
   const tempEl = document.getElementById('editProviderTemp');
   const maxTokensEl = document.getElementById('editProviderMaxTokens');
   const timeoutEl = document.getElementById('editProviderTimeout');
@@ -462,6 +463,7 @@ function openAiProviderModal(providerId = null) {
       apiKeyEl.placeholder = p.hasApiKey ? '已配置: ' + p.apiKeyMasked + ' (留空保持)' : '输入 API Key';
     }
     if (modelEl) modelEl.value = p.model || '';
+    if (modelsEl) modelsEl.value = (p.models || [p.model]).filter(Boolean).join('\n');
     if (tempEl) tempEl.value = p.temperature ?? 0.7;
     if (maxTokensEl) maxTokensEl.value = p.maxTokens ?? 150;
     if (timeoutEl) timeoutEl.value = p.timeoutMs ?? 15000;
@@ -477,6 +479,7 @@ function openAiProviderModal(providerId = null) {
       apiKeyEl.placeholder = '输入 API Key';
     }
     if (modelEl) modelEl.value = 'deepseek-chat';
+    if (modelsEl) modelsEl.value = '';
     if (tempEl) tempEl.value = 0.7;
     if (maxTokensEl) maxTokensEl.value = 150;
     if (timeoutEl) timeoutEl.value = 15000;
@@ -499,6 +502,8 @@ async function handleSaveAiProvider() {
   const apiKeyEl = document.getElementById('editProviderApiKey');
   const apiKey = apiKeyEl?.value?.trim();
   const model = document.getElementById('editProviderModel')?.value?.trim();
+  const models = (document.getElementById('editProviderModels')?.value || '')
+    .split(/\r?\n/).map(value => value.trim()).filter(Boolean);
   const temperature = Number(document.getElementById('editProviderTemp')?.value);
   const maxTokens = Number(document.getElementById('editProviderMaxTokens')?.value);
   const timeoutMs = Number(document.getElementById('editProviderTimeout')?.value);
@@ -523,6 +528,7 @@ async function handleSaveAiProvider() {
     provider,
     endpoint,
     model,
+    models,
     temperature,
     maxTokens,
     timeoutMs,

@@ -382,7 +382,9 @@ async function aiDebugSavePrompt() {
 
 function initAdminAiDebug() {
   if (aiDebugReady) {
-    if (!aiDebugConfig && !aiDebugLoading) void aiDebugLoadConfig();
+    // Return from provider editor: refresh available models while retaining any
+    // unsaved prompt draft and the browser-only chat history.
+    if (!aiDebugLoading) void aiDebugLoadConfig();
     return;
   }
   aiDebugReady = true;

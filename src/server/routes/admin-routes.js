@@ -23,7 +23,8 @@ function getAdminDebugModelChoices() {
   const { listProviders } = require('../../ai/config');
   const result = [];
   for (const provider of listProviders()) {
-    const models = [provider.model];
+    const models = Array.isArray(provider.models) && provider.models.length
+      ? [...provider.models] : [provider.model];
     let officialDeepSeek = false;
     try {
       officialDeepSeek = provider.provider === 'deepseek' &&
