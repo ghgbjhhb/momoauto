@@ -4,7 +4,7 @@
 // 页面数据逻辑分布在 devices.js / scripts.js / ai-reply.js / momo-brain.js / session.js。
 
 // 构建标记：改动前端后递增，用于确认浏览器加载的是否为新版（控制台输出 + window.YunMomoConsoleBuild）
-window.YunMomoConsoleBuild = '20261102-server-workflows';
+window.YunMomoConsoleBuild = '20261102-device-actions-stable';
 console.info(`[yunmomo-console] build ${window.YunMomoConsoleBuild}`);
 
 // 全局防御：封杀浏览器原生 alert / confirm / prompt
@@ -150,8 +150,11 @@ window.ic = ic;
 /* ---------- 通用工具 ---------- */
 
 function copyToClipboard(text, successToast = '已复制到剪贴板') {
+  if (!text) { showToast('没有可复制的内容'); return; }
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => showToast(successToast)).catch(() => fallbackCopy(text, successToast));
+    navigator.clipboard.writeText(String(text))
+      .then(() => showToast(successToast))
+      .catch(() => fallbackCopy(text, successToast));
   } else {
     fallbackCopy(text, successToast);
   }
@@ -160,18 +163,18 @@ window.copyToClipboard = copyToClipboard;
 
 function fallbackCopy(text, successToast) {
   const textarea = document.createElement('textarea');
-  textarea.value = text;
+  textarea.value = String(text);
   textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
   textarea.setAttribute('readonly', '');
   document.body.appendChild(textarea);
   textarea.select();
+  let copied = false;
   try {
-    document.execCommand('copy');
-    showToast(successToast);
-  } catch {
-    showToast('复制失败，请手动长按复制');
-  }
-  document.body.removeChild(textarea);
+    copied = document.execCommand('copy') === true;
+  } catch { /* 浏览器拒绝写入剪贴板 */ }
+  textarea.remove();
+  showToast(copied ? successToast : '浏览器未允许复制，请检查剪贴板权限');
 }
 
 let sessionRecheck = null;

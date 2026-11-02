@@ -226,22 +226,38 @@ function updateDeviceMeta(device, stats = null) {
     resEl.textContent = stats?.width && stats?.height ? `${stats.width}×${stats.height}` : '720×1280';
   }
 
+  // 直播帧可达 30fps；按钮只渲染一次，否则按下和释放鼠标期间重建 SVG
+  // 会导致点击事件丢失。事件只绑定在稳定的父容器上。
   const copyBtn = byId('metaCopyIdBtn');
-  if (copyBtn) {
+  if (copyBtn && !copyBtn.dataset.ready) {
     copyBtn.innerHTML = ic('copy', 12);
-    copyBtn.onclick = () => copyToClipboard(device.deviceId, `已复制虚拟机 ID: ${device.deviceId}`);
+    copyBtn.dataset.ready = '1';
+    copyBtn.setAttribute('aria-label', '复制设备 ID');
   }
-
   const manualBtn = byId('metaManualBtn');
-  if (manualBtn) {
+  if (manualBtn && !manualBtn.dataset.ready) {
     manualBtn.innerHTML = `${ic('maximize', 12)} 手动控制`;
-    manualBtn.onclick = () => {
-      if (typeof window.openManualControl === 'function') window.openManualControl(device);
-      else showToast('控制台组件加载中，请稍候');
-    };
+    manualBtn.dataset.ready = '1';
   }
 }
 window.updateDeviceMeta = updateDeviceMeta;
+
+byId('ovDeviceMeta')?.addEventListener('click', event => {
+  const copy = event.target.closest('#metaCopyIdBtn');
+  const manual = event.target.closest('#metaManualBtn');
+  if (!copy && !manual) return;
+  const device = currentDevice();
+  if (!device) { showToast('请先选择云手机'); return; }
+  if (copy) {
+    copyToClipboard(device.deviceId, `已复制虚拟机 ID: ${device.deviceId}`);
+    return;
+  }
+  if (typeof window.openManualControl === 'function') {
+    window.openManualControl(device);
+  } else {
+    showToast('手动控制组件尚未就绪，请刷新页面');
+  }
+});
 
 function createPreviewPlayer(device, canvas, hint, cover) {
   const id = device.deviceId;
