@@ -426,7 +426,13 @@
                 <p>默认加载当前正式配置，可以先修改草稿测试。</p>
               </div>
             </div>
-            <div class="admin-ai-lab-provider" id="aiDebugProvider">正在读取模型配置…</div>
+            <div class="admin-ai-lab-provider" id="aiDebugProvider">
+              <span id="aiDebugProviderMeta">正在读取线上模型配置…</span>
+              <label for="aiDebugModelSelect">测试模型</label>
+              <select id="aiDebugModelSelect" class="form-input" disabled>
+                <option value="">正在加载可选模型…</option>
+              </select>
+            </div>
             <label for="aiDebugPrompt">当前提示词（可编辑测试草稿）</label>
             <textarea id="aiDebugPrompt" class="form-input" maxlength="6000" spellcheck="false" placeholder="正在读取当前系统提示词…"></textarea>
             <div class="admin-ai-lab-prompt-actions">

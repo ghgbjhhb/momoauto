@@ -16,6 +16,34 @@ function getDebugHandoffMinSelfMessages() {
   return Number(getEffectiveConfig().handoffMinSelfMessages) || 7;
 }
 
+// This is an allowlist sourced from trusted server configuration. Only an
+// official DeepSeek endpoint gets additional model IDs documented by DeepSeek.
+// No arbitrary model/endpoint/credential pair can be supplied by a browser.
+function getAdminDebugModelChoices() {
+  const { listProviders } = require('../../ai/config');
+  const result = [];
+  for (const provider of listProviders()) {
+    const models = [provider.model];
+    let officialDeepSeek = false;
+    try {
+      officialDeepSeek = provider.provider === 'deepseek' &&
+        new URL(provider.endpoint).hostname.toLowerCase() === 'api.deepseek.com';
+    } catch {}
+    if (officialDeepSeek) models.push('deepseek-flash', 'deepseek-v4-pro');
+    for (const model of new Set(models)) {
+      result.push({
+        id: provider.id + '::' + model,
+        providerId: provider.id,
+        providerName: provider.name,
+        model,
+        hasApiKey: provider.hasApiKey,
+        isDefault: provider.isDefault && model === provider.model
+      });
+    }
+  }
+  return result;
+}
+
 function requireAdmin(user, response) {
   if (!user || user.role !== 'admin') {
     json(response, 403, { ok: false, error: '无管理员访问权限' });
@@ -162,6 +190,7 @@ async function handleAdminRoutes(ctx, request, response, url) {
       ok: true, systemPrompt: cfg.systemPrompt,
       revision: cfg.revision, model: cfg.model, provider: cfg.provider,
       hasApiKey: cfg.hasApiKey, contextMaxMessages: cfg.contextMaxMessages,
+      models: getAdminDebugModelChoices(),
       handoffEnabled: cfg.handoffEnabled,
       handoffMinSelfMessages: getDebugHandoffMinSelfMessages(),
       handoffSegments: cfg.handoffSegments
@@ -184,9 +213,35 @@ async function handleAdminRoutes(ctx, request, response, url) {
     response.on('close', abortOnClose);
     try {
       const body = await readJsonBody(request, 64000);
-      const { getEffectiveConfig } = require('../../ai/config');
+      const { getEffectiveConfig, loadSettings } = require('../../ai/config');
       const { generateReply } = require('../../ai/reply-service');
       const config = getEffectiveConfig();
+      const choices = getAdminDebugModelChoices();
+      const modelSelection = body?.modelSelection;
+      const choice = modelSelection === undefined
+        ? choices.find(item => item.isDefault)
+        : choices.find(item => item.id === modelSelection);
+      if (!choice) {
+        json(response, 400, { ok: false, error: '所选测试模型已失效，请重新打开模型选择列表' });
+        return true;
+      }
+      const configuredProvider = loadSettings().providers.find(item => item.id === choice.providerId);
+      if (!configuredProvider || !configuredProvider.apiKey?.trim()) {
+        json(response, 422, { ok: false, error: '所选模型的供应商未配置有效 API Key' });
+        return true;
+      }
+      // Select the provider's trusted endpoint and key, without persisting any
+      // change to the default model used by real automation tasks.
+      const testConfig = {
+        ...config,
+        provider: configuredProvider.provider,
+        endpoint: configuredProvider.endpoint,
+        apiKey: configuredProvider.apiKey,
+        model: choice.model,
+        temperature: configuredProvider.temperature,
+        maxTokens: configuredProvider.maxTokens,
+        timeoutMs: configuredProvider.timeoutMs
+      };
       const prompt = body?.systemPrompt;
       if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 6000) {
         json(response, 400, { ok: false, error: '请输入不超过 6000 字的系统提示词' });
@@ -220,7 +275,7 @@ async function handleAdminRoutes(ctx, request, response, url) {
       // 与 momo-ai-reply.js 调用相同的生成服务、上下文契约和进度统计。
       // 真实联系人的 stickyIntent 来自设备数据库，此调试对话完全隔离，不借用真实数据。
       const selfSentCount = history.filter(item => item.sender === 'self').length;
-      const result = await generateReply(history, { ...config, systemPrompt: prompt }, {
+      const result = await generateReply(history, { ...testConfig, systemPrompt: prompt }, {
         signal: controller.signal,
         progress: {
           selfSentCount, minSelfMessages: config.handoffMinSelfMessages,

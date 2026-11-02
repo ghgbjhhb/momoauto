@@ -4,6 +4,7 @@
 // 模型调用由后端复用 momo-ai-reply 相同 generateReply()，不调用云机 API。
 const AI_DEBUG_HISTORY_KEY = 'yunmomo.admin.ai-debug.v1';
 const AI_DEBUG_TRACE_KEY = 'yunmomo.admin.ai-debug-trace.v1';
+const AI_DEBUG_MODEL_KEY = 'yunmomo.admin.ai-debug-model.v1';
 let aiDebugReady = false;
 let aiDebugLoading = null;
 let aiDebugHistory = [];
@@ -14,6 +15,7 @@ let aiDebugController = null;
 let aiDebugPromptChanged = false;
 let aiDebugPromptEditVersion = 0;
 let aiDebugConfigVersion = 0;
+let aiDebugSelectedModelId = '';
 let aiDebugTraces = [];
 let aiDebugStickyIntent = false;
 let aiDebugHandoffState = '';
@@ -145,19 +147,54 @@ function aiDebugRenderTraces() {
   list.append(fragment);
 }
 
+function aiDebugGetSelectedModel() {
+  return aiDebugConfig?.models?.find(item => item.id === aiDebugSelectedModelId) || null;
+}
+
 function aiDebugSetBusy(busy) {
   aiDebugBusy = busy;
+  const select = document.getElementById('aiDebugModelSelect');
+  if (select) select.disabled = busy || !Array.isArray(aiDebugConfig?.models) || !aiDebugConfig.models.length;
   const send = document.getElementById('aiDebugSend');
   if (send) {
-    send.disabled = busy || !aiDebugConfig?.hasApiKey || aiDebugHandoffState === 'sent';
+    send.disabled = busy || !aiDebugGetSelectedModel()?.hasApiKey || aiDebugHandoffState === 'sent';
     send.textContent = busy ? '正在生成…' : '生成回复';
   }
+}
+
+function aiDebugRenderModelOptions(config) {
+  const select = document.getElementById('aiDebugModelSelect');
+  if (!select) return;
+  const choices = Array.isArray(config.models) ? config.models : [];
+  select.replaceChildren();
+  if (!choices.length) {
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '没有可选模型，请更新并重启服务';
+    select.append(placeholder);
+    aiDebugSelectedModelId = '';
+    aiDebugSetStatus('当前服务端尚未提供模型选择列表，请确认已重启最新版 Node 服务。', true);
+    return;
+  }
+  for (const choice of choices) {
+    const option = document.createElement('option');
+    option.value = choice.id;
+    option.textContent = choice.providerName + ' · ' + choice.model +
+      (choice.isDefault ? '（线上默认）' : '') +
+      (!choice.hasApiKey ? '（未配置 Key）' : '');
+    select.append(option);
+  }
+  const previous = choices.find(choice => choice.id === aiDebugSelectedModelId);
+  const selected = previous || choices.find(choice => choice.isDefault) || choices[0];
+  aiDebugSelectedModelId = selected.id;
+  select.value = selected.id;
+  aiDebugSetBusy(aiDebugBusy);
 }
 
 async function aiDebugLoadConfig(force = false) {
   if (aiDebugLoading && !force) return aiDebugLoading;
   const promptInput = document.getElementById('aiDebugPrompt');
-  const provider = document.getElementById('aiDebugProvider');
+  const providerMeta = document.getElementById('aiDebugProviderMeta');
   const configVersion = ++aiDebugConfigVersion;
   const promptVersion = aiDebugPromptEditVersion;
   const currentLoad = (async () => {
@@ -172,13 +209,14 @@ async function aiDebugLoadConfig(force = false) {
         promptInput.value = result.systemPrompt || '';
         aiDebugPromptChanged = false;
       }
-      if (provider) {
-        provider.textContent = '当前供应商：' + (result.provider || '未知') +
-          ' · 模型：' + (result.model || '未指定') +
-          (result.hasApiKey ? '' : ' · 未配置 API Key');
+      if (providerMeta) {
+        providerMeta.textContent = '线上默认：' + (result.provider || '未知') +
+          ' · ' + (result.model || '未指定');
       }
-      aiDebugSetStatus('测试历史仅存于当前浏览器标签页。草稿测试不会修改正式提示词。');
-      aiDebugSetBusy(aiDebugBusy);
+      aiDebugRenderModelOptions(result);
+      if (Array.isArray(result.models) && result.models.length) {
+        aiDebugSetStatus('切换测试模型不会修改线上默认模型；测试历史仅留在当前浏览器标签页。');
+      }
     } catch (error) {
       if (configVersion === aiDebugConfigVersion) {
         aiDebugSetStatus('读取 AI 配置失败：' + error.message, true);
@@ -208,8 +246,13 @@ async function aiDebugSendMessage() {
     aiDebugSetStatus('请输入不超过 6000 字的系统提示词。', true);
     return;
   }
-  if (!aiDebugConfig?.hasApiKey) {
-    aiDebugSetStatus('当前 AI 供应商没有配置 API Key，请先在 AI 服务设置中配置。', true);
+  const selectedModel = aiDebugGetSelectedModel();
+  if (!selectedModel) {
+    aiDebugSetStatus('请先选择一个测试模型。', true);
+    return;
+  }
+  if (!selectedModel.hasApiKey) {
+    aiDebugSetStatus('所选模型的供应商没有配置 API Key，请先在 AI 服务设置中配置。', true);
     return;
   }
   const nextHistory = [...aiDebugHistory, { sender: 'peer', text: message }];
@@ -232,6 +275,7 @@ async function aiDebugSendMessage() {
       signal: controller.signal,
       body: JSON.stringify({
         systemPrompt: prompt,
+        modelSelection: selectedModel.id,
         history: nextHistory.map(({ sender, text }) => ({ sender, text })),
         debugState: { stickyIntent: aiDebugStickyIntent, handoffState: aiDebugHandoffState }
       })
@@ -343,6 +387,8 @@ function initAdminAiDebug() {
   }
   aiDebugReady = true;
   aiDebugHistory = aiDebugReadHistory();
+  try { aiDebugSelectedModelId = sessionStorage.getItem(AI_DEBUG_MODEL_KEY) || ''; }
+  catch { aiDebugSelectedModelId = ''; }
   if (aiDebugHistory.length) aiDebugReadTraces();
   aiDebugRender();
   aiDebugRenderTraces();
@@ -363,6 +409,16 @@ function initAdminAiDebug() {
   prompt?.addEventListener('input', () => {
     aiDebugPromptChanged = true;
     ++aiDebugPromptEditVersion;
+  });
+  document.getElementById('aiDebugModelSelect')?.addEventListener('change', event => {
+    if (aiDebugBusy) return;
+    const selected = aiDebugConfig?.models?.find(item => item.id === event.target.value);
+    if (!selected) return;
+    aiDebugSelectedModelId = selected.id;
+    try { sessionStorage.setItem(AI_DEBUG_MODEL_KEY, selected.id); } catch {}
+    aiDebugSetBusy(false);
+    aiDebugSetStatus('已切换测试模型：' + selected.providerName + ' · ' + selected.model +
+      '。仅影响调试对话，线上默认模型不变。');
   });
   document.getElementById('aiDebugClear')?.addEventListener('click', () => {
     ++aiDebugVersion;

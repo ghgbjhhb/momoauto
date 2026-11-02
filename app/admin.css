@@ -1126,12 +1126,31 @@ body {
   color: var(--text-on-accent);
 }
 .admin-ai-lab-provider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
   padding: var(--sp-8);
   border-radius: var(--r-4);
   background: var(--bg-subtle);
   color: var(--text-2);
   font-size: var(--fs-12);
   overflow-wrap: anywhere;
+}
+.admin-ai-lab-provider label {
+  font-size: var(--fs-12);
+  font-weight: var(--fw-600);
+  color: var(--text-2);
+}
+.admin-ai-lab-provider select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--h-control-lg);
+  color: var(--text-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-6);
+  font-size: var(--fs-13);
 }
 .admin-ai-lab-prompt textarea {
   box-sizing: border-box;
