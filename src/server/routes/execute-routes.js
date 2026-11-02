@@ -106,14 +106,20 @@ async function handleExecuteRoutes(ctx, request, response, url) {
         status: run.status
       });
     } else {
-      json(response, 200, {
-        ok: true,
-        active: false,
+      // 内存中查不到不等于已经完成；历史终态必须有明确的落盘证据。
+      const state = await getWebScriptState(scriptRunId, user);
+      const found = state.state !== 'not_found';
+      json(response, found ? 200 : 404, {
+        ok: found,
+        active: state.state === 'running',
         scriptRunId,
-        logFile: `logs/runs/${scriptRunId}.log`,
-        stdout: '',
-        stderr: '',
-        status: 'finished'
+        state: state.state,
+        status: state.state,
+        logFile: state.result?.logFile || null,
+        stdout: state.stdout || '',
+        stderr: state.stderr || '',
+        result: state.result || null,
+        message: state.message || ''
       });
     }
     return true;

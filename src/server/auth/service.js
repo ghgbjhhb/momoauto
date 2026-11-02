@@ -17,6 +17,7 @@ const QUERY_TOKEN_PATHS = [
 ];
 
 const SCRYPT_KEYLEN = 64;
+const OWNED_DEVICE_VERIFICATION_MS = 30 * 1000;
 
 // 仅供启动期一次性建号使用：此刻没有并发请求，阻塞可接受。
 function hashPasswordSync(password, salt) {
@@ -61,6 +62,7 @@ class AuthService {
     this.jwtSecret = this.initSecret();
     this.db.setTokenEncryptionKey(this.jwtSecret);
     this._userOwnedDevices = new Map();
+    this._userOwnedDeviceChecks = new Map();
     this.initDefaultAdmin();
   }
 
@@ -580,9 +582,19 @@ class AuthService {
     return this.db.getUserToken(userId);
   }
 
-  setUserOwnedDevices(userId, deviceIds) {
-    if (!this._userOwnedDevices) this._userOwnedDevices = new Map();
-    this._userOwnedDevices.set(userId, new Set((deviceIds || []).map(String)));
+  setUserOwnedDevices(userId, deviceIds, expectedToken = this.getUserPlatformToken(userId)) {
+    // 平台令牌切换过程中旧请求可能延迟返回，不允许旧身份的列表污染新身份。
+    if (!expectedToken || this.getUserPlatformToken(userId) !== expectedToken) return false;
+    this._userOwnedDevices.set(userId, {
+      ids: new Set((deviceIds || []).map(String)),
+      verifiedUntil: Date.now() + OWNED_DEVICE_VERIFICATION_MS
+    });
+    return true;
+  }
+
+  hasVerifiedOwnedDevice(userId, deviceId) {
+    const entry = this._userOwnedDevices.get(userId);
+    return Boolean(entry && entry.verifiedUntil > Date.now() && entry.ids.has(String(deviceId)));
   }
 
   canAccessDevice(user, deviceId) {
@@ -590,7 +602,7 @@ class AuthService {
     if (user.role === 'admin') return true;
     const devStr = String(deviceId || '');
     // 未核验的设备归属不构成权限，卡密租赁另按有效期判断。
-    if (this.getUserPlatformToken(user.id) && this._userOwnedDevices.get(user.id)?.has(devStr)) return true;
+    if (this.getUserPlatformToken(user.id) && this.hasVerifiedOwnedDevice(user.id, devStr)) return true;
     this.sweepExpiredAllocations();
     const allocations = this.db.getActiveAllocationsForUser(user.id);
     return allocations.some(a => String(a.device_id) === devStr && a.expire_at > Date.now());
@@ -599,17 +611,31 @@ class AuthService {
   async ensureDeviceAccess(user, deviceId) {
     if (!user) return false;
     if (user.role === 'admin') return true;
-    if (this.getUserPlatformToken(user.id) && !this._userOwnedDevices.has(user.id)) {
-      const { YunmomoClient } = require('../../index');
-      try {
-        const token = this.getUserPlatformToken(user.id);
-        const result = await new YunmomoClient({ token, timeoutMs: 15000 })
-          .listDevices({ current: 1, size: 50000 });
-        const records = Array.isArray(result?.records) ? result.records : (Array.isArray(result) ? result : []);
-        this.setUserOwnedDevices(user.id, records.map(d => String(d.id ?? d.deviceId ?? '')));
-      } catch {
-        // 查询失败不得视为拥有全部设备，也不缓存空结果，避免网络恢复后仍被拒绝。
+    if (this.canAccessDevice(user, deviceId)) return true;
+    const token = this.getUserPlatformToken(user.id);
+    const cached = this._userOwnedDevices.get(user.id);
+    if (token && (!cached || cached.verifiedUntil <= Date.now())) {
+      // 多个截图/视频/API 同时验证时只请求一次平台；失败不延长旧授权。
+      let pending = this._userOwnedDeviceChecks.get(user.id);
+      if (!pending || pending.token !== token) {
+        const { YunmomoClient } = require('../../index');
+        const request = (async () => {
+          try {
+            const result = await new YunmomoClient({ token, timeoutMs: 15000 })
+              .listDevices({ current: 1, size: 50000 });
+            const records = Array.isArray(result?.records) ? result.records : (Array.isArray(result) ? result : []);
+            this.setUserOwnedDevices(user.id, records.map(d => String(d.id ?? d.deviceId ?? '')), token);
+          } catch {
+            // 平台异常时未验证的自有设备禁止操作；租赁权限继续独立生效。
+          }
+        })();
+        pending = { token, request };
+        this._userOwnedDeviceChecks.set(user.id, pending);
+        request.finally(() => {
+          if (this._userOwnedDeviceChecks.get(user.id) === pending) this._userOwnedDeviceChecks.delete(user.id);
+        });
       }
+      await pending.request;
     }
     return this.canAccessDevice(user, deviceId);
   }
@@ -617,7 +643,7 @@ class AuthService {
   getDeviceAccessToken(user, deviceId) {
     const token = this.getUserPlatformToken(user.id);
     if (user.role === 'admin') return token;
-    return token && this._userOwnedDevices.get(user.id)?.has(String(deviceId)) ? token : '';
+    return token && this.hasVerifiedOwnedDevice(user.id, deviceId) ? token : '';
   }
 
   getUserZhencanBalance(userId) {

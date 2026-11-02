@@ -574,14 +574,20 @@ async function init() {
   }
 }
 
-setInterval(loadSharedRuntimeState, 1500);
+// 活跃页面同步设备与任务，隐藏页面停止无效轮询；执行页独立状态查询仍正常运行。
 setInterval(() => {
-  if (state.tokenConfigured) loadDevices(true);
+  if (!document.hidden) loadSharedRuntimeState();
 }, 3000);
+setInterval(() => {
+  if (state.tokenConfigured && !document.hidden) loadDevices(true);
+}, 12000);
 setInterval(updateStopButton, 2000);
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.tokenConfigured) loadDevices(true);
+  if (!document.hidden) {
+    loadSharedRuntimeState();
+    if (state.tokenConfigured) loadDevices(true);
+  }
 });
 
 init();

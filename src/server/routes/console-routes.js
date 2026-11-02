@@ -310,7 +310,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       if (userToken) {
         try {
           ownedDevices = await listDevicesWithToken(userToken);
-          authService.setUserOwnedDevices(user.id, ownedDevices.map(device => device.deviceId));
+          authService.setUserOwnedDevices(user.id, ownedDevices.map(device => device.deviceId), userToken);
         } catch (error) {
           // 平台临时超时不应撤销此前已核实的设备所有权；新 Token 会清除旧缓存。
           console.warn(`[User Devices] 用户 ${user.id} 自有云机拉取异常: ${error.message}`);

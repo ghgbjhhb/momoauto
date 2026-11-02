@@ -20,6 +20,24 @@ const { YunmomoClient } = require('../index');
 
 // 内存中活跃任务记录 (In-Memory Runs Store)
 const activeRuns = new Map();
+// 仅清理已结算的结果；running/cancelling 即使超时也不能误删。
+const FINISHED_RUN_TTL_MS = 30 * 60 * 1000;
+const MAX_FINISHED_RUNS = 256;
+function pruneFinishedAiRuns(now = Date.now()) {
+  const retained = [];
+  for (const [id, run] of activeRuns) {
+    if (!run.finishedAt) continue;
+    if (Date.parse(run.finishedAt) + FINISHED_RUN_TTL_MS <= now) {
+      activeRuns.delete(id);
+    } else {
+      retained.push(id);
+    }
+  }
+  for (const id of retained.slice(0, Math.max(0, retained.length - MAX_FINISHED_RUNS))) {
+    activeRuns.delete(id);
+  }
+}
+setInterval(pruneFinishedAiRuns, 60 * 1000).unref();
 
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
@@ -154,6 +172,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
       error: null
     };
 
+    pruneFinishedAiRuns();
     activeRuns.set(runId, runRecord);
     const timingStarted = require('node:perf_hooks').performance.now();
 
@@ -181,6 +200,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
       } finally {
         runRecord.finishedAt = new Date().toISOString();
         runRecord.durationMs = Math.round((require('node:perf_hooks').performance.now() - timingStarted) * 100) / 100;
+        pruneFinishedAiRuns();
       }
     })();
 
@@ -192,6 +212,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
   if (pathname.startsWith('/api/ai-reply/runs/') && method === 'GET') {
     const parts = pathname.split('/');
     const runId = parts[4];
+    pruneFinishedAiRuns();
     const runRecord = activeRuns.get(runId);
 
     if (!runRecord || (user?.role !== 'admin' && runRecord.ownerUserId !== user?.id)) {
@@ -219,6 +240,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
   if (pathname.startsWith('/api/ai-reply/runs/') && pathname.endsWith('/cancel') && method === 'POST') {
     const parts = pathname.split('/');
     const runId = parts[4];
+    pruneFinishedAiRuns();
     const runRecord = activeRuns.get(runId);
 
     if (!runRecord || (user?.role !== 'admin' && runRecord.ownerUserId !== user?.id)) {

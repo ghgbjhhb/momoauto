@@ -40,6 +40,7 @@
   --lh-relaxed: 1.6;
 
   /* ---------- 间距（2 的倍数栅格，控制台需要 2/6 这类小值） ---------- */
+  --sp-1: 1px;
   --sp-2: 2px;
   --sp-4: 4px;
   --sp-6: 6px;
@@ -61,6 +62,10 @@
   /* ---------- 控件与行高（锁死高度，避免同类元素高低不一） ---------- */
   --h-control-sm: 24px;
   --h-control: 28px;
+  --h-device-chip: 26px;
+  --h-device-meta: 34px;
+  --h-view-bottom: 38px;
+  --h-task-run: 42px;
   --h-control-lg: 32px;
   --h-row-compact: 28px;
   --h-row: 32px;
@@ -226,6 +231,7 @@
   --overlay-soft: rgba(248, 250, 253, 0.86);
   --phone-frame: #192230;
   --phone-bg: #f8f8f9;
+  --video-black: #000000;
   --phone-line: #ececec;
 
   --elev-soft: 0 3px 12px rgba(31, 54, 83, 0.035);
