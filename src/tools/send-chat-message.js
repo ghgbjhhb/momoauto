@@ -351,8 +351,17 @@ async function sendChatMessage(host, text, options = {}, ctx = null, dependencie
     }
 
     if (!cleared) {
+      // The send tap was already dispatched. A missing OCR confirmation is
+      // NOT permission to restart the operation or count it as unsent.
       report.sendState = 'uncertain';
-      fail('SEND_NOT_CONFIRMED', 'Input box clearing was not confirmed after send click; marked uncertain');
+      record('send_result_unknown', { reason: 'input_not_confirmed_empty' });
+      if (settings.replyStore && settings.jobId) {
+        settings.replyStore.updateReplyJobState(
+          settings.jobId, 'send_attempted', 'uncertain',
+          { outcome: 'input_clear_unconfirmed', sendEvidence }
+        );
+      }
+      return { status: 'uncertain', sendState: 'uncertain', data: report };
     }
 
     report.inputCleared = true;
@@ -415,6 +424,12 @@ async function sendChatMessage(host, text, options = {}, ctx = null, dependencie
     if (settings.replyStore && settings.jobId) {
       const job = settings.replyStore.getReplyJob(settings.jobId);
       if (job?.state === 'send_attempted') settings.replyStore.updateReplyJobState(job.id, 'send_attempted', 'uncertain', { outcome: 'send_interrupted', sendEvidence });
+    }
+    if ((report.sendState === 'send_attempted' || report.sendState === 'uncertain') &&
+        !ctx.signal?.aborted && error.code !== 'LEASE_REVOKED') {
+      report.sendState = 'uncertain';
+      record('send_result_unknown', { reason: error.code || 'post_click_error' });
+      return { status: 'uncertain', sendState: 'uncertain', data: report };
     }
     throw error;
   } finally {

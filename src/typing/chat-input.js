@@ -44,7 +44,8 @@ async function prepareMessages(messages, python, ctx) {
 function normalizeDraftText(text) {
   if (typeof text !== 'string') return '';
   return text
-    .replace(/[\r\n\t\s]/g, '')
+    .replace(/\r\n/g, '\n')
+    .trim()
     .replace(/，/g, ',')
     .replace(/。/g, '.')
     .replace(/！/g, '!')
@@ -61,51 +62,11 @@ function normalizeDraftText(text) {
     .replace(/～/g, '~');
 }
 
-function stripTrailingArtifacts(text) {
-  if (!text) return '';
-  // 过滤尾随的光标竖线、表情残影残渣 (如 [, ], (, ), |, -, _, ~, ^, *, ·, 单双引号等) 以及边缘误切入的“发送”字样
-  return text.replace(/(?:发送|[\[\]\(\)\|\-_\~^\*·'"])+$/g, '');
-}
-
-function stripPunctuation(text) {
-  if (!text) return '';
-  return text.replace(/[，,。.！!？?：:；;“”"‘’'—~～·\s]/g, '');
-}
-
-function similarity(a, b) {
-  if (a === b) return 1;
-  const m = a.length, n = b.length;
-  if (!m || !n) return 0;
-  let prev = Array.from({ length: n + 1 }, (_, i) => i);
-  for (let i = 1; i <= m; i++) {
-    const cur = [i];
-    for (let j = 1; j <= n; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return 1 - prev[n] / Math.max(m, n);
-}
-
-// OCR 读回并非百分百可靠（形近字误读、断行粘连），逐字硬比对会误杀正确草稿。
-// 容差放行：去标点归一后差别<60%（相似度>=0.4）即视为一致；剪贴板粘贴路径更宽——
-// 粘贴是确定性写入，只要输入框读到非空内容即放行（见 verify 的 pasted 选项）。
+// Before touching the send button, require the entire observed draft to
+// equal the intended text. No fuzzy similarity or "nonempty paste" shortcut.
 function draftMatches(actual, expected) {
-  if (actual === expected) return true;
-  if (!actual && !expected) return true;
-  if (!actual || !expected) return false;
-  const nActual = normalizeDraftText(actual);
-  const nExpected = normalizeDraftText(expected);
-  if (nActual === nExpected) return true;
-  const cleanActual = stripTrailingArtifacts(nActual);
-  const cleanExpected = stripTrailingArtifacts(nExpected);
-  if (cleanActual === cleanExpected && cleanExpected.length > 0) return true;
-  // 容差匹配：标点/空格差异（如输入法以空格提交或标点转换差异）
-  const pActual = stripPunctuation(cleanActual);
-  const pExpected = stripPunctuation(cleanExpected);
-  if (pActual === pExpected && pExpected.length > 0) return true;
-  if (!pExpected.length || !pActual.length) return false;
-  return 1 - similarity(pActual, pExpected) < 0.6;
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  return normalizeDraftText(actual) === normalizeDraftText(expected);
 }
 
 class ChatInput {
@@ -163,14 +124,14 @@ class ChatInput {
     return false;
   }
 
-  async verify(expected, { empty = false, attempts = 3, code = 'INPUT_MISMATCH', requireKeyboard = !empty, optional = false, pasted = false } = {}) {
+  async verify(expected, { empty = false, attempts = 3, code = 'INPUT_MISMATCH', requireKeyboard = !empty, optional = false } = {}) {
     let observed = null, inputSource = null;
     for (let attempt = 0; attempt < attempts; attempt++) {
       let frame = await this.observeInputFrame();
       if (requireKeyboard && frame.layout.keyboard !== 'open') fail('KEYBOARD_NOT_OPEN', 'Input is no longer in the middle of the chat');
       let ocr = await this.read(frame);
       observed = ocr.input_text; inputSource = ocr.input_source ?? 'crop';
-      if (this.matches(expected, ocr, frame, { empty, pasted })) return { frame, ocr };
+      if (this.matches(expected, ocr, frame, { empty })) return { frame, ocr };
       // A candidate tap can update the field after the first screenshot was
       // captured. Use a fresh frame for the full-field pass instead of running
       // a second OCR over the same stale image.
@@ -178,7 +139,7 @@ class ChatInput {
       if (requireKeyboard && frame.layout.keyboard !== 'open') fail('KEYBOARD_NOT_OPEN', 'Input is no longer in the middle of the chat');
       ocr = await this.read(frame, { full_field: true });
       observed = ocr.input_text; inputSource = ocr.input_source ?? 'full-field';
-      if (this.matches(expected, ocr, frame, { empty, pasted })) return { frame, ocr };
+      if (this.matches(expected, ocr, frame, { empty })) return { frame, ocr };
       if (attempt + 1 < attempts) await this.ctx.sleep(this.settings.pollMs);
     }
     if (optional) return null;
@@ -186,10 +147,8 @@ class ChatInput {
       { expected: expected ?? null, observed, inputSource });
   }
 
-  // 粘贴写入是确定性操作，OCR 读回非空即视为一致，不再比对内容
-  matches(expected, ocr, frame, { empty, pasted }) {
+  matches(expected, ocr, frame, { empty }) {
     if (empty) return this.isEmpty(ocr, frame);
-    if (pasted) return !this.isEmpty(ocr, frame);
     return draftMatches(ocr.input_text, expected);
   }
 
@@ -245,39 +204,6 @@ class ChatInput {
     await ctx.sleep(this.settings.keyIntervalMs);
   }
 
-  async paste(text) {
-    const { control, ctx } = this;
-    const doPaste = () => {
-      if (typeof control.paste === 'function') {
-        return control.paste(text);
-      }
-      if (typeof control.setClipboard === 'function') {
-        return control.setClipboard(text, { paste: true });
-      }
-      fail('PASTE_UNAVAILABLE', 'Control does not support clipboard paste');
-    };
-
-    if (typeof control._enqueue === 'function') {
-      const pending = control._enqueue('_gestures', async () => {
-        ctx.check(); this.checkControl();
-        ctx.stage = 'dispatch';
-        ctx.execution.state = 'partial';
-        ctx.execution.localWriteConfirmed = false;
-        await doPaste();
-        ctx.execution.framesSent++;
-        ctx.stage = 'flush';
-        if (typeof control.flush === 'function') {
-          await ctx.wait(control.flush());
-        }
-        ctx.check(); this.checkControl();
-        ctx.execution.state = 'sent'; ctx.execution.localWriteConfirmed = true;
-      });
-      await ctx.wait(pending);
-    } else {
-      await doPaste();
-    }
-    await this.ctx.sleep(this.settings.settleMs);
-  }
 
   async type(plan) {
     let prefix = '';
@@ -311,31 +237,15 @@ class ChatInput {
           index--; continue;
         }
         if (!selected) {
-          // 候选词未在首屏匹配到（非首屏字/生僻字），退格清空当前未提交的拼音字符，通过剪贴板直接粘贴兜底输入
-          for (const _ of unit.pinyin) await this.key(protocol.KEY_CODES.DEL);
-          await this.ctx.sleep(this.settings.settleMs);
-          await this.paste(unit.text);
-          prefix += unit.text;
-          await this.ctx.sleep(this.settings.settleMs);
-          if (index < queue.length - 1) {
-            await this.verify(prefix, { attempts: 2, optional: true });
-          }
-          continue;
+          // No reliable Unicode injection is available through the current
+          // cloud control API. Do not gamble on clipboard/IME fallback.
+          fail('INPUT_MISMATCH', '输入法未找到完整候选词，未点击发送键');
         }
         const { center_x: x, center_y: y } = selected;
         const [l, t, r, b] = ocr.regions.candidate_roi;
         if (![x, y].every(Number.isFinite) || x < l * frame.shot.width || x > r * frame.shot.width ||
             y < t * frame.shot.height || y > b * frame.shot.height) {
-          // 坐标偏出默认候选条时，直接降级剪贴板粘贴，绝不抛死板错误
-          for (const _ of unit.pinyin) await this.key(protocol.KEY_CODES.DEL);
-          await this.ctx.sleep(this.settings.settleMs);
-          await this.paste(unit.text);
-          prefix += unit.text;
-          await this.ctx.sleep(this.settings.settleMs);
-          if (index < queue.length - 1) {
-            await this.verify(prefix, { attempts: 2, optional: true });
-          }
-          continue;
+          fail('INPUT_MISMATCH', '候选词不在输入法候选区域内，未点击发送键');
         }
         await this.tap(x, y, frame);
       } else {
@@ -346,28 +256,11 @@ class ChatInput {
       }
       prefix += unit.text;
       await this.ctx.sleep(this.settings.settleMs);
-      // 中间态校验：允许单字光标瞬态容错，避免在流水线中途误杀
-      if (index < queue.length - 1) {
-        await this.verify(prefix, { attempts: 2, optional: true });
-      }
     }
-    // 终态强核验：整句打字完成后，严格确认输入框草稿与目标意图完全一致 (GEMINI.md 不变量)
-    try {
-      await this.verify(plan.text, { attempts: 4 });
-    } catch (err) {
-      if (err.code === 'INPUT_MISMATCH' || err.code === 'OCR_FAILED') {
-        const stamp = new Date().toTimeString().slice(0, 8);
-        console.log(`[${stamp}] [typing] 终态核验未通过，执行清空+粘贴自愈 (observed=${JSON.stringify(err.details?.observed ?? null)}, source=${err.details?.inputSource ?? 'unknown'})`);
-        // 自愈恢复：输入法打字或多音字选择偏差时，执行清空并使用剪贴板粘贴兜底写入，再做终态核验
-        await this.clear();
-        await this.ctx.sleep(this.settings.settleMs);
-        await this.paste(plan.text);
-        await this.ctx.sleep(this.settings.settleMs);
-        await this.verify(plan.text, { attempts: 3, pasted: true });
-      } else {
-        throw err;
-      }
-    }
+    // One final truth: whether the completed draft matches the intended text.
+    // If OCR cannot establish this, do not send or attempt a risky clipboard
+    // recovery that can paste into another app's Shell.
+    await this.verify(plan.text, { attempts: 3 });
   }
 
   async close() {

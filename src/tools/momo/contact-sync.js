@@ -335,6 +335,14 @@ async function syncMomoContacts(host, options, ctx) {
       }
 
       const title = extractChatContactName(obs.ocr);
+      // The chat title is an observed identity, not the name supplied by the
+      // caller. A mismatched frame must never be archived under that caller's
+      // identity, used as an AI context, or written to its database history.
+      if (title && normalize(title) !== normalize(settings.contactName)) {
+        fail('MOMO_CONTACT_MISMATCH',
+          `当前聊天对象是「${title}」，并非「${settings.contactName}」，已阻止消息入库`,
+          { expected: settings.contactName, observed: title, imagePath: obs.imagePath });
+      }
       const structural = Boolean(obs.detail.elements.back_btn && obs.detail.elements.input_box);
 
       if (!isChatPage(obs.page) && !structural) {
@@ -679,6 +687,20 @@ async function syncMomoContacts(host, options, ctx) {
 
     await collect(tailAnchors);
     ctx.check();
+
+    // A fresh identity checkpoint immediately before the irreversible SQLite
+    // commit. A title missing/garbled by OCR is not evidence for a different
+    // contact, but it is not sufficient evidence for committing under this ID.
+    const commitFrame = await observe('before_db_commit');
+    const commitName = extractChatContactName(commitFrame.ocr);
+    if (!commitName || normalize(commitName) !== normalize(settings.contactName)) {
+      fail('MOMO_CONTACT_MISMATCH',
+        `消息入库前无法确认目标「${settings.contactName}」（当前顶栏：${commitName || '未识别'}），已停止写库`,
+        { expected: settings.contactName, observed: commitName, imagePath: commitFrame.imagePath });
+    }
+    log('contact_identity_confirmed_before_commit', {
+      expected: settings.contactName, observed: commitName, imagePath: commitFrame.imagePath
+    });
 
     const messages = storedChatMessages(collected);
     report.currentContact.bottomConfirmed = true;

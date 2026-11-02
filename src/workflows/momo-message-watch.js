@@ -58,8 +58,6 @@ const MAX_OBSERVE_FAILURES = 3;             // 连续截图/识别失败多少�
 const MAX_LIST_MODEL_MISSING = 5;           // 消息列表模型连续多少帧没返回卡片就停止
 const RISK_RECHECKS = 2;                    // 频率提示（风控）出现后等待复查的次数，仍在则停止
 const RISK_WAIT_MS = 5000;
-const MAX_OPEN_FAILURES = 3;                // 连续多少个联系人进不去聊天页就停止
-const MAX_REPLY_FAILURES = 3;               // 连续多少次回复未成功就停止
 const STOP_OVERLAYS = new Set(['captcha', 'login', 'permission', 'exit_confirm', 'assistant_unconfirmed']);
 
 let activeRunDir = null;
@@ -265,8 +263,6 @@ class WatchHub {
     this.handledSignatures = new Map();  // peerName -> 处理时的卡片签名；签名变了（来了新消息）才会再处理
     this.burst = new Set();              // 本批处理过的联系人（挂机模式判断是否需要往下多看一屏）
     this.reportedUnreadable = new Set();
-    this.openFailures = 0;
-    this.replyFailures = 0;
     this.listModelMissing = 0;
     this.nextWarmupAt = 0;
     this.nextGreetingsAt = 0;
@@ -642,25 +638,30 @@ class WatchHub {
     return { kind: 'unclear', obs: last };
   }
 
-  /** 点击联系人进入聊天。点击没生效时，在新截图里重新定位同名联系人再点一次。 */
-  async openChat(candidate, listObs, contactDir) {
-    let target = candidate;
-    let obs = listObs;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const box = contactClickBox(target, obs);
-      await log('INFO', `点击联系人 [${target.peerName}] (第 ${attempt}/2 次，区域: [${box.map(Math.round).join(', ')}])`);
-      if (!await this.tap(box, obs, target.peerName)) return { kind: 'unclear', obs: null };
-
-      const result = await this.waitAfterTap();
-      if (result.kind !== 'list') return result;
-
-      await captureStepScreenshot(this.tools, contactDir, `error-not-entered-${attempt}`, `[${candidate.peerName}] 点击后仍在列表`);
-      const ready = listReady(result.obs, this.options);
-      target = ready && (ready.scan.candidates || []).find(c => c.peerName === candidate.peerName);
-      if (!target) return { kind: 'gone', obs: result.obs };
-      obs = ready.obs;
+  /**
+   * Click exactly once, from a new list observation. Screenshots/log I/O and
+   * list reordering invalidate the coordinates from the original detection.
+   */
+  async openChat(candidate, contactDir) {
+    const fresh = await this.toMessageList();
+    const matches = (fresh.scan.candidates || []).filter(
+      item => item.hasUnread && normalize(item.peerName) === normalize(candidate.peerName)
+    );
+    if (matches.length !== 1) {
+      await log('WARN', `[${candidate.peerName}] 点击前未能唯一定位未读联系人，已跳过`);
+      return { kind: 'gone', obs: fresh.obs };
     }
-    return { kind: 'list', obs };
+    const target = matches[0];
+    const box = contactClickBox(target, fresh.obs);
+    await log('INFO', `点击联系人 [${target.peerName}] (最新画面区域: [${box.map(Math.round).join(', ')}])`);
+    if (!await this.tap(box, fresh.obs, target.peerName)) {
+      return { kind: 'unclear', obs: null };
+    }
+    const opened = await this.waitAfterTap();
+    if (opened.kind !== 'chat') {
+      await captureStepScreenshot(this.tools, contactDir, 'error-not-entered', `[${candidate.peerName}] 单次点击未进入目标聊天`);
+    }
+    return opened;
   }
 
   /** 子脚本 13：当前聊天页入库。 */
@@ -668,13 +669,13 @@ class WatchHub {
     const stageName = stage === 'post_reply_sync' ? '二次入库' : '初始入库';
     try {
       const res = await this.tools.syncMomoContacts({
+        ...this.options.contactSyncOptions,
+        dbPath: this.options.dbPath,
         execute: true,
         dryRun: false,
         currentChatOnly: true,
         contactName: peerName,
         signal: this.signal,
-        dbPath: this.options.dbPath,
-        ...this.options.contactSyncOptions,
       });
       if (res?.ok) await log('INFO', `[${peerName}] ${stageName}完成 (写入 ${res.data?.totalMessagesIngested ?? 0} 条)`);
       else await log('WARN', `[${peerName}] ${stageName}未成功: ${res?.error?.code || 'UNKNOWN'}`);
@@ -686,34 +687,35 @@ class WatchHub {
     }
   }
 
-  /** 子脚本 14：AI 回复。发送状态未知时不重发（交给二次入库记录真实画面）。 */
-  async replyContact(peerName) {
+  /** 子脚本 14：只报告本联系人的结果，不让 OCR 噪音熔断整个监听器。 */
+  async replyContact(peerName, screenshotsDir) {
     await log('INFO', `[${peerName}] 正在调用 AI 生成回复并发送...`);
     try {
       const res = await runMomoAiReplyOnce(this.client, this.deviceId, {
-        mode: 'execute',
-        contactName: peerName,
+        ...this.options.aiReplyOptions,
         tools: this.tools,
         control: await this.ensureControl(),
-        signal: this.signal,
         dbPath: this.options.dbPath,
-        screenshotsDir: activeRunDir ? path.join(activeRunDir, 'ai-replies', safeDirName(peerName)) : undefined,
+        screenshotsDir,
+        mode: 'execute',
+        contactName: peerName,
+        signal: this.signal,
         leaseToken: this.lease.leaseToken,
-        ...this.options.aiReplyOptions,
       });
       if (res?.ok) {
         await log('INFO', `[${peerName}] AI 回复发送成功 (${res.outcome || 'reply_observed'})`);
-        return true;
+        return 'done';
       }
       const err = res?.data?.error || res?.error || {};
-      const uncertain = res?.outcome === 'needs_review' || res?.outcome === 'handoff_uncertain';
-      await log('ERROR', `[${peerName}] AI 回复${uncertain ? '发送状态未确认（不重发，请人工复核）' : '失败'}: ` +
-        `${err.code || 'FAILED'}${err.message ? `: ${err.message}` : ''}`);
-      return false;
+      const review = res?.outcome === 'needs_review' || res?.outcome === 'handoff_uncertain';
+      await log(review ? 'WARN' : 'ERROR',
+        `[${peerName}] AI 回复${review ? '发送待复核，不重发' : '未完成'}: ${err.code || 'FAILED'}` +
+        (err.message ? `: ${err.message}` : ''));
+      return review ? 'review' : 'skip';
     } catch (err) {
       if (this.signal?.aborted || err.code === 'LEASE_REVOKED') throw err;
-      await log('ERROR', `[${peerName}] AI 回复失败: ${err.message}`);
-      return false;
+      await log('ERROR', `[${peerName}] AI 回复未完成: ${err.message}`);
+      return 'skip';
     }
   }
 
@@ -721,7 +723,7 @@ class WatchHub {
    * 处理一位未读联系人：进入 -> 核对对象 -> 13 入库 -> 14 回复 -> 13 二次入库。
    * 不负责退出聊天页：结束后由调用方的 toMessageList() 基于新截图返回列表。
    */
-  async handleContact(candidate, listObs) {
+  async handleContact(candidate) {
     const peerName = candidate.peerName;
     this.attempts++;
     this.burst.add(peerName);
@@ -729,26 +731,20 @@ class WatchHub {
     const contactDir = activeRunDir ? path.join(activeRunDir, 'contacts', `${Date.now()}_${safeDirName(peerName)}`) : null;
     await captureStepScreenshot(this.tools, contactDir, '01-detected', `[${peerName}] 发现红点原始列表画面`);
 
-    const opened = await this.openChat(candidate, listObs, contactDir);
+    const opened = await this.openChat(candidate, contactDir);
     if (opened.kind === 'not_chat') {
       const { page, scene } = opened.obs;
       const shot = await captureStepScreenshot(this.tools, contactDir, 'not-chat-page', `[${peerName}] 点进去不是聊天页`);
       await this.ignored.add(peerName, { reason: 'not_chat_page', page, scene, screenshot: shot && path.relative(PROJECT_ROOT, shot) });
       await log('WARN', `[${peerName}] 点进去不是聊天页 (${page}/${scene})，已记入忽略名单，以后不再点击`);
-      this.openFailures = 0;
       return;
     }
     if (opened.kind !== 'chat') {
-      const reason = { list: '两次点击都没有进入', gone: '补点时已不在当前屏', unclear: '点击后出现遮挡或画面不稳定' }[opened.kind];
+      const reason = { list: '点击后仍在列表', gone: '点击前联系人已发生变化', unclear: '点击后出现遮挡或画面不稳定' }[opened.kind];
       await captureStepScreenshot(this.tools, contactDir, 'error-open', `[${peerName}] 进入失败现场`);
       await this.coolDown(peerName, `未能进入聊天页（${reason}）`);
-      this.openFailures++;
-      if (this.openFailures >= MAX_OPEN_FAILURES) {
-        await this.stop('CONTACT_OPEN_FAILING', `连续 ${MAX_OPEN_FAILURES} 个联系人都没能进入聊天页，脚本停止`);
-      }
       return;
     }
-    this.openFailures = 0;
 
     const detail = opened.obs;
     const title = extractChatContactName(detail.evidence?.ocrData);
@@ -759,22 +755,35 @@ class WatchHub {
     }
     await captureStepScreenshot(this.tools, contactDir, '02-chat-detail', `[${peerName}] 成功进入聊天界面`);
 
-    const sync = await this.syncContact(peerName, 'pre_reply_sync');
-    const replied = await this.replyContact(peerName);
-    await this.pause(600);
-    await this.syncContact(peerName, 'post_reply_sync');
-    await captureStepScreenshot(this.tools, contactDir, '04-after-post-sync', `[${peerName}] 第二次消息入库完成（含自身气泡）`);
-
-    // 进入聊天后红点已清除；记录签名，只有对方再发新消息（签名变化）才会再处理
-    this.handledSignatures.set(peerName, candidateSignature(candidate));
-    if (!replied) {
-      this.replyFailures++;
-      if (this.replyFailures >= MAX_REPLY_FAILURES) {
-        await this.stop('REPLY_FAILING', `连续 ${MAX_REPLY_FAILURES} 次回复未成功，脚本停止`);
-      }
+    // A failed history sync never reaches AI generation or the send button.
+    // This prevents the Destiny/ghgg cross-contact context incident.
+    if (!await this.syncContact(peerName, 'pre_reply_sync')) {
+      await this.coolDown(peerName, '联系人消息未通过身份确认，跳过本轮 AI 回复');
       return;
     }
-    this.replyFailures = 0;
+
+    // Every handling attempt owns its own screenshot directory. Previous
+    // attempts must never overwrite their 01-initial / AI-call evidence.
+    const replyDir = contactDir ? path.join(contactDir, 'ai-reply') : undefined;
+    const replied = await this.replyContact(peerName, replyDir);
+    if (replied === 'done' || replied === 'review') {
+      await this.pause(600);
+      await this.syncContact(peerName, 'post_reply_sync');
+      await captureStepScreenshot(this.tools, contactDir, '04-after-post-sync', `[${peerName}] 第二次消息入库现场`);
+    }
+
+    this.handledSignatures.set(peerName, candidateSignature(candidate));
+    if (replied === 'review') {
+      // A timer cannot prove a send was unsuccessful. Only a human review
+      // may release this contact, even if the watcher process restarts.
+      await this.ignored.add(peerName, { reason: 'send_pending_review', evidenceDir: replyDir });
+      await log('WARN', `[${peerName}] 发送结果待复核，已跨重启隔离；核验后从 watch-ignored-cards.json 移除该项才可继续`);
+      return;
+    }
+    if (replied === 'skip') {
+      await this.coolDown(peerName, '本轮未完成，跳过后继续处理其他联系人');
+      return;
+    }
     this.handledContacts++;
     const limitDesc = this.targetLimit === Infinity ? '无限制' : `${this.targetLimit}人`;
     await log('INFO', `[${peerName}] 流程完成 (进度: ${this.handledContacts}/${limitDesc})`);
@@ -798,7 +807,7 @@ class WatchHub {
         await this.reportUnreadable(ready.scan);
         const candidate = this.pickUnread(ready.scan);
         if (!candidate) break;
-        await this.handleContact(candidate, ready.obs);
+        await this.handleContact(candidate);
         if (this.limitReached()) return 'limit';
         ready = await this.toMessageList();  // 处理后列表顺序会变，基于新截图继续本屏
       }
@@ -922,7 +931,7 @@ class WatchHub {
       await this.reportUnreadable(ready.scan);
       const candidate = this.pickUnread(ready.scan);
       if (candidate) {
-        await this.handleContact(candidate, ready.obs);
+        await this.handleContact(candidate);
         return { handled: true, leftTop: true };
       }
       const cards = ready.scan.candidates || [];

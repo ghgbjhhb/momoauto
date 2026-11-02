@@ -668,36 +668,9 @@ function chatLayout(view) {
     fail('APP_OCCLUDED', 'A chat assistant overlay is blocking the chat');
   }
 
-  function isPlausibleAnchor(det, name) {
-    if (det.class !== name) return false;
-    const [x1, y1, x2, y2] = det.box ?? [];
-    if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return false;
-    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
-    if (name === 'back_btn') return cy <= h * 0.18 && cx <= w * 0.30;
-    if (name === 'input_box') return (cy / h) >= 0.25 && (cy / h) <= 0.93 && (x2 - x1) >= w * 0.25;
-    if (name === 'send_btn') return cx >= w * 0.45 && cy >= h * 0.25;
-    return true;
-  }
-
-  function hasConflictingAnchors(detections) {
-    if (detections.length <= 1) return false;
-    const maxConf = Math.max(...detections.map(d => d.confidence ?? 0.5));
-    const significant = detections.filter(d => (d.confidence ?? 0.5) >= Math.max(0.45, maxConf - 0.20));
-    if (significant.length <= 1) return false;
-
-    for (let i = 0; i < significant.length; i++) {
-      for (let j = i + 1; j < significant.length; j++) {
-        const b1 = significant[i].box, b2 = significant[j].box;
-        const x1 = Math.max(b1[0], b2[0]), y1 = Math.max(b1[1], b2[1]);
-        const x2 = Math.min(b1[2], b2[2]), y2 = Math.min(b1[3], b2[3]);
-        const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-        const union = (b1[2] - b1[0]) * (b1[3] - b1[1]) + (b2[2] - b2[0]) * (b2[3] - b2[1]) - inter;
-        if (union > 0 && (inter / union) < 0.4) return true;
-      }
-    }
-    return false;
-  }
-
+  // The detector's selected named anchor is authoritative. Other candidates
+  // in all_detections (notably the IME space bar) are not additional input
+  // boxes. Validate the selected anchor geometry, not pairwise OCR guesses.
   function element(name, required = true) {
     const item = el[name];
     if (!item) { if (required) fail('CHAT_NOT_CONFIRMED', 'Required chat anchor is missing', { anchor: name }); return null; }
@@ -705,10 +678,6 @@ function chatLayout(view) {
     if (!Array.isArray(box) || box.length !== 4 || !box.every(Number.isFinite) ||
         box[0] < 0 || box[1] < 0 || box[2] > w || box[3] > h || box[0] >= box[2] || box[1] >= box[3]) {
       fail('VISION_PROTOCOL_ERROR', 'Model 2 returned invalid coordinates', { anchor: name });
-    }
-    const plausible = (view.all_detections ?? []).filter(det => isPlausibleAnchor(det, name));
-    if (required && hasConflictingAnchors(plausible)) {
-      fail('CHAT_ANCHOR_AMBIGUOUS', 'Multiple chat anchors were detected', { anchor: name });
     }
     return { box, x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 };
   }
