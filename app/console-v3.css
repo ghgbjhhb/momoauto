@@ -32,6 +32,24 @@ html, body {
 
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
+/* 交互命中区使用真实按钮盒子，不用 :before 透明层来伪造可点击区域。
+   即使布局随着浏览器缩放重新排版，整个可见控件仍是同一个原生 hit target。 */
+#appShell .btn,
+#appShell .icon-btn,
+#appShell .nav-btn,
+#appShell .nav-sub-item,
+#appShell .device-chip,
+#appShell .segment,
+#controlDialog .btn,
+#controlDialog .control-close-btn,
+#controlDialog .phone-nav-btn {
+  min-height: var(--h-toolbar);
+}
+#appShell .btn.icon-only,
+#appShell .icon-btn,
+#controlDialog .control-close-btn {
+  min-width: var(--h-toolbar);
+}
 button:disabled { opacity: 0.48; cursor: not-allowed; }
 h1, h2, h3, p, pre { margin: 0; }
 svg { flex: none; }
@@ -579,7 +597,9 @@ body:has(#page-overview:not([hidden])) .page {
   display: block;
 }
 
-/* 紧凑设备单行标签+小字（零多余空白，占高仅34px） */
+/* 设备操作行由内容决定高度，不再用 34px 固定容器裁切按钮。
+   左侧文字可省略，右侧真实按钮不参与缩小。 */
+.ov-device-panel .ov-device-meta { overflow: visible; }
 .ov-device-meta {
   display: flex;
   align-items: center;
@@ -590,7 +610,8 @@ body:has(#page-overview:not([hidden])) .page {
   border-top: 1px solid var(--line);
   font-size: var(--fs-11);
   flex: none;
-  height: var(--h-device-meta);
+  min-height: var(--h-header);
+  height: auto;
   line-height: var(--lh-normal);
 }
 
@@ -598,6 +619,7 @@ body:has(#page-overview:not([hidden])) .page {
   display: flex;
   align-items: center;
   gap: var(--sp-8);
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
 }
@@ -607,6 +629,10 @@ body:has(#page-overview:not([hidden])) .page {
   font-weight: var(--fw-700);
   font-size: var(--fs-12);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+  max-width: 45%;
 }
 
 .meta-tag-sub {
@@ -621,7 +647,11 @@ body:has(#page-overview:not([hidden])) .page {
   display: flex;
   align-items: center;
   gap: var(--sp-6);
-  flex: none;
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+.meta-tools > button {
+  flex: 0 0 auto;
 }
 
 .viewer-hint { position: absolute; color: var(--muted); font-weight: var(--fw-600); font-size: var(--fs-14); display: flex; flex-direction: column; align-items: center; gap: var(--sp-8); }
@@ -1288,10 +1318,20 @@ body:has(#page-overview:not([hidden])) .page {
 
 .control-close-btn:hover { background: var(--overlay-soft); color: var(--red); }
 
-.control-body { padding: var(--sp-8); background: var(--card); display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+.control-body {
+  padding: var(--sp-8);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto; /* 高缩放或短视口时保留完整画面和底部操作区 */
+  overscroll-behavior: contain;
+}
 .phone-wrapper { display: contents; }
 
 .phone-frame {
+  flex: 0 0 auto; /* 弹窗变矮时由 control-body 滚动，不能挤压可操作的手机画面 */
   background: var(--phone-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-8);
@@ -1381,7 +1421,8 @@ body:has(#page-overview:not([hidden])) .page {
 .phone-nav-btn {
   flex: 1;
   max-width: 90px;
-  height: var(--h-control);
+  min-height: var(--h-toolbar);
+  height: auto;
   background: var(--soft);
   border: 1px solid var(--line);
   color: var(--text);

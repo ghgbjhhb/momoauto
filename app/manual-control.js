@@ -121,30 +121,41 @@ function latestControlFrameAt() {
   return manual.frameAt || manual.player?.stats?.frameAt || 0;
 }
 
+// 单一画面几何真源：从浏览器实际布局的 DOMRect 计算 object-fit:contain
+// 的有效画面范围，再换回 surface 本地 CSS 坐标。屏幕点击和 AI 视觉叠层
+// 必须共用它，不能分别猜一个缩放比例或默认画面尺寸。
 function getImageDisplayGeometry() {
   const image = activeControlCanvas();
-  const natW = (image && image.width) || manual.visionImageWidth || manual.width || 720;
-  const natH = (image && image.height) || manual.visionImageHeight || manual.height || 1280;
-  const sw = surface.clientWidth || 360;
-  const sh = surface.clientHeight || 640;
+  const imgW = (image && image.width) || manual.width || manual.visionImageWidth || 720;
+  const imgH = (image && image.height) || manual.height || manual.visionImageHeight || 1280;
+  const surfaceRect = surface.getBoundingClientRect();
+  const canvasRect = image && !image.hidden ? image.getBoundingClientRect() : surfaceRect;
+  if (!imgW || !imgH || surfaceRect.width <= 0 || surfaceRect.height <= 0 ||
+      canvasRect.width <= 0 || canvasRect.height <= 0) return null;
+  const fit = Math.min(canvasRect.width / imgW, canvasRect.height / imgH);
+  const renderedWidth = imgW * fit;
+  const renderedHeight = imgH * fit;
+  const renderedLeft = canvasRect.left + (canvasRect.width - renderedWidth) / 2;
+  const renderedTop = canvasRect.top + (canvasRect.height - renderedHeight) / 2;
+  // clientWidth/Height 是 CSS 内容坐标，DOMRect 是视口坐标（可能包含缩放）。
+  const toCssX = surface.clientWidth / surfaceRect.width;
+  const toCssY = surface.clientHeight / surfaceRect.height;
+  return {
+    left: (renderedLeft - surfaceRect.left) * toCssX,
+    top: (renderedTop - surfaceRect.top) * toCssY,
+    width: renderedWidth * toCssX,
+    height: renderedHeight * toCssY,
+    imgW, imgH
+  };
+}
 
-  if (!image || image.hidden) {
-    const scale = Math.min(sw / natW, sh / natH);
-    const width = natW * scale;
-    const height = natH * scale;
-    const left = (sw - width) / 2;
-    const top = (sh - height) / 2;
-    return { left, top, width, height, scale, imgW: natW, imgH: natH };
-  }
-  const rect = image.getBoundingClientRect();
-  const imgW = (image.width && image.width > 0) ? image.width : natW;
-  const imgH = (image.height && image.height > 0) ? image.height : natH;
-  const scale = Math.min(rect.width / imgW, rect.height / imgH);
-  const width = imgW * scale;
-  const height = imgH * scale;
-  const left = (rect.width - width) / 2;
-  const top = (rect.height - height) / 2;
-  return { left, top, width, height, scale, imgW, imgH };
+function pointerInControlCss(event) {
+  const rect = surface.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return {
+    x: (event.clientX - rect.left) * surface.clientWidth / rect.width,
+    y: (event.clientY - rect.top) * surface.clientHeight / rect.height
+  };
 }
 
 function clearVisionCanvas() {
@@ -169,6 +180,7 @@ function renderVisionOverlay() {
   ctx.clearRect(0, 0, sw, sh);
 
   const geo = getImageDisplayGeometry();
+  if (!geo) { ctx.restore(); return; }
   const natW = geo.imgW || manual.visionImageWidth || 720;
   const natH = geo.imgH || manual.visionImageHeight || 1280;
   const scaleX = geo.width / natW;
@@ -335,14 +347,16 @@ function handleVisionPointerMove(event) {
     return;
   }
   const geo = getImageDisplayGeometry();
+  if (!geo) return;
   const natW = geo.imgW || manual.visionImageWidth || 720;
   const natH = geo.imgH || manual.visionImageHeight || 1280;
   const scaleX = geo.width / natW;
   const scaleY = geo.height / natH;
 
-  const rect = surface.getBoundingClientRect();
-  const mouseX = event.clientX - rect.left;
-  const mouseY = event.clientY - rect.top;
+  const point = pointerInControlCss(event);
+  if (!point) return;
+  const mouseX = point.x;
+  const mouseY = point.y;
 
   let matched = null;
   for (let i = manual.visionItems.length - 1; i >= 0; i--) {
@@ -388,6 +402,22 @@ function updateDeckTelemetry(device) {
   if (titleEl) titleEl.textContent = `${device.name || '云手机'} · 原画操作台`;
 }
 
+// 缩放只影响实际视口和窗口几何。始终以 DOMRect 定位浮窗，
+// 不再根据预设宽高计算可点击区域和可见位置。
+function fitManualWindowToViewport(center = false) {
+  const dlg = dialog || getEl('controlDialog');
+  if (!dlg || !isControlOpen()) return;
+  const rect = dlg.getBoundingClientRect();
+  const maxLeft = Math.max(0, window.innerWidth - rect.width);
+  const maxTop = Math.max(0, window.innerHeight - rect.height);
+  const rawLeft = Number.parseFloat(dlg.style.left);
+  const rawTop = Number.parseFloat(dlg.style.top);
+  const left = center || !Number.isFinite(rawLeft) ? maxLeft / 2 : rawLeft;
+  const top = center || !Number.isFinite(rawTop) ? maxTop / 2 : rawTop;
+  dlg.style.left = Math.max(0, Math.min(left, maxLeft)) + 'px';
+  dlg.style.top = Math.max(0, Math.min(top, maxTop)) + 'px';
+}
+
 function openManualControl(device) {
   try {
     if (!device) {
@@ -418,6 +448,7 @@ function openManualControl(device) {
 
     // 若当前浮窗已打开且为同一设备，仅聚焦并确保通道通畅
     if (manual.targetDeviceId === device.deviceId && isControlOpen()) {
+      fitManualWindowToViewport();
       surface?.focus();
       if (!manual.socket || manual.socket.readyState === WebSocket.CLOSED) {
         startManualInput();
@@ -473,17 +504,8 @@ function openManualControl(device) {
     dlg.setAttribute('open', '');
     dlg.style.display = 'flex';
 
-    const rect = dlg.getBoundingClientRect();
-    if (!dlg.style.left || rect.width === 0 || rect.right < 50 || rect.left > window.innerWidth - 50) {
-      const winW = 384;
-      const winH = Math.min(window.innerHeight - 40, 720);
-      const left = Math.max(16, Math.round((window.innerWidth - winW) / 2));
-      const top = Math.max(16, Math.round((window.innerHeight - winH) / 2));
-      dlg.style.position = 'fixed';
-      dlg.style.margin = '0';
-      dlg.style.left = left + 'px';
-      dlg.style.top = top + 'px';
-    }
+    // 初次居中，之后只将已拖拽的浮窗约束在缩放后真实视口内。
+    fitManualWindowToViewport(!dlg.style.left);
 
     surface?.focus();
     startManualInput();
@@ -780,8 +802,9 @@ if (heading && dialog) {
       let newLeft = initialLeft + dx;
       let newTop = initialTop + dy;
 
-      const maxLeft = Math.max(0, window.innerWidth - (dialog.offsetWidth || 384));
-      const maxTop = Math.max(0, window.innerHeight - (dialog.offsetHeight || 600));
+      const rect = dialog.getBoundingClientRect();
+      const maxLeft = Math.max(0, window.innerWidth - rect.width);
+      const maxTop = Math.max(0, window.innerHeight - rect.height);
 
       newLeft = Math.max(0, Math.min(newLeft, maxLeft));
       newTop = Math.max(0, Math.min(newTop, maxTop));
@@ -834,16 +857,12 @@ for (const button of dialog.querySelectorAll('[data-nav]')) {
 }
 
 function normalizedPoint(event, clamp = false) {
-  const image = activeControlCanvas();
-  const targetEl = (image && !image.hidden) ? image : surface;
-  const rect = targetEl.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  const imgW = (image && image.width) || manual.width || 720;
-  const imgH = (image && image.height) || manual.height || 1280;
-  const scale = Math.min(rect.width / imgW, rect.height / imgH);
-  const width = imgW * scale, height = imgH * scale;
-  const x = (event.clientX - rect.left - (rect.width - width) / 2) / width;
-  const y = (event.clientY - rect.top - (rect.height - height) / 2) / height;
+  const geo = getImageDisplayGeometry();
+  const point = pointerInControlCss(event);
+  if (!geo || !point || geo.width <= 0 || geo.height <= 0) return null;
+  const x = (point.x - geo.left) / geo.width;
+  const y = (point.y - geo.top) / geo.height;
+  // 不把留白区域伪装成手机点击；只有实际绘制出来的画面可以派发触摸。
   if (!clamp && (x < 0 || y < 0 || x > 1 || y > 1)) return null;
   return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
 }
@@ -876,9 +895,14 @@ surface.addEventListener('pointerleave', () => {
     if (visionTooltip) visionTooltip.hidden = true;
   }
 });
-window.addEventListener('resize', () => {
+function handleControlViewportResize() {
+  // 用户在按住手指/鼠标期间改变缩放，原坐标立即失效，先安全释放手势。
+  if (manual.pointer !== null) releaseManual();
+  fitManualWindowToViewport();
   if (manual.visionActive) renderVisionOverlay();
-});
+}
+window.addEventListener('resize', handleControlViewportResize);
+window.visualViewport?.addEventListener('resize', handleControlViewportResize);
 surface.addEventListener('pointerup', event => {
   if (event.pointerId !== manual.pointer) return;
   const point = normalizedPoint(event, true);
@@ -895,6 +919,8 @@ surface.addEventListener('pointercancel', releaseManual);
 surface.addEventListener('lostpointercapture', releaseManual);
 surface.addEventListener('contextmenu', event => event.preventDefault());
 surface.addEventListener('wheel', event => {
+  // Ctrl/⌘ + 滚轮属于浏览器缩放，不能拦截并误发送为云机滚动。
+  if (event.ctrlKey || event.metaKey) return;
   const point = normalizedPoint(event); if (!point) return;
   event.preventDefault(); if (event.deltaY) sendInput({ type: 'scroll', ...point, dy: -Math.sign(event.deltaY) * Math.min(3, Math.max(1, Math.round(Math.abs(event.deltaY) / 100))) });
 }, { passive: false });
