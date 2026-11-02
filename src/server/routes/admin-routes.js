@@ -9,6 +9,13 @@ const { listDevices, revokeDeviceAccess, revokeUserAccess } = require('../contex
 const authService = getAuthService();
 const aiDebugInFlight = new Set();
 
+// Keep the test threshold sourced from the same global configuration that the
+// MOMO workflow uses; do not maintain a second magic number on the client.
+function getDebugHandoffMinSelfMessages() {
+  const { getEffectiveConfig } = require('../../ai/config');
+  return Number(getEffectiveConfig().handoffMinSelfMessages) || 7;
+}
+
 function requireAdmin(user, response) {
   if (!user || user.role !== 'admin') {
     json(response, 403, { ok: false, error: '无管理员访问权限' });
@@ -154,7 +161,10 @@ async function handleAdminRoutes(ctx, request, response, url) {
     json(response, 200, {
       ok: true, systemPrompt: cfg.systemPrompt,
       revision: cfg.revision, model: cfg.model, provider: cfg.provider,
-      hasApiKey: cfg.hasApiKey, contextMaxMessages: cfg.contextMaxMessages
+      hasApiKey: cfg.hasApiKey, contextMaxMessages: cfg.contextMaxMessages,
+      handoffEnabled: cfg.handoffEnabled,
+      handoffMinSelfMessages: getDebugHandoffMinSelfMessages(),
+      handoffSegments: cfg.handoffSegments
     });
     return true;
   }
@@ -183,6 +193,9 @@ async function handleAdminRoutes(ctx, request, response, url) {
         return true;
       }
       const source = body?.history;
+      const previousIntent = body?.debugState?.stickyIntent === true;
+      const previousHandoffState = ['sent', 'blocked', 'uncertain'].includes(body?.debugState?.handoffState)
+        ? body.debugState.handoffState : '';
       const maxMessages = Math.min(60, Number(config.contextMaxMessages) || 60);
       if (!Array.isArray(source) || source.length < 1 || source.length > maxMessages) {
         json(response, 400, { ok: false, error: '测试对话条数超过模型上下文限制，请清空测试历史后重试' });
@@ -192,7 +205,8 @@ async function handleAdminRoutes(ctx, request, response, url) {
       const history = [];
       for (const message of source) {
         if (!message || !['peer', 'self'].includes(message.sender) ||
-          typeof message.text !== 'string' || !message.text.trim() || message.text.length > 1200) {
+          typeof message.text !== 'string' || !message.text.trim() ||
+          message.text.length > (message.sender === 'peer' ? 1200 : 6000)) {
           json(response, 400, { ok: false, error: '测试消息格式错误或单条消息过长' });
           return true;
         }
@@ -208,9 +222,63 @@ async function handleAdminRoutes(ctx, request, response, url) {
       const selfSentCount = history.filter(item => item.sender === 'self').length;
       const result = await generateReply(history, { ...config, systemPrompt: prompt }, {
         signal: controller.signal,
-        progress: { selfSentCount, minSelfMessages: config.handoffMinSelfMessages, stickyIntent: false }
+        progress: {
+          selfSentCount, minSelfMessages: config.handoffMinSelfMessages,
+          stickyIntent: previousIntent
+        }
       });
-      if (!response.destroyed) json(response, 200, { ok: true, reply: result.text });
+
+      // Mirror the actual post-generation branch in momo-ai-reply.js: the
+      // generated reply is not what gets sent if all handoff gates pass.
+      const intent = result.intent || {
+        stage: '未知', readyForContactScript: false, summary: '', formatValid: false
+      };
+      const stickyIntent = previousIntent || intent.readyForContactScript === true;
+      const minSelfMessages = Number(config.handoffMinSelfMessages) || 7;
+      const segments = Array.isArray(config.handoffSegments) ? config.handoffSegments : [];
+      let reason = '普通 AI 回复';
+      let shouldHandoff = false;
+      if (stickyIntent) {
+        if (selfSentCount < minSelfMessages) {
+          reason = `对方已有联系方式意向，但我方已发 ${selfSentCount}/${minSelfMessages} 句，未达到门槛`;
+        } else if (config.handoffEnabled !== true || segments.length === 0) {
+          reason = '意向及句数达标，但后台未启用联系方式话术或未配置段落';
+        } else if (previousHandoffState === 'sent' || previousHandoffState === 'blocked') {
+          reason = '联系方式话术此前已发送，不会重复连发';
+        } else if (previousHandoffState === 'uncertain') {
+          reason = '之前的话术发送状态待复核，禁止重复连发';
+        } else {
+          reason = `满足门槛，将按后台配置依次展示 ${segments.length} 段联系方式话术（仅模拟）`;
+          shouldHandoff = true;
+        }
+      } else {
+        reason = '本轮及此前未检测到联系方式意向，使用普通 AI 回复';
+      }
+      const messages = shouldHandoff ? segments : [result.text];
+      if (!response.destroyed) {
+        json(response, 200, {
+          ok: true,
+          reply: result.text,
+          messages,
+          intent: {
+            stage: intent.stage, summary: intent.summary,
+            readyForContactScript: intent.readyForContactScript === true,
+            formatValid: intent.formatValid === true
+          },
+          decision: {
+            shouldHandoff, reason, selfSentCount, minSelfMessages,
+            stickyIntent, handoffState: shouldHandoff ? 'sent' : previousHandoffState,
+            sentCount: messages.length
+          },
+          call: {
+            model: result.model,
+            requestId: result.requestId,
+            usage: result.usage,
+            finishReason: result.finishReason,
+            messageCountUsed: result.messageCountUsed
+          }
+        });
+      }
     } catch (error) {
       const invalid = /请求内容过大|请求 JSON 格式不正确/.test(error.message);
       const status = invalid ? 400 : error.code === 'CONFIG_INCOMPLETE' ? 422 :

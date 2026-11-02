@@ -1172,3 +1172,87 @@ body {
   #tab-assistant .admin-ai-lab-prompt { padding: var(--sp-12); }
   #tab-assistant .admin-ai-lab-chat { min-height: 30rem; }
 }
+
+/* Keep the prompt editor and trace reachable even in short desktop windows. */
+#tab-assistant .admin-ai-lab-prompt { overflow-y: auto; }
+
+/* Per-call intent and routing diagnostics inside the administrator AI test tab. */
+.admin-ai-lab-trace {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  height: clamp(11rem, 32vh, 17rem);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--bg-subtle);
+}
+.admin-ai-lab-trace-title {
+  padding: var(--sp-12);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.admin-ai-lab-trace-title h3 {
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--fs-13);
+}
+.admin-ai-lab-trace-title span {
+  display: block;
+  margin-top: var(--sp-4);
+  color: var(--text-3);
+  font-size: var(--fs-11);
+}
+.admin-ai-lab-trace-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-8);
+}
+.admin-ai-lab-trace-entry {
+  border: 1px solid var(--border);
+  border-radius: var(--r-6);
+  background: var(--bg-surface);
+  padding: var(--sp-8);
+  overflow-wrap: anywhere;
+}
+.admin-ai-lab-trace-entry h4 {
+  margin: 0 0 var(--sp-6);
+  color: var(--text-1);
+  font-size: var(--fs-12);
+}
+.admin-ai-lab-trace-line {
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  line-height: var(--lh-relaxed);
+  white-space: pre-wrap;
+}
+.admin-ai-lab-trace-line strong { color: var(--text-1); }
+.admin-ai-lab-trace-alert { color: var(--accent); }
+.admin-ai-lab-trace-muted { color: var(--text-3); }
+.admin-ai-lab-bubble-handoff {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+@media (max-width: 1050px) {
+  #tab-assistant.active { overflow-y: auto; }
+  #tab-assistant .admin-ai-lab {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    min-height: auto;
+  }
+  #tab-assistant .admin-ai-lab-chat { flex: none; height: 28rem; min-height: 0; }
+  #tab-assistant .admin-ai-lab-prompt {
+    flex: none;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  #tab-assistant .admin-ai-lab-prompt textarea { flex: none; height: 14rem; }
+  #tab-assistant .admin-ai-lab-trace { height: 15rem; }
+}

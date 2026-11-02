@@ -3,6 +3,7 @@
 // 管理员独立的提示词测试历史；仅在当前浏览器标签页的 sessionStorage 保存。
 // 模型调用由后端复用 momo-ai-reply 相同 generateReply()，不调用云机 API。
 const AI_DEBUG_HISTORY_KEY = 'yunmomo.admin.ai-debug.v1';
+const AI_DEBUG_TRACE_KEY = 'yunmomo.admin.ai-debug-trace.v1';
 let aiDebugReady = false;
 let aiDebugLoading = null;
 let aiDebugHistory = [];
@@ -13,21 +14,45 @@ let aiDebugController = null;
 let aiDebugPromptChanged = false;
 let aiDebugPromptEditVersion = 0;
 let aiDebugConfigVersion = 0;
+let aiDebugTraces = [];
+let aiDebugStickyIntent = false;
+let aiDebugHandoffState = '';
 
 function aiDebugReadHistory() {
   try {
     const stored = JSON.parse(sessionStorage.getItem(AI_DEBUG_HISTORY_KEY) || '[]');
     if (!Array.isArray(stored) || stored.length > 60) return [];
     if (!stored.every(m => m && ['peer', 'self'].includes(m.sender) &&
-      typeof m.text === 'string' && m.text.length > 0 && m.text.length <= 1200)) return [];
+      typeof m.text === 'string' && m.text.length > 0 &&
+      m.text.length <= (m.sender === 'peer' ? 1200 : 6000))) return [];
     return stored;
   } catch { return []; }
 }
 
+function aiDebugReadTraces() {
+  try {
+    const data = JSON.parse(sessionStorage.getItem(AI_DEBUG_TRACE_KEY) || '{}');
+    if (!data || !Array.isArray(data.traces)) return;
+    aiDebugTraces = data.traces.slice(-30).filter(x => x && typeof x === 'object');
+    aiDebugStickyIntent = data.stickyIntent === true;
+    aiDebugHandoffState = ['sent', 'uncertain', 'blocked'].includes(data.handoffState)
+      ? data.handoffState : '';
+  } catch { /* 非法记录不影响回复生成 */ }
+}
+
 function aiDebugPersist() {
   try {
-    if (aiDebugHistory.length) sessionStorage.setItem(AI_DEBUG_HISTORY_KEY, JSON.stringify(aiDebugHistory));
-    else sessionStorage.removeItem(AI_DEBUG_HISTORY_KEY);
+    if (aiDebugHistory.length) {
+      sessionStorage.setItem(AI_DEBUG_HISTORY_KEY, JSON.stringify(aiDebugHistory));
+      sessionStorage.setItem(AI_DEBUG_TRACE_KEY, JSON.stringify({
+        traces: aiDebugTraces.slice(-30),
+        stickyIntent: aiDebugStickyIntent,
+        handoffState: aiDebugHandoffState
+      }));
+    } else {
+      sessionStorage.removeItem(AI_DEBUG_HISTORY_KEY);
+      sessionStorage.removeItem(AI_DEBUG_TRACE_KEY);
+    }
   } catch { /* 无存储权限时仅在页面内保留历史 */ }
 }
 
@@ -38,11 +63,11 @@ function aiDebugSetStatus(message, isError = false) {
   el.dataset.state = isError ? 'error' : 'normal';
 }
 
-function aiDebugRender() {
+function aiDebugRender(visibleHistory = aiDebugHistory) {
   const list = document.getElementById('aiDebugMessages');
   if (!list) return;
   list.replaceChildren();
-  if (!aiDebugHistory.length) {
+  if (!visibleHistory.length) {
     const empty = document.createElement('div');
     empty.className = 'admin-ai-lab-empty';
     empty.textContent = '输入一条对方的消息，查看实际 AI 回复内容。';
@@ -50,13 +75,16 @@ function aiDebugRender() {
     return;
   }
   const fragment = document.createDocumentFragment();
-  for (const message of aiDebugHistory) {
+  for (const message of visibleHistory) {
     const bubble = document.createElement('article');
     bubble.className = 'admin-ai-lab-bubble ' +
-      (message.sender === 'peer' ? 'admin-ai-lab-bubble-user' : 'admin-ai-lab-bubble-ai');
+      (message.sender === 'peer' ? 'admin-ai-lab-bubble-user' : 'admin-ai-lab-bubble-ai') +
+      (message.kind === 'handoff' ? ' admin-ai-lab-bubble-handoff' : '');
     const label = document.createElement('div');
     label.className = 'admin-ai-lab-bubble-label';
-    label.textContent = message.sender === 'peer' ? '模拟对方' : '实际生成回复';
+    label.textContent = message.sender === 'peer' ? '模拟对方' :
+      message.kind === 'handoff' ? `后台联系方式话术 ${message.segmentIndex}/${message.segmentTotal} · 仅模拟` :
+        'AI 生成回复';
     const body = document.createElement('div');
     body.className = 'admin-ai-lab-bubble-text';
     body.textContent = message.text;
@@ -67,11 +95,61 @@ function aiDebugRender() {
   list.scrollTop = list.scrollHeight;
 }
 
+// 右侧仅展示真实 AI 本轮返回的意图与生成回复，以及代码侧的话术选择。
+// 所有动态数据使用 textContent，不将模型内容当成 HTML 执行。
+function aiDebugRenderTraces() {
+  const list = document.getElementById('aiDebugTrace');
+  if (!list) return;
+  list.replaceChildren();
+  if (!aiDebugTraces.length) {
+    const empty = document.createElement('div');
+    empty.className = 'admin-ai-lab-empty';
+    empty.textContent = '生成回复后在这里查看意图、回复和触发原因。';
+    list.append(empty);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const trace of [...aiDebugTraces].reverse()) {
+    const card = document.createElement('article');
+    card.className = 'admin-ai-lab-trace-entry';
+    const heading = document.createElement('h4');
+    heading.textContent = `#${trace.round} · ${trace.time} · ${trace.intent?.stage || '未知'}`;
+    card.append(heading);
+    const addLine = (title, value, className = '') => {
+      const line = document.createElement('div');
+      line.className = 'admin-ai-lab-trace-line' + (className ? ' ' + className : '');
+      const strong = document.createElement('strong');
+      strong.textContent = title + '：';
+      line.append(strong, document.createTextNode(String(value ?? '—')));
+      card.append(line);
+    };
+    addLine('对方意图', trace.intent?.summary || '未提供');
+    addLine('联系方式意向', trace.intent?.readyForContactScript ? '是' : '否');
+    addLine('意向已固化', trace.decision?.stickyIntent ? '是' : '否');
+    addLine('JSON 意图解析', trace.intent?.formatValid ? '有效' : '降级为普通回复');
+    addLine('模型 reply 字段', trace.reply || '');
+    addLine('最终分流', trace.decision?.reason || '普通 AI 回复',
+      trace.decision?.shouldHandoff ? 'admin-ai-lab-trace-alert' : '');
+    addLine('已发送句数 / 门槛', `${trace.decision?.selfSentCount ?? 0} / ${trace.decision?.minSelfMessages ?? 7}`);
+    addLine('实际采用', trace.decision?.shouldHandoff ?
+      `后台预设话术 ${trace.decision?.sentCount ?? 0} 段（仅测试窗口模拟显示，未真实发送；生产流程会尝试拉黑）` :
+      'AI 生成的 reply');
+    addLine('模型', trace.call?.model || '未返回', 'admin-ai-lab-trace-muted');
+    const usage = trace.call?.usage;
+    if (usage) {
+      addLine('Tokens', `输入 ${usage.prompt_tokens ?? '—'} / 输出 ${usage.completion_tokens ?? '—'} / 合计 ${usage.total_tokens ?? '—'}`,
+        'admin-ai-lab-trace-muted');
+    }
+    fragment.append(card);
+  }
+  list.append(fragment);
+}
+
 function aiDebugSetBusy(busy) {
   aiDebugBusy = busy;
   const send = document.getElementById('aiDebugSend');
   if (send) {
-    send.disabled = busy || !aiDebugConfig?.hasApiKey;
+    send.disabled = busy || !aiDebugConfig?.hasApiKey || aiDebugHandoffState === 'sent';
     send.textContent = busy ? '正在生成…' : '生成回复';
   }
 }
@@ -118,6 +196,10 @@ async function aiDebugSendMessage() {
   const message = input?.value.trim() || '';
   const prompt = promptInput?.value.trim() || '';
   if (aiDebugBusy) return;
+  if (aiDebugHandoffState === 'sent') {
+    aiDebugSetStatus('本轮测试已模拟完成话术连发及后续拉黑流程，请清空测试聊天后开始新会话。', true);
+    return;
+  }
   if (!message || message.length > 1200) {
     aiDebugSetStatus('请输入不超过 1200 字的对方消息。', true);
     return;
@@ -148,18 +230,61 @@ async function aiDebugSendMessage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify({ systemPrompt: prompt, history: nextHistory })
+      body: JSON.stringify({
+        systemPrompt: prompt,
+        history: nextHistory.map(({ sender, text }) => ({ sender, text })),
+        debugState: { stickyIntent: aiDebugStickyIntent, handoffState: aiDebugHandoffState }
+      })
     });
     const data = await response.json();
     if (version !== aiDebugVersion) return;
     if (!response.ok || !data.ok || typeof data.reply !== 'string' || !data.reply.trim()) {
       throw new Error(data.error || 'AI 未返回有效回复');
     }
-    aiDebugHistory = [...nextHistory, { sender: 'self', text: data.reply }];
+    if (!Array.isArray(data.messages) || !data.messages.length ||
+      !data.messages.every(line => typeof line === 'string' && line.trim() && line.length <= 6000)) {
+      throw new Error('服务端没有返回可用于测试的完整回复或话术');
+    }
+    const trace = {
+      round: aiDebugTraces.length + 1,
+      time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+      reply: data.reply,
+      intent: data.intent,
+      decision: data.decision,
+      call: data.call
+    };
+    aiDebugTraces.push(trace);
+    aiDebugTraces = aiDebugTraces.slice(-30);
+    aiDebugRenderTraces();
+
+    const displayed = [...nextHistory];
+    for (const [index, text] of data.messages.entries()) {
+      if (version !== aiDebugVersion) return;
+      if (index > 0 && data.decision?.shouldHandoff) {
+        // 正式云机连发段间等待 1500–3000ms；这里只计时显示，不进行设备输入。
+        aiDebugSetStatus(`模拟联系方式连发：正在等待第 ${index + 1}/${data.messages.length} 段…`);
+        await new Promise(resolve => setTimeout(resolve, 1500 + Math.floor(Math.random() * 1501)));
+        if (version !== aiDebugVersion) return;
+      }
+      displayed.push({
+        sender: 'self', text,
+        ...(data.decision?.shouldHandoff ?
+          { kind: 'handoff', segmentIndex: index + 1, segmentTotal: data.messages.length } : {})
+      });
+      aiDebugRender(displayed);
+      if (data.decision?.shouldHandoff) {
+        aiDebugSetStatus(`模拟联系方式连发：已展示第 ${index + 1}/${data.messages.length} 段（未向云机实际发送）`);
+      }
+    }
+    if (version !== aiDebugVersion) return;
+    aiDebugHistory = displayed;
+    aiDebugStickyIntent = data.decision?.stickyIntent === true;
+    aiDebugHandoffState = data.decision?.handoffState || '';
     aiDebugPersist();
-    aiDebugRender();
     if (input) input.value = '';
-    aiDebugSetStatus('回复生成完成。显示的是正式生成服务提取的 reply 字段。');
+    aiDebugSetStatus(data.decision?.shouldHandoff ?
+      '已按后台话术顺序模拟连发；正式流程随后会尝试拉黑，此处没有真实设备操作。清空测试聊天可重新开始。' :
+      '回复生成完成。右侧显示 AI 意图、模型回复和代码分流原因。');
   } catch (error) {
     if (version === aiDebugVersion && error.name !== 'AbortError') {
       aiDebugSetStatus('生成失败：' + error.message + '。历史未增加本轮消息，可以修改后重试。', true);
@@ -218,7 +343,9 @@ function initAdminAiDebug() {
   }
   aiDebugReady = true;
   aiDebugHistory = aiDebugReadHistory();
+  if (aiDebugHistory.length) aiDebugReadTraces();
   aiDebugRender();
+  aiDebugRenderTraces();
 
   const form = document.getElementById('aiDebugForm');
   const input = document.getElementById('aiDebugInput');
@@ -242,9 +369,13 @@ function initAdminAiDebug() {
     aiDebugController?.abort();
     aiDebugController = null;
     aiDebugHistory = [];
+    aiDebugTraces = [];
+    aiDebugStickyIntent = false;
+    aiDebugHandoffState = '';
     aiDebugPersist();
     aiDebugSetBusy(false);
     aiDebugRender();
+    aiDebugRenderTraces();
     aiDebugSetStatus('测试聊天历史已清空，真实联系人聊天记录未受影响。');
   });
   document.getElementById('aiDebugReloadPrompt')?.addEventListener('click', () => {

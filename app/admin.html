@@ -434,6 +434,15 @@
               <button type="button" class="btn-action-sm admin-ai-lab-send" id="aiDebugSavePrompt">保存为正式提示词</button>
             </div>
             <p class="admin-ai-lab-footnote">只编辑文本不会影响真实 AI 回复；点击“保存为正式提示词”才会更新共享配置。每次测试都会使用编辑框里的提示词，以及正式回复服务固定的 JSON 意图契约。</p>
+            <div class="admin-ai-lab-trace">
+              <div class="admin-ai-lab-trace-title">
+                <h3>AI 调用日志 · 对方意图</h3>
+                <span>每次回复的真实模型判定与话术分流</span>
+              </div>
+              <div id="aiDebugTrace" class="admin-ai-lab-trace-list" role="log" aria-live="polite">
+                <div class="admin-ai-lab-empty">生成回复后在这里查看意图、回复和触发原因。</div>
+              </div>
+            </div>
           </aside>
         </div>
       </section>
