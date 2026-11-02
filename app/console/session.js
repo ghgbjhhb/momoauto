@@ -8,6 +8,9 @@ function renderSharedActivity() {
   const box = elements.sharedActivity;
   if (!box) return;
   const messages = [];
+  if (state.runtimeStateStale || state.devicesStale) {
+    messages.push('连接暂时中断：设备和任务状态可能已过期，无法据此判断任务已经停止；恢复网络后自动同步。');
+  }
   for (const run of state.runtimeState.runs) {
     if (run.currentPage) continue;
     const device = state.devices.find(item => item.deviceId === run.deviceId);
@@ -149,6 +152,7 @@ async function loadDevices(isBackground = false) {
   if (!isBackground && refreshBtn) refreshBtn.disabled = true;
   try {
     const data = await requestJson('/api/devices');
+    state.devicesStale = false;
     state.devices = Array.isArray(data.devices) ? data.devices : [];
     if (!state.devices.some(d => d.deviceId === state.selectedDeviceId)) {
       state.selectedDeviceId = state.devices[0]?.deviceId || '';
@@ -160,12 +164,21 @@ async function loadDevices(isBackground = false) {
     eventBus.dispatchEvent(new CustomEvent('devices:changed'));
     if (!isBackground && !state.devices.length) showToast('当前账号没有可用云机');
   } catch (error) {
-    if (!isBackground) {
+    const accessDenied = error.status === 401 || error.status === 403 ||
+      /Token|YUNMOMO_TOKEN/.test(error.message);
+    if (accessDenied) {
+      // 权限明确被拒绝时继续 fail-closed，不能保留已失效的设备。
+      state.devicesStale = false;
       state.devices = [];
       state.selectedDeviceId = '';
       eventBus.dispatchEvent(new CustomEvent('devices:changed'));
-      showToast(error.message);
+    } else {
+      // 网络中断/网关故障并不意味着云机被移除，更不表示任务已停止。
+      state.devicesStale = true;
     }
+    if (!isBackground) showToast(accessDenied ? error.message :
+      '设备列表同步失败，保留上次记录；网络恢复后会自动更新。');
+    renderSharedActivity();
     if (error.status === 401 || /Token|YUNMOMO_TOKEN/.test(error.message)) {
       state.tokenConfigured = false;
       setService('error', '网页登录已过期');
@@ -186,8 +199,16 @@ async function loadSharedRuntimeState() {
       runs: Array.isArray(data.runs) ? data.runs : [],
       manualDevices: Array.isArray(data.manualDevices) ? data.manualDevices : []
     };
-  } catch {
-    state.runtimeState = { runs: [], manualDevices: [] };
+    state.runtimeStateStale = false;
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) {
+      // 服务端明确否认访问权限才丢弃旧数据。
+      state.runtimeState = { runs: [], manualDevices: [] };
+      state.runtimeStateStale = false;
+    } else {
+      // 网络失败时保留上一份运行状态，防止把仍在运行的任务误显示为已停止。
+      state.runtimeStateStale = true;
+    }
   } finally {
     sharedStateLoading = false;
   }

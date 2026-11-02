@@ -73,6 +73,8 @@ const state = {
   tileShots: new Map(),
   manualDeviceId: '',
   runtimeState: { runs: [], manualDevices: [] },
+  runtimeStateStale: false,
+  devicesStale: false,
   deviceProgress: (() => {
     try { return JSON.parse(localStorage.getItem('yunmomo.deviceProgress') || '{}'); }
     catch { return {}; }
