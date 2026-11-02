@@ -6,6 +6,7 @@ let adminDiskCurrentDir = '真参';
 let adminDiskFiles = [];
 let adminDiskDevices = [];
 let adminDiskSelectedFile = null;
+let adminDiskRequestSeq = 0;
 
 async function loadAdminDiskDevices() {
   const select = document.getElementById('adminDiskDeviceSelect');
@@ -18,10 +19,13 @@ async function loadAdminDiskDevices() {
       if (adminDiskDevices.length === 0) {
         select.innerHTML = '<option value="">暂无可用云机</option>';
       } else {
+        const selected = window.adminRequestedDeviceId || select.value;
         select.innerHTML = adminDiskDevices.map(d => {
           const name = d.name ? (d.name + ' (' + d.deviceId + ')') : d.deviceId;
           return '<option value="' + escapeHtml(d.deviceId) + '">' + escapeHtml(name) + '</option>';
         }).join('');
+        if (adminDiskDevices.some(device => device.deviceId === selected)) select.value = selected;
+        window.adminRequestedDeviceId = '';
       }
     }
   } catch (err) {
@@ -30,6 +34,8 @@ async function loadAdminDiskDevices() {
 }
 
 async function loadAdminDiskFiles() {
+  const requestId = ++adminDiskRequestSeq;
+  const requestedDir = adminDiskCurrentDir;
   const listEl = document.getElementById('adminDiskFileList');
   const countParamsEl = document.getElementById('adminDiskCountParams');
   const countAvatarsEl = document.getElementById('adminDiskCountAvatars');
@@ -41,8 +47,9 @@ async function loadAdminDiskFiles() {
   }
 
   try {
-    const res = await fetch('/api/cloud-disk/files?dir=' + encodeURIComponent(adminDiskCurrentDir));
+    const res = await fetch('/api/cloud-disk/files?dir=' + encodeURIComponent(requestedDir));
     const data = await res.json();
+    if (requestId !== adminDiskRequestSeq || requestedDir !== adminDiskCurrentDir) return;
     if (data.ok) {
       adminDiskFiles = data.files || [];
       if (data.counts) {
@@ -56,11 +63,11 @@ async function loadAdminDiskFiles() {
       }
     }
   } catch (err) {
-    if (listEl) {
+    if (requestId === adminDiskRequestSeq && requestedDir === adminDiskCurrentDir && listEl) {
       listEl.innerHTML = '<div class="disk-empty-state error"><p>网络异常: ' + escapeHtml(err.message) + '</p></div>';
     }
   } finally {
-    if (refreshBtn) refreshBtn.classList.remove('spinning');
+    if (requestId === adminDiskRequestSeq && refreshBtn) refreshBtn.classList.remove('spinning');
   }
 }
 
@@ -495,6 +502,7 @@ function loadAdminDisk() {
     if (btnAvatars) {
       btnAvatars.addEventListener('click', () => {
         adminDiskCurrentDir = '头像';
+        adminDiskSelectedFile = null;
         btnAvatars.classList.add('active');
         btnParams?.classList.remove('active');
         const countP = document.getElementById('adminDiskCountParams');

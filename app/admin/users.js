@@ -31,6 +31,7 @@ async function loadUsers() {
         <td><strong style="color:#1677ff;">${u.active_devices || 0}</strong> 台</td>
         <td>${formatDate(u.created_at)}</td>
         <td>
+          <button type="button" class="btn-action-sm" data-admin-user-detail="${escapeHtml(u.id)}">详情 / 权益</button>
           ${u.role === 'admin' ? '<span style="color:#8c8c8c; font-size:12px;">主账号 (不可操作)</span>' : `
             <button class="btn-action-sm ${u.status === 'active' ? 'danger' : ''}" data-user-status-action data-user-id="${escapeHtml(u.id)}" data-user-email="${escapeHtml(u.email)}" data-target-status="${u.status === 'active' ? 'banned' : 'active'}">
               ${u.status === 'active' ? '封禁' : '解封'}
@@ -45,6 +46,11 @@ async function loadUsers() {
 }
 
 usersTableBody?.addEventListener('click', event => {
+  const detailButton = event.target.closest('[data-admin-user-detail]');
+  if (detailButton && usersTableBody.contains(detailButton)) {
+    openAdminUserDetails(detailButton.dataset.adminUserDetail);
+    return;
+  }
   const button = event.target.closest('[data-user-status-action]');
   if (!button || !usersTableBody.contains(button)) return;
   toggleUserStatus(button.dataset.userId, button.dataset.targetStatus, button.dataset.userEmail);
@@ -83,6 +89,98 @@ window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
 };
 
 if (refreshUsersBtn) refreshUsersBtn.addEventListener('click', loadUsers);
+
+// 管理员可从用户列表或设备池直接查看该用户的权益与租赁设备。
+let adminDetailSeq = 0;
+let adminDetailUserId = '';
+async function openAdminUserDetails(userId) {
+  if (!userId) return;
+  const overlay = document.getElementById('adminUserDetailOverlay');
+  const title = document.getElementById('adminUserDetailTitle');
+  const subtitle = document.getElementById('adminUserDetailSubtitle');
+  const content = document.getElementById('adminUserDetailContent');
+  if (!overlay || !content) return;
+  adminDetailUserId = userId;
+  const requestId = ++adminDetailSeq;
+  overlay.hidden = false;
+  document.getElementById('adminUserDetailClose')?.focus();
+  title.textContent = '用户详情';
+  subtitle.textContent = '正在读取用户与权益数据…';
+  content.textContent = '正在加载…';
+  try {
+    const res = await fetch('/api/admin/users/detail?userId=' + encodeURIComponent(userId));
+    const data = await res.json();
+    if (requestId !== adminDetailSeq || overlay.hidden) return;
+    if (!res.ok || !data.ok) throw new Error(data.error || '无法获取用户详情');
+    title.textContent = data.user.email;
+    subtitle.textContent = data.user.status === 'active' ? '账号正常' : '账号已封禁';
+    const devices = data.allocations || [];
+    const redeems = data.redemptions || [];
+    content.innerHTML = `
+      <div class="admin-detail-block">
+        <h3>当前权益</h3>
+        <div class="admin-detail-record"><span>租赁云机</span><strong>${devices.length} 台</strong></div>
+        <div class="admin-detail-record"><span>真参剩余额度</span><strong>${Number(data.zhencanBalance || 0)} 套</strong></div>
+        <div class="admin-detail-record"><span>IP 权益</span><strong>${data.ip?.active ? '有效，至 ' + escapeHtml(formatDate(data.ip.expireAt)) : '未生效 / 已过期'}</strong></div>
+      </div>
+      <div class="admin-detail-block">
+        <h3>当前租赁设备</h3>
+        ${devices.length ? devices.map(item => `
+          <div class="admin-detail-record">
+            <span><strong>${escapeHtml(item.deviceName || item.deviceId)}</strong>
+              <span class="admin-detail-muted">ID: ${escapeHtml(item.deviceId)} · 到期 ${escapeHtml(formatDate(item.expireAt))}</span></span>
+            <span class="admin-detail-actions">
+              <button type="button" class="btn-action-sm" data-admin-detail-open-device="${escapeHtml(item.deviceId)}">控制设备</button>
+              <button type="button" class="btn-action-sm" data-admin-detail-pool-device="${escapeHtml(item.deviceId)}">租赁管理</button>
+            </span>
+          </div>`).join('') : '<p class="admin-detail-muted">当前没有有效的租赁设备。</p>'}
+      </div>
+      <div class="admin-detail-block">
+        <h3>近期卡密兑换（最多 20 条）</h3>
+        ${redeems.length ? redeems.map(item => `
+          <div class="admin-detail-record"><span>${escapeHtml(item.summary || '兑换权益')}</span>
+            <span class="admin-detail-muted">${escapeHtml(formatDate(item.redeemedAt))}</span></div>
+        `).join('') : '<p class="admin-detail-muted">暂无兑换记录。</p>'}
+        <button class="btn-action-sm" type="button" data-admin-detail-cards>打开卡密管理</button>
+      </div>
+    `;
+  } catch (error) {
+    if (requestId === adminDetailSeq) content.textContent = '加载失败：' + error.message;
+  }
+}
+window.openAdminUserDetails = openAdminUserDetails;
+
+function closeAdminUserDetails() {
+  ++adminDetailSeq;
+  adminDetailUserId = '';
+  const overlay = document.getElementById('adminUserDetailOverlay');
+  if (overlay) overlay.hidden = true;
+}
+document.getElementById('adminUserDetailClose')?.addEventListener('click', closeAdminUserDetails);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !document.getElementById('adminUserDetailOverlay')?.hidden) {
+    closeAdminUserDetails();
+  }
+});
+document.getElementById('adminUserDetailOverlay')?.addEventListener('click', event => {
+  if (event.target.id === 'adminUserDetailOverlay') closeAdminUserDetails();
+});
+document.getElementById('adminUserDetailContent')?.addEventListener('click', event => {
+  const control = event.target.closest('[data-admin-detail-open-device]');
+  const pool = event.target.closest('[data-admin-detail-pool-device]');
+  if (control) {
+    const id = control.dataset.adminDetailOpenDevice;
+    closeAdminUserDetails();
+    window.adminOpenDevice(id);
+  } else if (pool) {
+    const id = pool.dataset.adminDetailPoolDevice;
+    closeAdminUserDetails();
+    window.adminOpenPoolDevice(id);
+  } else if (event.target.closest('[data-admin-detail-cards]')) {
+    closeAdminUserDetails();
+    adminNavigate('cards');
+  }
+});
 
 // 4. Cards Management (正常人直觉逻辑：简单、清晰、无废话)
 function updateBenefitUI() {
@@ -171,7 +269,9 @@ async function loadCards() {
           <td><span class="badge-status ${c.status}">${statusText}</span></td>
           <td>${escapeHtml(c.batch_tag || '--')}</td>
           <td>${formatDate(c.created_at)}</td>
-          <td>${c.used_by_email ? escapeHtml(c.used_by_email) : '--'}</td>
+          <td>${c.used_by_email && c.used_by_user_id
+            ? `<button type="button" class="admin-link-button" data-admin-card-user="${escapeHtml(c.used_by_user_id)}">${escapeHtml(c.used_by_email)}</button>`
+            : '--'}</td>
           <td>${formatDate(c.used_at)}</td>
           <td>
             ${c.status === 'unused' ? `
@@ -254,14 +354,22 @@ window.revokeCard = async (cardId, cardCode = '') => {
   }
 };
 
+cardsTableBody?.addEventListener('click', event => {
+  const user = event.target.closest('[data-admin-card-user]');
+  if (!user) return;
+  adminNavigate('users');
+  openAdminUserDetails(user.dataset.adminCardUser);
+});
 if (cardFilterStatus) cardFilterStatus.addEventListener('change', loadCards);
 if (cardFilterType) cardFilterType.addEventListener('change', loadCards);
 if (refreshCardsBtn) refreshCardsBtn.addEventListener('click', loadCards);
 
-// Generate Cards (支持多选类别生成一张卡密)
+// 卡密生成是有实际副作用的操作；同一次提交期间禁止再次下发。
+let generatingCards = false;
 if (generateCardsForm) {
   generateCardsForm.addEventListener('submit', async event => {
     event.preventDefault();
+    if (generatingCards) return;
 
     const isCloud = Boolean(benefitCheckCloud?.checked);
     const isZhencan = Boolean(benefitCheckZhencan?.checked);
@@ -298,6 +406,9 @@ if (generateCardsForm) {
     const count = parseInt(cardCount?.value, 10) || 1;
     const batchTag = cardBatchTag ? cardBatchTag.value.trim() : '';
 
+    generatingCards = true;
+    const submitButton = generateCardsForm.querySelector('[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
     try {
       const res = await fetch('/api/admin/cards/generate', {
         method: 'POST',
@@ -312,14 +423,24 @@ if (generateCardsForm) {
         })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+      if (!res.ok || !data.ok) {
+        const error = new Error(data.error || '服务器拒绝生成卡密');
+        error.confirmedFailure = true;
+        throw error;
+      }
 
       const generated = data.cards || [];
       batchCardsOutput.value = generated.map(c => c.cardCode).join('\n');
       if (cardsResultModal) cardsResultModal.style.display = 'flex';
       loadCards();
     } catch (err) {
-      showToast(`生成失败: ${err.message}`, 'error');
+      showToast(err.confirmedFailure
+        ? '卡密生成失败：' + err.message
+        : '卡密生成结果未确认：' + err.message + '。请先刷新卡密列表核对，勿直接重复生成。',
+      'error', 6500);
+    } finally {
+      generatingCards = false;
+      if (submitButton) submitButton.disabled = false;
     }
   });
 }
@@ -369,7 +490,7 @@ async function loadPool() {
     }
 
     poolTableBody.innerHTML = pool.map(dev => `
-      <tr>
+      <tr data-admin-pool-device="${escapeHtml(dev.deviceId)}" class="${window.adminPendingPoolDeviceId === dev.deviceId ? 'admin-target-row' : ''}">
         <td><code>${escapeHtml(dev.deviceId)}</code></td>
         <td><strong style="color:#1f1f1f;">${escapeHtml(dev.name || 'SF')}</strong></td>
         <td>
@@ -382,18 +503,26 @@ async function loadPool() {
             ${dev.allocated ? '已分配' : '🟢 空闲待租用'}
           </span>
         </td>
-        <td>${dev.userEmail ? `<strong>${escapeHtml(dev.userEmail)}</strong>` : '<span style="color:#8c8c8c;">--</span>'}</td>
+        <td>${dev.userEmail && dev.userId ? `<button type="button" class="admin-link-button" data-admin-pool-user="${escapeHtml(dev.userId)}">${escapeHtml(dev.userEmail)}</button>` : '<span style="color:#8c8c8c;">--</span>'}</td>
         <td>${dev.expireAt ? formatDate(dev.expireAt) : '<span style="color:#8c8c8c;">--</span>'}</td>
         <td>${dev.remainingMs ? formatRemaining(dev.remainingMs) : '<span style="color:#8c8c8c;">--</span>'}</td>
         <td>
+          <button type="button" class="btn-action-sm" data-admin-pool-control="${escapeHtml(dev.deviceId)}">控制</button>
+          <button type="button" class="btn-action-sm" data-admin-pool-disk="${escapeHtml(dev.deviceId)}">资源</button>
           ${dev.allocated ? `
-            <button class="btn-action-sm danger" onclick="recycleDevice('${dev.allocationId}', '${dev.deviceId}', '${escapeHtml(dev.name || dev.deviceId)}')">
+            <button type="button" class="btn-action-sm danger" data-admin-pool-recycle="${escapeHtml(dev.allocationId)}" data-admin-pool-recycle-device="${escapeHtml(dev.deviceId)}" data-admin-pool-recycle-name="${escapeHtml(dev.name || dev.deviceId)}">
               强制回收
             </button>
           ` : '<span style="color:#8c8c8c;">无需操作</span>'}
         </td>
       </tr>
     `).join('');
+    if (window.adminPendingPoolDeviceId) {
+      const target = [...poolTableBody.querySelectorAll('[data-admin-pool-device]')]
+        .find(row => row.dataset.adminPoolDevice === window.adminPendingPoolDeviceId);
+      target?.scrollIntoView({ block: 'nearest' });
+      window.adminPendingPoolDeviceId = '';
+    }
   } catch (err) {
     poolTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ff4d4f; padding:30px;">加载失败: ${escapeHtml(err.message)}</td></tr>`;
   }
@@ -431,5 +560,22 @@ window.recycleDevice = async (allocationId, deviceId, devName = '') => {
   }
 };
 
+poolTableBody?.addEventListener('click', event => {
+  const user = event.target.closest('[data-admin-pool-user]');
+  if (user) {
+    adminNavigate('users');
+    openAdminUserDetails(user.dataset.adminPoolUser);
+    return;
+  }
+  const control = event.target.closest('[data-admin-pool-control]');
+  if (control) { window.adminOpenDevice(control.dataset.adminPoolControl); return; }
+  const disk = event.target.closest('[data-admin-pool-disk]');
+  if (disk) { window.adminOpenDiskDevice(disk.dataset.adminPoolDisk); return; }
+  const recycle = event.target.closest('[data-admin-pool-recycle]');
+  if (recycle) {
+    window.recycleDevice(recycle.dataset.adminPoolRecycle,
+      recycle.dataset.adminPoolRecycleDevice, recycle.dataset.adminPoolRecycleName);
+  }
+});
 if (refreshPoolBtn) refreshPoolBtn.addEventListener('click', loadPool);
 

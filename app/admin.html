@@ -51,34 +51,34 @@
     <nav class="admin-sidebar" id="adminSidebar">
       <a class="nav-item active" data-tab="cluster" href="/admin/cluster">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        <span>设备集群与控制台</span>
+        <span>设备与资源</span>
       </a>
       <a class="nav-item" data-tab="users" href="/admin/users">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span>用户管理</span>
+        <span>用户与权益</span>
       </a>
-      <a class="nav-item" data-tab="cards" href="/admin/cards">
+      <a class="nav-item admin-nav-secondary" data-tab="cards" href="/admin/cards">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         <span>卡密生成与分发</span>
       </a>
-      <a class="nav-item" data-tab="pool" href="/admin/pool">
+      <a class="nav-item admin-nav-secondary" data-tab="pool" href="/admin/pool">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
         <span>设备池调度映射</span>
       </a>
-      <a class="nav-item" data-tab="disk" href="/admin/disk">
+      <a class="nav-item admin-nav-secondary" data-tab="disk" href="/admin/disk">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
         <span>资源云盘 (真参/头像)</span>
       </a>
       <a class="nav-item" data-tab="ai" href="/admin/ai">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7zm5 4v2m6-2v2"/></svg>
-        <span>AI全局设置</span>
+        <span>平台服务</span>
       </a>
       <a class="nav-item" data-tab="logs" href="/admin/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        <span>系统运行日志</span>
+        <span>运行日志</span>
         <span class="nav-badge" id="navErrorBadge" style="display: none">0</span>
       </a>
-      <a class="nav-item" data-tab="sms" href="/admin/sms">
+      <a class="nav-item admin-nav-secondary" data-tab="sms" href="/admin/sms">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
         <span>接码平台管理</span>
       </a>
@@ -88,7 +88,7 @@
     <main class="admin-main">
       <!-- Tab 1: 设备集群运维与控制台 (收编原控制台完整功能) -->
       <section class="tab-content tab-full active" id="tab-cluster">
-        <iframe class="cluster-iframe" id="clusterIframe" src="/index.html?view=admin-embed"></iframe>
+        <iframe class="cluster-iframe" id="clusterIframe" src="about:blank" data-admin-src="/index.html?view=admin-embed" title="云机控制台"></iframe>
       </section>
 
       <!-- Tab 2: 用户管理 -->
@@ -132,6 +132,17 @@
           </table>
         </div>
       </section>
+
+      <!-- 详情通过真实用户权益 API 查询，显示在用户管理页并保持选中用户上下文 -->
+      <div class="admin-detail-overlay" id="adminUserDetailOverlay" hidden>
+        <section class="admin-detail-panel" role="dialog" aria-modal="true" aria-labelledby="adminUserDetailTitle">
+          <div class="admin-detail-head">
+            <div><h2 id="adminUserDetailTitle">用户详情</h2><p id="adminUserDetailSubtitle"></p></div>
+            <button class="btn-action-sm" id="adminUserDetailClose" type="button">关闭</button>
+          </div>
+          <div id="adminUserDetailContent" class="admin-detail-content">正在读取用户资料…</div>
+        </section>
+      </div>
 
       <!-- Tab 3: 卡密中心 -->
       <section class="tab-content" id="tab-cards">

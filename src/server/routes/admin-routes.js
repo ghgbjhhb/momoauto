@@ -25,6 +25,14 @@ async function handleAdminRoutes(ctx, request, response, url) {
     return true;
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/admin/users/detail') {
+    if (!requireAdmin(user, response)) return true;
+    const info = authService.db.getAdminUserOverview(url.searchParams.get('userId') || '');
+    if (!info) { json(response, 404, { ok: false, error: '用户不存在' }); return true; }
+    json(response, 200, { ok: true, ...info });
+    return true;
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/admin/users/status') {
     if (!requireAdmin(user, response)) return true;
     try {
@@ -97,6 +105,7 @@ async function handleAdminRoutes(ctx, request, response, url) {
         allocated: Boolean(alloc),
         allocationId: alloc?.id || null,
         userEmail: alloc?.user_email || null,
+        userId: alloc?.user_id || null,
         expireAt: alloc?.expire_at || null,
         remainingMs: alloc ? Math.max(0, alloc.expire_at - Date.now()) : null
       };

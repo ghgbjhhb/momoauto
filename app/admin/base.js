@@ -20,9 +20,25 @@ window.prompt = function (message, defaultValue) {
 };
 
 let currentUser = null;
+let adminAuthorized = false;
 let currentTab = 'cluster';
 
 // Tab Configuration & Subpage Routing
+const TAB_GROUPS = {
+  cluster: ['cluster', 'pool', 'disk'],
+  users: ['users', 'cards'],
+  ai: ['ai', 'sms'],
+  logs: ['logs']
+};
+const TAB_GROUP_LABELS = {
+  cluster: '设备与资源', pool: '租赁设备池', disk: '资源云盘',
+  users: '用户列表', cards: '卡密管理',
+  ai: 'AI 服务', sms: '接码服务', logs: '系统日志'
+};
+function adminGroupFor(tab) {
+  return Object.keys(TAB_GROUPS).find(group => TAB_GROUPS[group].includes(tab)) || 'cluster';
+}
+
 const TAB_CONFIG = {
   cluster: { title: '设备集群与控制台', path: '/admin/cluster' },
   disk: { title: '资源云盘 (真参/头像)', path: '/admin/disk' },
@@ -215,9 +231,10 @@ async function checkAuth() {
     const data = await res.json();
     if (!data.ok || !data.user || data.user.role !== 'admin') {
       location.href = '/login.html';
-      return;
+      return false;
     }
     currentUser = data.user;
+    adminAuthorized = true;
     try { localStorage.removeItem('yunmomo.auth_token'); } catch {}
     if (adminUserEmail) {
       adminUserEmail.innerHTML = `
@@ -225,8 +242,10 @@ async function checkAuth() {
         <span>管理员: ${escapeHtml(currentUser.email)}</span>
       `;
     }
+    return true;
   } catch {
     location.href = '/login.html';
+    return false;
   }
 }
 
@@ -242,13 +261,20 @@ function getTabFromUrl() {
 }
 
 function switchTab(targetTab, { updateHistory = true } = {}) {
+  if (!adminAuthorized) return;
   if (!TAB_CONFIG[targetTab]) targetTab = 'cluster';
   currentTab = targetTab;
+  const group = adminGroupFor(targetTab);
 
   // Update Sidebar
   navItems.forEach(item => {
     const tabKey = item.getAttribute('data-tab');
-    item.classList.toggle('active', tabKey === targetTab);
+    item.classList.toggle('active', tabKey === group);
+  });
+  document.querySelectorAll('[data-admin-go-tab]').forEach(button => {
+    const isActive = button.dataset.adminGoTab === targetTab;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-current', isActive ? 'page' : 'false');
   });
 
   // Update Tab Content Sections
@@ -279,18 +305,95 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   }
 }
 
+// 主要导航按业务对象组织，原来的子页面和 URL 原封不动保留。
+function initAdminSectionNav() {
+  for (const [group, tabs] of Object.entries(TAB_GROUPS)) {
+    for (const tab of tabs) {
+      const section = document.getElementById('tab-' + tab);
+      if (!section || section.querySelector('.admin-section-nav')) continue;
+      const bar = document.createElement('nav');
+      bar.className = 'admin-section-nav';
+      bar.setAttribute('aria-label', TAB_GROUP_LABELS[group] + '相关操作');
+      bar.innerHTML = tabs.map(key =>
+        `<button type="button" class="admin-section-link" data-admin-go-tab="${key}">${TAB_GROUP_LABELS[key]}</button>`
+      ).join('');
+      section.prepend(bar);
+    }
+  }
+}
+function adminNavigate(tab) {
+  switchTab(tab);
+}
+window.adminNavigate = adminNavigate;
+
+window.adminOpenDevice = deviceId => {
+  if (!adminAuthorized || !deviceId) return;
+  adminNavigate('cluster');
+  const frame = document.getElementById('clusterIframe');
+  const select = () => {
+    try {
+      const app = frame?.contentWindow;
+      const store = app?.YunMomo?.store;
+      if (!store) {
+        showToast('控制台还未完成初始化，请稍后在设备列表选择', 'error');
+        return;
+      }
+      const devices = store.getDevices();
+      if (devices.some(device => device.deviceId === deviceId)) {
+        app.setPage?.('overview');
+        app.selectDevice(deviceId);
+        return;
+      }
+      if (devices.length) {
+        showToast('目标设备未出现在控制台列表中，请刷新设备检查', 'error');
+        return;
+      }
+      // 首次加载尚未拿到云机列表时，等实际加载事件再选择，避免静默失败。
+      app.YunMomo.eventBus.addEventListener('devices:changed', () => {
+        const latest = store.getDevices();
+        if (latest.some(device => device.deviceId === deviceId)) {
+          app.setPage?.('overview');
+          app.selectDevice(deviceId);
+        } else {
+          showToast('目标设备未出现在控制台列表中', 'error');
+        }
+      }, { once: true });
+    } catch {
+      showToast('设备控制台尚未就绪，请在控制台选择设备', 'error');
+    }
+  };
+  if (frame?.contentWindow?.YunMomo?.store) select();
+  else frame?.addEventListener('load', select, { once: true });
+};
+window.adminOpenPoolDevice = deviceId => {
+  if (!adminAuthorized) return;
+  window.adminPendingPoolDeviceId = deviceId;
+  adminNavigate('pool');
+};
+window.adminOpenDiskDevice = deviceId => {
+  if (!adminAuthorized) return;
+  window.adminRequestedDeviceId = deviceId;
+  adminNavigate('disk');
+};
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-admin-go-tab]');
+  if (!button || !adminAuthorized) return;
+  switchTab(button.dataset.adminGoTab);
+});
+
 // Navigation Click Handling
 navItems.forEach(item => {
   item.addEventListener('click', event => {
     event.preventDefault();
     const targetTab = item.getAttribute('data-tab');
-    switchTab(targetTab, { updateHistory: true });
+    if (adminAuthorized) switchTab(targetTab, { updateHistory: true });
   });
 });
 
 // Popstate (Browser Back / Forward)
 window.addEventListener('popstate', () => {
-  switchTab(getTabFromUrl(), { updateHistory: false });
+  if (adminAuthorized) switchTab(getTabFromUrl(), { updateHistory: false });
 });
 
 // Logout

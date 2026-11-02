@@ -299,6 +299,32 @@ class AuthDatabase {
     return stmt.all();
   }
 
+  getAdminUserOverview(userId) {
+    const user = this.db.prepare(
+      'SELECT id, email, role, status, created_at FROM users WHERE id = ?'
+    ).get(userId);
+    if (!user) return null;
+    const allocations = this.getActiveAllocationsForUser(userId).map(row => ({
+      allocationId: row.id,
+      deviceId: row.device_id,
+      deviceName: row.device_name,
+      expireAt: row.expire_at,
+      allocatedAt: row.allocated_at
+    }));
+    const redemptions = this.db.prepare(`
+      SELECT redeemed_summary, redeemed_at FROM redemption_logs
+      WHERE user_id = ? ORDER BY redeemed_at DESC LIMIT 20
+    `).all(userId).map(row => ({
+      summary: row.redeemed_summary,
+      redeemedAt: row.redeemed_at
+    }));
+    return {
+      user, allocations, redemptions,
+      zhencanBalance: this.getUserZhencanBalance(userId),
+      ip: this.getUserIpStatus(userId)
+    };
+  }
+
   updateUserStatus(id, status) {
     const now = Date.now();
     const stmt = this.db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?');
