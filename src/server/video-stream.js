@@ -4,14 +4,13 @@ const { WebSocket } = require('ws');
 const { createHash } = require('node:crypto');
 const { YunmomoClient } = require('../index');
 
-// Public browser video is deliberately lower-detail: Windows negotiates a small
-// H.264 stream before proxying it. Re-encoding each frame on Windows would add
-// latency/CPU and would not reduce upstream bandwidth. Independent automation
-// screenshots (src/stream-screenshot.js) do not use this profile.
-const SETTINGS = Object.freeze({ bitrate: 900000, maxFps: 12, iFrameInterval: 1,
-  bounds: Object.freeze({ width: 432, height: 768 }), sendFrameMeta: false });
-const MAX_VIDEO_SHORT = 432;
-const MAX_VIDEO_LONG = 768;
+// Progress-only browser video: Windows negotiates a low-resolution, low-bitrate
+// H.264 stream and relays compressed packets without CPU-heavy transcoding.
+// Independent local script screenshots and OCR are unaffected.
+const SETTINGS = Object.freeze({ bitrate: 400000, maxFps: 8, iFrameInterval: 1,
+  bounds: Object.freeze({ width: 320, height: 576 }), sendFrameMeta: false });
+const MAX_VIDEO_SHORT = 320;
+const MAX_VIDEO_LONG = 576;
 const MAX_BUFFER = 4 * 1024 * 1024;
 const UPSTREAM_PING_MS = 15000;
 const UPSTREAM_PONG_MS = 10000;
