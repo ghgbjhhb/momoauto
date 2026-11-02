@@ -4,19 +4,33 @@ const { WebSocket } = require('ws');
 const { createHash } = require('node:crypto');
 const { YunmomoClient } = require('../index');
 
-const SETTINGS = Object.freeze({ bitrate: 8388608, maxFps: 15, iFrameInterval: 1,
-  bounds: Object.freeze({ width: 720, height: 1280 }), sendFrameMeta: false });
+// Public browser video is deliberately lower-detail: Windows negotiates a small
+// H.264 stream before proxying it. Re-encoding each frame on Windows would add
+// latency/CPU and would not reduce upstream bandwidth. Independent automation
+// screenshots (src/stream-screenshot.js) do not use this profile.
+const SETTINGS = Object.freeze({ bitrate: 900000, maxFps: 12, iFrameInterval: 1,
+  bounds: Object.freeze({ width: 432, height: 768 }), sendFrameMeta: false });
+const MAX_VIDEO_SHORT = 432;
+const MAX_VIDEO_LONG = 768;
 const MAX_BUFFER = 4 * 1024 * 1024;
 const UPSTREAM_PING_MS = 15000;
 const UPSTREAM_PONG_MS = 10000;
 const FRAME_STALL_MS = 30000;
 
-function physicalDisplayBounds(control) {
+function publicVideoBounds(control) {
   const display = control.info?.displays?.find(item => item.displayId === control.displayId);
+  // Physical dimensions are used only to preserve the screen's aspect ratio.
+  // Do not overwrite the negotiated compression cap with the native size.
   const width = Number(display?.width);
   const height = Number(display?.height);
   if (![width, height].every(value => Number.isInteger(value) && value >= 16 && value <= 0x7fff)) return null;
-  return { width, height };
+  const portrait = height >= width;
+  const limitWidth = portrait ? MAX_VIDEO_SHORT : MAX_VIDEO_LONG;
+  const limitHeight = portrait ? MAX_VIDEO_LONG : MAX_VIDEO_SHORT;
+  const scale = Math.min(1, limitWidth / width, limitHeight / height);
+  // Common Android encoders need macroblock-aligned output dimensions.
+  const align = dimension => Math.max(16, Math.floor(dimension * scale / 16) * 16);
+  return { width: align(width), height: align(height) };
 }
 
 // Only authenticated/authorized callers in manual-control may subscribe. No
@@ -86,11 +100,10 @@ function createVideoStreams({ client }) {
       autoRefresh: false, inputOverStream: false, videoSettings: { ...SETTINGS, bounds: { ...SETTINGS.bounds } } });
     const entry = { control, viewers: new Set(), holders: new Set(), closed: false, lastPacketAt: 0, lastRefreshAt: 0,
       refreshBit: false, startedAt: 0, pingAt: 0, lastPingAt: 0 };
-    // CloudPhoneControl emits `initial` after parsing display metadata and before
-    // it sends the first stream-settings packet. Prefer the device's physical
-    // display size so a low initial videoSize does not cap the negotiated stream.
+    // 'initial' is emitted before the first SETTINGS packet. Apply the low-bandwidth
+    // resolution cap there, with correct portrait/landscape aspect ratio.
     control.on('initial', () => {
-      const bounds = physicalDisplayBounds(control);
+      const bounds = publicVideoBounds(control);
       if (bounds) control.videoSettings = { ...control.videoSettings, bounds };
     });
     entry.refresh = () => {
