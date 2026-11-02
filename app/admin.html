@@ -602,21 +602,22 @@
     <div class="disk-dialog-body" id="adminDiskPreviewBody"></div>
   </dialog>
 
-  <!-- 页面风格一致的通用确认模态弹窗 (用于卡密作废、用户封禁等敏感动作) -->
+  <!-- 破坏性操作的统一确认框：语义、焦点与样式交给专用组件 -->
   <div class="admin-modal" id="adminConfirmModal" style="display: none">
-    <div class="admin-modal-card" style="max-width: 440px; padding: var(--sp-20)">
-      <div style="display: flex; gap: var(--sp-12); align-items: flex-start; margin-bottom: var(--sp-20)">
-        <div id="confirmModalIcon" style="width: 40px; height: var(--h-toolbar); border-radius: var(--r-pill); background: var(--text-on-accent)2f0; border: 1px solid var(--danger); color: var(--danger); display: flex; align-items: center; justify-content: center; font-size: var(--fs-20); flex-shrink: 0">!</div>
-        <div style="flex: 1">
-          <h3 id="confirmModalTitle" style="font-size: var(--fs-16); font-weight: var(--fw-600); color: var(--text-1); margin: 0 0 var(--sp-6) 0">确认作废该卡密？</h3>
-          <div id="confirmModalDesc" style="font-size: var(--fs-13); color: var(--text-2); margin: 0; line-height: 1.5">作废后该卡密将立即失效，用户将无法再兑换。此操作无法撤销，是否继续？</div>
+    <section class="admin-modal-card admin-confirm-card" role="alertdialog" aria-modal="true"
+             aria-labelledby="confirmModalTitle" aria-describedby="confirmModalDesc" tabindex="-1">
+      <div class="admin-confirm-main">
+        <div class="admin-confirm-icon" id="confirmModalIcon" aria-hidden="true">!</div>
+        <div class="admin-confirm-copy">
+          <h3 id="confirmModalTitle">确认操作</h3>
+          <div id="confirmModalDesc" class="admin-confirm-desc">请确认是否继续操作。</div>
         </div>
       </div>
-      <div style="display: flex; justify-content: flex-end; gap: var(--sp-8)">
-        <button class="btn-action-sm" id="confirmModalCancelBtn" type="button" style="padding: var(--sp-6) var(--sp-16); height: var(--h-control-lg); font-size: var(--fs-13)">取消</button>
-        <button class="btn-action-sm danger" id="confirmModalOkBtn" type="button" style="padding: var(--sp-6) var(--sp-16); height: var(--h-control-lg); font-size: var(--fs-13); background: var(--danger); color: var(--text-on-accent); border: 1px solid var(--danger); font-weight: var(--fw-600)">确认作废</button>
+      <div class="admin-confirm-actions">
+        <button class="btn-action-sm" id="confirmModalCancelBtn" type="button">取消</button>
+        <button class="btn-action-sm admin-confirm-ok" id="confirmModalOkBtn" type="button">确认</button>
       </div>
-    </div>
+    </section>
   </div>
 
   <!-- 修改登录密码 -->

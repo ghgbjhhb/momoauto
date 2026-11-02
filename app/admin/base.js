@@ -142,70 +142,70 @@ function showToast(message, type = 'info', duration = 2200) {
   }, duration);
 }
 
-// --- 全局风格一致的模态确认窗口 (替换丑陋且不搭调的原生 confirm) ---
+// 统一确认框：取消操作优先聚焦，并将交互限制在当前对话框内。
+// 参考 Radix AlertDialog 的交互语义，不引入额外前端依赖。
+let adminConfirmOpen = false;
 function showConfirm({ title = '确认操作', desc = '', okText = '确定', cancelText = '取消', isDanger = true, icon = '⚠️' } = {}) {
+  if (adminConfirmOpen) return Promise.resolve(false);
+  const modal = document.getElementById('adminConfirmModal');
+  const titleEl = document.getElementById('confirmModalTitle');
+  const descEl = document.getElementById('confirmModalDesc');
+  const okBtn = document.getElementById('confirmModalOkBtn');
+  const cancelBtn = document.getElementById('confirmModalCancelBtn');
+  const iconEl = document.getElementById('confirmModalIcon');
+  if (!modal || !titleEl || !descEl || !okBtn || !cancelBtn || !iconEl) return Promise.resolve(false);
+
+  adminConfirmOpen = true;
+  const origin = document.activeElement;
+  titleEl.textContent = title;
+  // desc 由内部调用者构造，所有可变文件名、邮箱等文本必须先 escapeHtml。
+  descEl.innerHTML = desc;
+  okBtn.textContent = okText;
+  cancelBtn.textContent = cancelText;
+  iconEl.textContent = icon;
+  modal.dataset.variant = isDanger ? 'danger' : 'primary';
+
   return new Promise(resolve => {
-    const modal = document.getElementById('adminConfirmModal');
-    const titleEl = document.getElementById('confirmModalTitle');
-    const descEl = document.getElementById('confirmModalDesc');
-    const okBtn = document.getElementById('confirmModalOkBtn');
-    const cancelBtn = document.getElementById('confirmModalCancelBtn');
-    const iconEl = document.getElementById('confirmModalIcon');
-
-    if (!modal) return resolve(false);
-
-    if (titleEl) titleEl.textContent = title;
-    if (descEl) descEl.innerHTML = desc;
-    if (okBtn) {
-      okBtn.textContent = okText;
-      okBtn.className = `btn-action-sm ${isDanger ? 'danger' : ''}`;
-      if (isDanger) {
-        okBtn.style.background = '#ff4d4f';
-        okBtn.style.color = '#ffffff';
-        okBtn.style.borderColor = '#ff4d4f';
-      } else {
-        okBtn.style.background = '#1677ff';
-        okBtn.style.color = '#ffffff';
-        okBtn.style.borderColor = '#1677ff';
-      }
-    }
-    if (cancelBtn) cancelBtn.textContent = cancelText;
-    if (iconEl) {
-      iconEl.textContent = icon;
-      iconEl.style.background = isDanger ? '#fff2f0' : '#e6f4ff';
-      iconEl.style.borderColor = isDanger ? '#ffccc7' : '#91caff';
-      iconEl.style.color = isDanger ? '#ff4d4f' : '#1677ff';
-    }
-
-    modal.style.display = 'flex';
-
-    const cleanup = () => {
+    let settled = false;
+    const cleanup = result => {
+      if (settled) return;
+      settled = true;
       modal.style.display = 'none';
+      delete modal.dataset.variant;
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
       modal.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKeyDown);
+      adminConfirmOpen = false;
+      if (origin?.isConnected && typeof origin.focus === 'function') origin.focus();
+      resolve(result);
     };
-
-    const onOk = () => {
-      cleanup();
-      resolve(true);
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onBackdrop = event => {
+      if (event.target === modal) cleanup(false);
     };
-
-    const onCancel = () => {
-      cleanup();
-      resolve(false);
-    };
-
-    const onBackdrop = (e) => {
-      if (e.target === modal) {
-        cleanup();
-        resolve(false);
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cleanup(false);
+      } else if (event.key === 'Tab') {
+        // 目前只有两个可聚焦按钮，维持循环，不让 Tab 移到遮罩下的删除操作。
+        if (event.shiftKey && document.activeElement === cancelBtn) {
+          event.preventDefault();
+          okBtn.focus();
+        } else if (!event.shiftKey && document.activeElement === okBtn) {
+          event.preventDefault();
+          cancelBtn.focus();
+        }
       }
     };
-
     okBtn.addEventListener('click', onOk);
     cancelBtn.addEventListener('click', onCancel);
     modal.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKeyDown);
+    modal.style.display = 'flex';
+    cancelBtn.focus();
   });
 }
 

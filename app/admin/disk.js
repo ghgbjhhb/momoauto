@@ -345,9 +345,10 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
 };
 
 window.deleteAdminDiskFile = async (fileName) => {
+  const targetDir = adminDiskCurrentDir;
   const confirmed = await showConfirm({
     title: '确认删除该文件？',
-    desc: '确定要从【' + escapeHtml(adminDiskCurrentDir) + '】目录删除文件 <strong style="color:#1f1f1f;">' + escapeHtml(fileName) + '</strong> 吗？此操作无法撤销。',
+    desc: '确定要从【' + escapeHtml(targetDir) + '】目录删除文件 <strong>' + escapeHtml(fileName) + '</strong> 吗？此操作无法撤销。',
     okText: '确认删除',
     cancelText: '取消',
     isDanger: true,
@@ -360,15 +361,15 @@ window.deleteAdminDiskFile = async (fileName) => {
     const res = await fetch('/api/cloud-disk/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: adminDiskCurrentDir, name: fileName })
+      body: JSON.stringify({ dir: targetDir, name: fileName })
     });
     const data = await res.json();
     if (data.ok) {
       showToast('已成功删除文件 "' + fileName + '"', 'success');
-      if (adminDiskSelectedFile === fileName) {
-        adminDiskSelectedFile = null;
+      if (adminDiskCurrentDir === targetDir) {
+        if (adminDiskSelectedFile === fileName) adminDiskSelectedFile = null;
+        loadAdminDiskFiles();
       }
-      loadAdminDiskFiles();
     } else {
       showToast('删除失败: ' + (data.error || '未知错误'), 'error');
     }
@@ -378,6 +379,7 @@ window.deleteAdminDiskFile = async (fileName) => {
 };
 
 window.sendAdminDiskFileToDevice = async (fileName) => {
+  const targetDir = adminDiskCurrentDir;
   const select = document.getElementById('adminDiskDeviceSelect');
   const deviceId = select ? select.value : '';
   const deviceName = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : deviceId;
@@ -387,12 +389,12 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
     return;
   }
 
-  const isParamsDir = adminDiskCurrentDir === '真参';
+  const isParamsDir = targetDir === '真参';
   const confirmed = await showConfirm({
     title: isParamsDir ? '确认推送真参配置到云机？' : '确认推送图片到云机相册？',
     desc: isParamsDir
-      ? ('确认将真参文件 <strong style="color:#1677ff;">' + escapeHtml(fileName) + '</strong> 推送并应用到云机 <strong>' + escapeHtml(deviceName) + '</strong>？')
-      : ('确认将图片 <strong style="color:#1677ff;">' + escapeHtml(fileName) + '</strong> 立即推送到云机 <strong>' + escapeHtml(deviceName) + '</strong> 的相册？'),
+      ? ('确认将真参文件 <strong class="admin-confirm-highlight">' + escapeHtml(fileName) + '</strong> 推送并应用到云机 <strong>' + escapeHtml(deviceName) + '</strong>？')
+      : ('确认将图片 <strong class="admin-confirm-highlight">' + escapeHtml(fileName) + '</strong> 立即推送到云机 <strong>' + escapeHtml(deviceName) + '</strong> 的相册？'),
     okText: '立即推送',
     cancelText: '取消',
     isDanger: false,
@@ -420,7 +422,7 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
     const res = await fetch('/api/cloud-disk/send-to-device', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId, dir: adminDiskCurrentDir, name: fileName })
+      body: JSON.stringify({ deviceId, dir: targetDir, name: fileName })
     });
     const data = await res.json();
     if (data.ok) {

@@ -654,7 +654,10 @@ body {
 
     .admin-modal {
       position: fixed;
-      top: 0;
+      inset: 0;
+      box-sizing: border-box;
+      padding: var(--sp-20);
+      overflow-y: auto;
       background: var(--bg-overlay);
       backdrop-filter: none;
       display: flex;
@@ -665,6 +668,10 @@ body {
     }
 
     .admin-modal-card {
+      box-sizing: border-box;
+      min-width: 0;
+      max-height: calc(100dvh - var(--sp-40));
+      overflow-y: auto;
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: var(--r-8);
@@ -898,3 +905,82 @@ body {
 }
 .admin-link-button:hover { text-decoration: underline; }
 .admin-target-row td { background: var(--accent-soft); }
+
+
+/* Shared destructive confirmation dialog. Use token variants, not inline colors. */
+.admin-confirm-card {
+  max-width: 440px;
+  padding: var(--sp-20);
+}
+.admin-confirm-main {
+  display: flex;
+  gap: var(--sp-12);
+  align-items: flex-start;
+  margin-bottom: var(--sp-20);
+}
+.admin-confirm-icon {
+  flex: 0 0 var(--h-toolbar);
+  display: grid;
+  place-items: center;
+  width: var(--h-toolbar);
+  height: var(--h-toolbar);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--fs-20);
+}
+#adminConfirmModal[data-variant="primary"] .admin-confirm-icon {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.admin-confirm-copy { flex: 1 1 0; min-width: 0; }
+.admin-confirm-copy h3 {
+  margin: 0 0 var(--sp-6);
+  color: var(--text-1);
+  font-size: var(--fs-16);
+  font-weight: var(--fw-600);
+}
+.admin-confirm-desc {
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  line-height: var(--lh-relaxed);
+  overflow-wrap: anywhere;
+}
+.admin-confirm-desc strong { color: var(--text-1); }
+.admin-confirm-desc .admin-confirm-warning { color: var(--danger); }
+.admin-confirm-desc .admin-confirm-highlight { color: var(--accent); }
+.admin-confirm-desc .admin-confirm-mono { font-family: var(--font-mono); }
+.admin-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-8);
+}
+.admin-confirm-actions .btn-action-sm {
+  min-height: var(--h-toolbar);
+  padding: var(--sp-8) var(--sp-16);
+  font-size: var(--fs-13);
+}
+.admin-confirm-actions .admin-confirm-ok {
+  border-color: var(--danger);
+  color: var(--text-on-accent);
+  background: var(--danger);
+  font-weight: var(--fw-600);
+}
+.admin-confirm-actions .admin-confirm-ok:hover {
+  border-color: var(--danger);
+  color: var(--text-on-accent);
+  background: var(--danger);
+}
+#adminConfirmModal[data-variant="primary"] .admin-confirm-ok,
+#adminConfirmModal[data-variant="primary"] .admin-confirm-ok:hover {
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+  background: var(--accent);
+}
+#adminConfirmModal :is(button, [tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -60,7 +60,7 @@ window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
   const isBan = targetStatus === 'banned';
   const confirmed = await showConfirm({
     title: isBan ? '确认封禁该用户？' : '确认解封该用户？',
-    desc: `确认要将用户 <strong style="color:#1f1f1f;">${escapeHtml(userEmail || userId)}</strong> 的状态变更为【<strong>${isBan ? '封禁' : '解封'}</strong>】吗？${isBan ? '<br><span style="color:#cf1322; font-size:12.5px;">封禁后该用户将无法登录系统和操作名下云机。</span>' : ''}`,
+    desc: `确认要将用户 <strong>${escapeHtml(userEmail || userId)}</strong> 的状态变更为【<strong>${isBan ? '封禁' : '解封'}</strong>】吗？${isBan ? '<br><span class="admin-confirm-warning">封禁后该用户将无法登录系统和操作名下云机。</span>' : ''}`,
     okText: isBan ? '确认封禁' : '确认解封',
     cancelText: '取消',
     isDanger: isBan,
@@ -330,7 +330,7 @@ window.copyCardCode = code => {
 window.revokeCard = async (cardId, cardCode = '') => {
   const confirmed = await showConfirm({
     title: '确认作废该卡密？',
-    desc: `确认要作废卡密 <strong style="color:#1677ff; font-family:monospace; font-size:14px;">${escapeHtml(cardCode)}</strong> 吗？<br><span style="color:#cf1322; font-size:12.5px;">作废后该卡密将立即失效，用户将无法再兑换。此操作无法撤销。</span>`,
+    desc: `确认要作废卡密 <strong class="admin-confirm-highlight admin-confirm-mono">${escapeHtml(cardCode)}</strong> 吗？<br><span class="admin-confirm-warning">作废后该卡密将立即失效，用户将无法再兑换。此操作无法撤销。</span>`,
     okText: '确认作废',
     cancelText: '取消',
     isDanger: true,
@@ -531,7 +531,7 @@ async function loadPool() {
 window.recycleDevice = async (allocationId, deviceId, devName = '') => {
   const confirmed = await showConfirm({
     title: '确认强制回收该云机？',
-    desc: `确认强制解绑并回收云机 <strong style="color:#1f1f1f;">${escapeHtml(devName || deviceId)}</strong> 吗？<br><span style="color:#cf1322; font-size:12.5px;">当前正在进行的连接将立即断开，设备将重归空闲待分配库存。</span>`,
+    desc: `确认强制解绑并回收云机 <strong>${escapeHtml(devName || deviceId)}</strong> 吗？<br><span class="admin-confirm-warning">当前正在进行的连接将立即断开，设备将重归空闲待分配库存。</span>`,
     okText: '强制回收',
     cancelText: '取消',
     isDanger: true,
