@@ -222,9 +222,29 @@ function createAdminLatestRequest() {
         signal: controller.signal,
         isCurrent: () => requestId === sequence
       };
+    },
+    cancel() {
+      ++sequence;
+      controller?.abort();
+      controller = null;
     }
   };
 }
+
+// 有副作用的管理请求以目标对象为键，只允许同一操作一个未完成请求。
+// 不能用取消 POST/DELETE 的方式防重：取消连接并不保证服务端停止执行。
+const adminWriteGuard = (() => {
+  const pending = new Set();
+  return {
+    isPending: key => pending.has(key),
+    begin(key) {
+      if (pending.has(key)) return false;
+      pending.add(key);
+      return true;
+    },
+    end: key => pending.delete(key)
+  };
+})();
 
 // 1. Auth check
 async function checkAuth() {

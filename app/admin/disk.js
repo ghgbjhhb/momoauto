@@ -366,6 +366,8 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
 
 window.deleteAdminDiskFile = async (fileName) => {
   const targetDir = adminDiskCurrentDir;
+  const key = 'disk-delete:' + targetDir + ':' + fileName;
+  if (adminWriteGuard.isPending(key)) return;
   const confirmed = await showConfirm({
     title: '确认删除该文件？',
     desc: '确定要从【' + escapeHtml(targetDir) + '】目录删除文件 <strong>' + escapeHtml(fileName) + '</strong> 吗？此操作无法撤销。',
@@ -375,7 +377,7 @@ window.deleteAdminDiskFile = async (fileName) => {
     icon: '🗑️'
   });
 
-  if (!confirmed) return;
+  if (!confirmed || !adminWriteGuard.begin(key)) return;
 
   try {
     const res = await fetch('/api/cloud-disk/delete', {
@@ -395,6 +397,8 @@ window.deleteAdminDiskFile = async (fileName) => {
     }
   } catch (err) {
     showToast('删除请求失败: ' + err.message, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };
 
@@ -403,6 +407,8 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
   const select = document.getElementById('adminDiskDeviceSelect');
   const deviceId = select ? select.value : '';
   const deviceName = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : deviceId;
+  const key = 'disk-push:' + deviceId + ':' + targetDir + ':' + fileName;
+  if (adminWriteGuard.isPending(key)) return;
 
   if (!deviceId) {
     showToast('请先在上方下拉框中选择要下发的目标云机！', 'error');
@@ -421,7 +427,7 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
     icon: '🚀'
   });
 
-  if (!confirmed) return;
+  if (!confirmed || !adminWriteGuard.begin(key)) return;
 
   const card = document.querySelector('.disk-file-card[data-filename="' + CSS.escape(fileName) + '"]');
   const pushBtn = card ? card.querySelector('.push-btn') : null;
@@ -453,6 +459,7 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
   } catch (err) {
     showToast('网络或下发接口异常: ' + err.message, 'error');
   } finally {
+    adminWriteGuard.end(key);
     if (pushBtn) {
       pushBtn.disabled = false;
       pushBtn.innerHTML = originalText;
@@ -666,6 +673,8 @@ function loadAdminDisk() {
 
 
 window.toggleZhencanStatus = async function(fileName, targetStatus) {
+  const key = 'zhencan-status:' + fileName;
+  if (!adminWriteGuard.begin(key)) return;
   try {
     const res = await fetch('/api/cloud-disk/zhencan/toggle-status', {
       method: 'POST',
@@ -678,5 +687,7 @@ window.toggleZhencanStatus = async function(fileName, targetStatus) {
     loadAdminDiskFiles();
   } catch (err) {
     showToast('更新真参状态失败: ' + err.message, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };

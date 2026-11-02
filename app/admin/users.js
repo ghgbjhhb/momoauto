@@ -63,6 +63,8 @@ usersTableBody?.addEventListener('click', event => {
 });
 
 window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
+  const key = 'user-status:' + userId;
+  if (adminWriteGuard.isPending(key)) return;
   const isBan = targetStatus === 'banned';
   const confirmed = await showConfirm({
     title: isBan ? '确认封禁该用户？' : '确认解封该用户？',
@@ -73,7 +75,7 @@ window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
     icon: isBan ? '🚫' : '🔓'
   });
 
-  if (!confirmed) return;
+  if (!confirmed || !adminWriteGuard.begin(key)) return;
   try {
     const res = await fetch('/api/admin/users/status', {
       method: 'POST',
@@ -91,6 +93,8 @@ window.toggleUserStatus = async (userId, targetStatus, userEmail = '') => {
     loadUsers();
   } catch (err) {
     showToast(`操作失败: ${err.message}`, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };
 
@@ -99,6 +103,7 @@ if (refreshUsersBtn) refreshUsersBtn.addEventListener('click', loadUsers);
 // 管理员可从用户列表或设备池直接查看该用户的权益与租赁设备。
 let adminDetailSeq = 0;
 let adminDetailUserId = '';
+let adminDetailController = null;
 async function openAdminUserDetails(userId) {
   if (!userId) return;
   const overlay = document.getElementById('adminUserDetailOverlay');
@@ -107,6 +112,8 @@ async function openAdminUserDetails(userId) {
   const content = document.getElementById('adminUserDetailContent');
   if (!overlay || !content) return;
   adminDetailUserId = userId;
+  adminDetailController?.abort();
+  adminDetailController = new AbortController();
   const requestId = ++adminDetailSeq;
   overlay.hidden = false;
   document.getElementById('adminUserDetailClose')?.focus();
@@ -114,7 +121,8 @@ async function openAdminUserDetails(userId) {
   subtitle.textContent = '正在读取用户与权益数据…';
   content.textContent = '正在加载…';
   try {
-    const res = await fetch('/api/admin/users/detail?userId=' + encodeURIComponent(userId));
+    const res = await fetch('/api/admin/users/detail?userId=' + encodeURIComponent(userId),
+      { signal: adminDetailController.signal });
     const data = await res.json();
     if (requestId !== adminDetailSeq || overlay.hidden) return;
     if (!res.ok || !data.ok) throw new Error(data.error || '无法获取用户详情');
@@ -151,13 +159,17 @@ async function openAdminUserDetails(userId) {
       </div>
     `;
   } catch (error) {
-    if (requestId === adminDetailSeq) content.textContent = '加载失败：' + error.message;
+    if (requestId === adminDetailSeq && !overlay.hidden && error.name !== 'AbortError') {
+      content.textContent = '加载失败：' + error.message;
+    }
   }
 }
 window.openAdminUserDetails = openAdminUserDetails;
 
 function closeAdminUserDetails() {
   ++adminDetailSeq;
+  adminDetailController?.abort();
+  adminDetailController = null;
   adminDetailUserId = '';
   const overlay = document.getElementById('adminUserDetailOverlay');
   if (overlay) overlay.hidden = true;
@@ -337,6 +349,8 @@ window.copyCardCode = code => {
 
 // 作废卡密 (弹出页面居中自定义模态弹窗，保持全站一致设计风格)
 window.revokeCard = async (cardId, cardCode = '') => {
+  const key = 'card-revoke:' + cardId;
+  if (adminWriteGuard.isPending(key)) return;
   const confirmed = await showConfirm({
     title: '确认作废该卡密？',
     desc: `确认要作废卡密 <strong class="admin-confirm-highlight admin-confirm-mono">${escapeHtml(cardCode)}</strong> 吗？<br><span class="admin-confirm-warning">作废后该卡密将立即失效，用户将无法再兑换。此操作无法撤销。</span>`,
@@ -346,7 +360,7 @@ window.revokeCard = async (cardId, cardCode = '') => {
     icon: '🗑️'
   });
 
-  if (!confirmed) return;
+  if (!confirmed || !adminWriteGuard.begin(key)) return;
 
   try {
     const res = await fetch('/api/admin/cards/revoke', {
@@ -360,6 +374,8 @@ window.revokeCard = async (cardId, cardCode = '') => {
     loadCards();
   } catch (err) {
     showToast(`作废失败: ${err.message}`, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };
 
@@ -551,6 +567,8 @@ async function loadPool() {
 }
 
 window.recycleDevice = async (allocationId, deviceId, devName = '') => {
+  const key = 'device-recycle:' + allocationId;
+  if (adminWriteGuard.isPending(key)) return;
   const confirmed = await showConfirm({
     title: '确认强制回收该云机？',
     desc: `确认强制解绑并回收云机 <strong>${escapeHtml(devName || deviceId)}</strong> 吗？<br><span class="admin-confirm-warning">当前正在进行的连接将立即断开，设备将重归空闲待分配库存。</span>`,
@@ -560,7 +578,7 @@ window.recycleDevice = async (allocationId, deviceId, devName = '') => {
     icon: '⚡'
   });
 
-  if (!confirmed) return;
+  if (!confirmed || !adminWriteGuard.begin(key)) return;
 
   try {
     const res = await fetch('/api/admin/devices/recycle', {
@@ -579,6 +597,8 @@ window.recycleDevice = async (allocationId, deviceId, devName = '') => {
     loadPool();
   } catch (err) {
     showToast(`回收失败: ${err.message}`, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };
 

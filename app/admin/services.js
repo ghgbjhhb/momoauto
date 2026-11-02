@@ -67,16 +67,22 @@ function formatLogMessageHtml(rawMsg) {
   return safe;
 }
 
+const serverLogsRequests = createAdminLatestRequest();
+let serverLogsClearPending = false;
 async function fetchServerLogs() {
+  if (serverLogsClearPending) return;
+  const request = serverLogsRequests.start();
   try {
-    const res = await fetch('/api/server-logs');
-    if (!res.ok) return;
+    const res = await fetch('/api/server-logs', { signal: request.signal });
     const data = await res.json();
-    if (data.ok && Array.isArray(data.logs)) {
+    if (!request.isCurrent() || serverLogsClearPending) return;
+    if (res.ok && data.ok && Array.isArray(data.logs)) {
       const serverEntries = data.logs.map(parseServerLogLine);
       mergeSystemLogs(serverEntries);
     }
-  } catch {}
+  } catch {
+    // 轮询失败不改变现有日志；避免每 4 秒反复生成新的客户端错误日志。
+  }
 }
 
 function mergeSystemLogs(newEntries) {
@@ -211,19 +217,25 @@ if (clearAdminLogSearchBtn) {
 
 if (adminLogClearBtn) {
   adminLogClearBtn.addEventListener('click', async () => {
+    if (serverLogsClearPending) return;
+    serverLogsClearPending = true;
+    serverLogsRequests.cancel();
+    adminLogClearBtn.disabled = true;
     try {
       const response = await fetch('/api/server-logs/clear', { method: 'POST' });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || '清理请求失败');
+      allSystemLogs = [];
+      window.AppLogger?.clear();
+      renderSystemLogs();
+      updateNavErrorBadge();
+      showToast('系统运行日志已清空', 'success');
     } catch (error) {
       showToast('日志清理未成功：' + error.message, 'error');
-      return;
+    } finally {
+      serverLogsClearPending = false;
+      adminLogClearBtn.disabled = false;
     }
-    allSystemLogs = [];
-    window.AppLogger?.clear();
-    renderSystemLogs();
-    updateNavErrorBadge();
-    showToast('系统运行日志已清空', 'success');
   });
 }
 
@@ -281,6 +293,7 @@ let adminAiActiveId = null;
 let adminAiEventsInitialized = false;
 const adminAiRequests = createAdminLatestRequest();
 const adminSmsConfigRequests = createAdminLatestRequest();
+let smsKeyEditRevision = 0;
 
 async function loadAdminAiSettings() {
   initAdminAiEvents();
@@ -599,6 +612,8 @@ window.editAiProvider = function(providerId) {
 };
 
 window.setAiDefaultProvider = async function(providerId) {
+  const key = 'ai-default';
+  if (!adminWriteGuard.begin(key)) return;
   try {
     const res = await fetch('/api/admin/ai-providers/' + encodeURIComponent(providerId) + '/set-default', {
       method: 'POST'
@@ -612,6 +627,8 @@ window.setAiDefaultProvider = async function(providerId) {
     }
   } catch (err) {
     showToast('切换失败: ' + err.message, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };
 
@@ -635,6 +652,8 @@ window.testAiProvider = async function(providerId) {
 };
 
 window.deleteAiProvider = async function(providerId) {
+  const key = 'ai-delete:' + providerId;
+  if (adminWriteGuard.isPending(key)) return;
   const p = adminAiProviders.find(item => item.id === providerId);
   const name = p ? p.name : '该供应商';
   const confirmed = await showConfirm({
@@ -644,7 +663,7 @@ window.deleteAiProvider = async function(providerId) {
     cancelText: '取消',
     isDanger: true
   });
-  if (!confirmed) return;
+  if (!confirmed || !adminWriteGuard.begin(key)) return;
 
   try {
     const res = await fetch('/api/admin/ai-providers/' + encodeURIComponent(providerId), {
@@ -659,6 +678,8 @@ window.deleteAiProvider = async function(providerId) {
     }
   } catch (err) {
     showToast('删除失败: ' + err.message, 'error');
+  } finally {
+    adminWriteGuard.end(key);
   }
 };
 
@@ -718,8 +739,9 @@ async function loadSmsManagement() {
   await loadSmsLogs();
 }
 
-async function loadSmsConfig() {
+async function loadSmsConfig({ preserveInput = false } = {}) {
   const request = adminSmsConfigRequests.start();
+  const editRevision = smsKeyEditRevision;
   try {
     const res = await fetch('/api/admin/sms/config', { signal: request.signal });
     const data = await res.json();
@@ -728,7 +750,9 @@ async function loadSmsConfig() {
 
     const cfg = data.config || {};
     if (smsApiKey) {
-      smsApiKey.value = cfg.hasApiKey ? '********' : '';
+      if (!preserveInput && smsKeyEditRevision === editRevision) {
+        smsApiKey.value = cfg.hasApiKey ? '********' : '';
+      }
       smsApiKey.dataset.hasKey = cfg.hasApiKey ? 'true' : 'false';
     }
 
@@ -745,6 +769,9 @@ async function loadSmsConfig() {
     if (request.isCurrent() && err.name !== 'AbortError') console.error('加载接码配置失败:', err);
   }
 }
+
+// 正在编辑的 Key 不能被并行的配置读取请求覆盖。
+smsApiKey?.addEventListener('input', () => { ++smsKeyEditRevision; });
 
 // 密钥明文显示/隐藏
 if (toggleSmsKeyVisBtn && smsApiKey) {
@@ -763,6 +790,9 @@ if (toggleSmsKeyVisBtn && smsApiKey) {
 if (smsConfigForm) {
   smsConfigForm.addEventListener('submit', async event => {
     event.preventDefault();
+    if (saveSmsConfigBtn?.disabled) return;
+    adminSmsConfigRequests.cancel();
+    const submittedRevision = smsKeyEditRevision;
     if (saveSmsConfigBtn) {
       saveSmsConfigBtn.disabled = true;
       saveSmsConfigBtn.textContent = '保存中…';
@@ -788,7 +818,7 @@ if (smsConfigForm) {
         setTimeout(() => { smsConfigMsg.textContent = ''; }, 3000);
       }
       showToast('API Key 已成功保存', 'success');
-      loadSmsConfig();
+      loadSmsConfig({ preserveInput: smsKeyEditRevision !== submittedRevision });
     } catch (err) {
       if (smsConfigMsg) {
         smsConfigMsg.style.color = '#ff4d4f';
@@ -856,10 +886,11 @@ if (testSmsConnBtn) {
 }
 
 // 脚本调用日志列表与详情展开
-let smsLogsRequestId = 0;
+const smsLogRequests = createAdminLatestRequest();
+let smsLogsClearPending = false;
 async function loadSmsLogs() {
-  if (!smsRecordsTableBody) return;
-  const requestId = ++smsLogsRequestId;
+  if (!smsRecordsTableBody || smsLogsClearPending) return;
+  const request = smsLogRequests.start();
   try {
     const search = getSanitizedSmsSearch();
     syncSmsSearchClearBtn();
@@ -869,9 +900,10 @@ async function loadSmsLogs() {
     if (search) params.set('search', search);
     if (status) params.set('status', status);
 
-    const res = await fetch(`/api/admin/sms/logs?${params.toString()}`);
+    const res = await fetch(`/api/admin/sms/logs?${params.toString()}`,
+      { signal: request.signal });
     const data = await res.json();
-    if (requestId !== smsLogsRequestId) return;
+    if (!request.isCurrent() || smsLogsClearPending) return;
     if (!res.ok || !data.ok) throw new Error(data.error || '请求失败');
 
     const logs = data.logs || [];
@@ -968,7 +1000,7 @@ async function loadSmsLogs() {
       `;
     }).join('');
   } catch (err) {
-    if (requestId === smsLogsRequestId) {
+    if (request.isCurrent() && !smsLogsClearPending && err.name !== 'AbortError') {
       smsRecordsTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff4d4f; padding:30px;">加载日志失败: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
@@ -1039,16 +1071,21 @@ if (clearSmsRecordsBtn) {
       isDanger: true,
       icon: '🗑️'
     });
-    if (!confirmed) return;
-
+    if (!confirmed || smsLogsClearPending) return;
+    smsLogsClearPending = true;
+    smsLogRequests.cancel();
+    clearSmsRecordsBtn.disabled = true;
     try {
       const res = await fetch('/api/admin/sms/logs', { method: 'DELETE' });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+      if (!res.ok || !data.ok) throw new Error(data.error || '服务器拒绝清空');
       showToast('已清空接码调用日志', 'success');
-      loadSmsLogs();
     } catch (err) {
       showToast(`清空失败: ${err.message}`, 'error');
+    } finally {
+      smsLogsClearPending = false;
+      clearSmsRecordsBtn.disabled = false;
+      loadSmsLogs();
     }
   });
 }
