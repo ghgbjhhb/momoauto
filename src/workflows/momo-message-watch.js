@@ -27,7 +27,7 @@ const path = require('node:path');
 const { YunmomoClient } = require('../index');
 const { runMomoAiReplyOnce } = require('./momo-ai-reply');
 const { observePage } = require('../automation/page-service');
-const { returnMessageListTop, listSignature, sameContactNames } = require('../automation/message-list-navigation');
+const { returnMessageListTop, listSignature, sameContactNames, hasTopHeader } = require('../automation/message-list-navigation');
 const { scanMessageListCandidates } = require('../tools/momo/message-list-parser');
 const { classifyGreetingsScreen } = require('../tools/momo/greetings-layout');
 const { candidateSignature } = require('../tools/momo/message-list-watcher');
@@ -533,7 +533,12 @@ class WatchHub {
       if (res.ok) {
         const top = listReady(res.observation, this.options);
         if (top) {
-          await log('INFO', `[回顶] 已确认在列表顶部 (滑动 ${res.steps ?? 0} 次)`);
+          const steps = res.steps ?? 0;
+          if (steps > 0) {
+            await log('INFO', `[回顶] 已确认在列表顶部 (滑动 ${steps} 次)`);
+          } else {
+            await log('DEBUG', '[回顶] 原位核验已在列表顶部 (无需滑动)');
+          }
           return { ...top, corrected: false };
         }
       }
@@ -851,41 +856,86 @@ class WatchHub {
     await log('INFO', `[挂机模式] 开始盯首屏。下次首页养号约 ${minutes(warmupMs)} 分钟后，下次招呼处理约 ${minutes(greetingsMs)} 分钟后`);
 
     this.burst.clear();
+    let needsTop = false; // 初始已回到顶部，稳态监听时不重复调用回顶
+    let lastHeartbeatAt = Date.now();
+    const watchStartedAt = Date.now();
+    const HEARTBEAT_INTERVAL_MS = 60000; // 挂机空闲时每 60 秒聚合输出一次健康心跳
+
     while (!this.signal?.aborted) {
-      const handled = await this.lookForNew();
+      const outcome = await this.lookForNew(needsTop);
       if (this.limitReached()) {
         await log('INFO', `达到设定回复人数上限 (${this.handledContacts}/${this.targetLimit}人)，任务结束`);
         return 'limit_reached';
       }
-      if (handled) continue;          // 处理完一位立即回顶再看
+
+      if (outcome.handled) {
+        // 处理完一位联系人（进入过聊天详情页），下次循环必须回顶并重新对齐首屏
+        needsTop = true;
+        continue;
+      }
+
       this.burst.clear();             // 本批已处理完，没有被推下去的未读了
-      if (await this.runDueTimer()) continue;
+      needsTop = outcome.leftTop;     // 若未处理任何人但发生过翻页，下次必须回顶；否则保持稳态首屏
+
+      if (await this.runDueTimer()) {
+        // 定时支线任务切到了首页或招呼页，任务结束后下次循环必须回顶切回列表
+        needsTop = true;
+        continue;
+      }
+
+      // 空闲心跳：每隔 60 秒聚合汇总一次挂机运行状态，避免无新消息时高频日志刷屏
+      const nowTs = Date.now();
+      if (nowTs - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
+        const elapsedMinutes = Math.max(1, Math.floor((nowTs - watchStartedAt) / 60000));
+        const warmupLeft = Math.max(0, Math.ceil((this.nextWarmupAt - nowTs) / 60000));
+        const greetingsLeft = Math.max(0, Math.ceil((this.nextGreetingsAt - nowTs) / 60000));
+        await log('INFO', `[挂机守护中] 持续监听 ${elapsedMinutes} 分钟，首屏无未读 | 养号约 ${warmupLeft} 分钟后 | 招呼约 ${greetingsLeft} 分钟后`);
+        lastHeartbeatAt = nowTs;
+      }
+
       await this.pause(this.options.intervalMs ?? DEFAULT_IDLE_INTERVAL_MS);
     }
     return 'aborted';
   }
 
   /**
-   * 回顶看首屏，处理第一位可处理的未读。
+   * 首屏未读监听与翻页追踪。
+   * - needsTop=true 时执行物理回顶对齐（处理完联系人退回、支线返回或发生深层位移后）；
+   * - needsTop=false 时处于稳态盯首屏，只做单帧轻量观测，绝不重复触发无意义的物理回顶例程。
    * 首屏最下面一张卡片是本批处理过的人时，说明可能还有未读被挤到下面，继续往下看一屏（最多 maxWatchPages 屏）。
-   * 返回是否处理了联系人。
+   * 返回 { handled: boolean, leftTop: boolean }。
    */
-  async lookForNew() {
-    let ready = await this.toTop(this.maxWatchPages + 3);
+  async lookForNew(needsTop = false) {
+    let ready;
+    if (needsTop) {
+      ready = await this.toTop(this.maxWatchPages + 3);
+    } else {
+      ready = await this.toMessageList();
+      // 稳态自愈：如果当前不在顶部（被外部手势滑动或发生偏移），自愈对齐回顶
+      if (!hasTopHeader(ready.obs)) {
+        await log('INFO', '[挂机模式] 观测到首屏特征不完整，自动纠偏回顶');
+        ready = await this.toTop(this.maxWatchPages + 3);
+      }
+    }
+
     for (let page = 1; ; page++) {
       await this.reportUnreadable(ready.scan);
       const candidate = this.pickUnread(ready.scan);
       if (candidate) {
         await this.handleContact(candidate, ready.obs);
-        return true;
+        return { handled: true, leftTop: true };
       }
       const cards = ready.scan.candidates || [];
       const lastCard = cards[cards.length - 1];
-      if (page >= this.maxWatchPages || !lastCard || !this.burst.has(lastCard.peerName)) return false;
+      if (page >= this.maxWatchPages || !lastCard || !this.burst.has(lastCard.peerName)) {
+        return { handled: false, leftTop: page > 1 };
+      }
 
       await log('INFO', `[挂机模式] 第 ${page} 屏底部是本批处理过的 [${lastCard.peerName}]，往下多看一屏`);
       const next = await this.nextPage(ready);
-      if (next.end) return false;     // 触底或页面被纠正：下一轮从顶部重新看
+      if (next.end) {
+        return { handled: false, leftTop: true }; // 触底或页面被纠偏，下一轮从顶部重新看
+      }
       ready = next.ready;
     }
   }

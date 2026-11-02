@@ -134,5 +134,12 @@ function sameContactNames(before, after) {
   });
 }
 
-module.exports = { returnMessageListTop: require('./timing').timed('page.returnMessageListTop', returnMessageListTop,
-  session => ({ deviceId: session?.deviceId })), listSignature, topFeatureEvidence, ocrFeatureMatches, sameContactNames };
+module.exports = {
+  returnMessageListTop: require('./timing').timed('page.returnMessageListTop', returnMessageListTop,
+    session => ({ deviceId: session?.deviceId })),
+  listSignature,
+  topFeatureEvidence,
+  hasTopHeader,
+  ocrFeatureMatches,
+  sameContactNames
+};
