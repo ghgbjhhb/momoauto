@@ -85,8 +85,14 @@ async function handleAdminRoutes(ctx, request, response, url) {
     if (!requireAdmin(user, response)) return true;
     try {
       const body = await readJsonBody(request);
-      authService.revokeCard(body?.cardId);
-      json(response, 200, { ok: true });
+      const revoked = authService.revokeCard(body?.cardId);
+      if (!revoked) {
+        // 数据库的条件更新只对未使用卡密生效，不能把已兑换、已作废
+        // 或已不存在的卡密伪装成“作废成功”。
+        json(response, 409, { ok: false, error: '卡密已使用、已作废或不存在，请刷新列表确认状态' });
+      } else {
+        json(response, 200, { ok: true });
+      }
     } catch (err) {
       json(response, 400, { ok: false, error: err.message });
     }

@@ -279,23 +279,28 @@ setInterval(() => {
 let adminAiProviders = [];
 let adminAiActiveId = null;
 let adminAiEventsInitialized = false;
+const adminAiRequests = createAdminLatestRequest();
+const adminSmsConfigRequests = createAdminLatestRequest();
 
 async function loadAdminAiSettings() {
   initAdminAiEvents();
+  const request = adminAiRequests.start();
   const tableBody = document.getElementById('aiProvidersTableBody');
   if (tableBody) {
     tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#8c8c8c;">正在加载供应商列表…</td></tr>';
   }
 
   try {
-    const res = await fetch('/api/admin/ai-settings');
+    const res = await fetch('/api/admin/ai-settings', { signal: request.signal });
     const data = await res.json();
+    if (!request.isCurrent()) return;
     if (!data.ok) throw new Error(data.error || '获取 AI 供应商失败');
 
     adminAiProviders = data.providers || [];
     adminAiActiveId = data.activeProviderId || null;
     renderAiProvidersTable();
   } catch (err) {
+    if (!request.isCurrent() || err.name === 'AbortError') return;
     if (tableBody) {
       tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#cf1322;">加载失败: ' + escapeHtml(err.message) + '</td></tr>';
     }
@@ -329,10 +334,10 @@ function renderAiProvidersTable() {
       '<td>' + statusTag + '</td>' +
       '<td>' +
         '<div style="display:flex; gap:6px; align-items:center;">' +
-          (!isDefault ? '<button type="button" class="btn-action-sm" onclick="setAiDefaultProvider(\'' + escapeHtml(p.id) + '\')">设为默认</button>' : '') +
-          '<button type="button" class="btn-action-sm" onclick="testAiProvider(\'' + escapeHtml(p.id) + '\')">测试</button>' +
-          '<button type="button" class="btn-action-sm" onclick="editAiProvider(\'' + escapeHtml(p.id) + '\')">编辑</button>' +
-          (adminAiProviders.length > 1 ? '<button type="button" class="btn-action-sm danger" onclick="deleteAiProvider(\'' + escapeHtml(p.id) + '\')">删除</button>' : '') +
+          (!isDefault ? '<button type="button" class="btn-action-sm" data-admin-ai-action="default" data-admin-ai-id="' + escapeHtml(p.id) + '">设为默认</button>' : '') +
+          '<button type="button" class="btn-action-sm" data-admin-ai-action="test" data-admin-ai-id="' + escapeHtml(p.id) + '">测试</button>' +
+          '<button type="button" class="btn-action-sm" data-admin-ai-action="edit" data-admin-ai-id="' + escapeHtml(p.id) + '">编辑</button>' +
+          (adminAiProviders.length > 1 ? '<button type="button" class="btn-action-sm danger" data-admin-ai-action="delete" data-admin-ai-id="' + escapeHtml(p.id) + '">删除</button>' : '') +
         '</div>' +
       '</td>' +
     '</tr>';
@@ -350,6 +355,19 @@ function initAdminAiEvents() {
   const form = document.getElementById('aiProviderForm');
   const clearKeyBtn = document.getElementById('editProviderClearKeyBtn');
   const testBtn = document.getElementById('testEditProviderBtn');
+  // 事件代理保留原按钮布局，并避免在 HTML 属性中拼接供应商 ID。
+  document.getElementById('aiProvidersTableBody')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-admin-ai-action]');
+    if (!button) return;
+    const id = button.dataset.adminAiId;
+    const actions = {
+      default: window.setAiDefaultProvider,
+      test: window.testAiProvider,
+      edit: window.editAiProvider,
+      delete: window.deleteAiProvider
+    };
+    actions[button.dataset.adminAiAction]?.(id);
+  });
 
   if (btnAdd) {
     btnAdd.addEventListener('click', () => {
@@ -701,9 +719,11 @@ async function loadSmsManagement() {
 }
 
 async function loadSmsConfig() {
+  const request = adminSmsConfigRequests.start();
   try {
-    const res = await fetch('/api/admin/sms/config');
+    const res = await fetch('/api/admin/sms/config', { signal: request.signal });
     const data = await res.json();
+    if (!request.isCurrent()) return;
     if (!data.ok) throw new Error(data.error);
 
     const cfg = data.config || {};
@@ -722,7 +742,7 @@ async function loadSmsConfig() {
       }
     }
   } catch (err) {
-    console.error('加载接码配置失败:', err);
+    if (request.isCurrent() && err.name !== 'AbortError') console.error('加载接码配置失败:', err);
   }
 }
 

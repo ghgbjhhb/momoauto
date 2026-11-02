@@ -7,13 +7,18 @@ let adminDiskFiles = [];
 let adminDiskDevices = [];
 let adminDiskSelectedFile = null;
 let adminDiskRequestSeq = 0;
+const diskDevicesRequests = createAdminLatestRequest();
+let adminDiskPreviewSeq = 0;
+let adminDiskPreviewController = null;
 
 async function loadAdminDiskDevices() {
   const select = document.getElementById('adminDiskDeviceSelect');
   if (!select) return;
+  const request = diskDevicesRequests.start();
   try {
-    const res = await fetch('/api/devices');
+    const res = await fetch('/api/devices', { signal: request.signal });
     const data = await res.json();
+    if (!request.isCurrent()) return;
     if (data.ok && Array.isArray(data.devices)) {
       adminDiskDevices = data.devices;
       if (adminDiskDevices.length === 0) {
@@ -29,7 +34,7 @@ async function loadAdminDiskDevices() {
       }
     }
   } catch (err) {
-    console.error('加载设备列表失败:', err);
+    if (request.isCurrent() && err.name !== 'AbortError') console.error('加载设备列表失败:', err);
   }
 }
 
@@ -242,6 +247,9 @@ function renderAdminDiskFileList() {
 let adminDiskActiveObjectUrl = null;
 
 function clearAdminDiskActivePreviewUrl() {
+  ++adminDiskPreviewSeq;
+  adminDiskPreviewController?.abort();
+  adminDiskPreviewController = null;
   if (adminDiskActiveObjectUrl) {
     try { URL.revokeObjectURL(adminDiskActiveObjectUrl); } catch {}
     adminDiskActiveObjectUrl = null;
@@ -263,6 +271,10 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
   if (!dialog || !titleEl || !bodyEl) return;
 
   clearAdminDiskActivePreviewUrl();
+  const previewId = adminDiskPreviewSeq;
+  const controller = new AbortController();
+  adminDiskPreviewController = controller;
+  const previewIsCurrent = () => previewId === adminDiskPreviewSeq && dialog.open;
 
   const currentDir = targetDir || adminDiskCurrentDir || '头像';
   titleEl.textContent = '文件预览: ' + fileName;
@@ -279,13 +291,15 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
 
   if (isImage) {
     try {
-      const res = await fetch(fileUrl);
+      const res = await fetch(fileUrl, { signal: controller.signal });
+      if (!previewIsCurrent()) return;
       if (!res.ok) {
         let errMsg = 'HTTP ' + res.status;
         try {
           const errData = await res.json();
           if (errData && errData.error) errMsg = errData.error;
         } catch {}
+        if (!previewIsCurrent()) return;
         bodyEl.innerHTML = '<div style="text-align:center; padding:40px 16px;">' +
           '<div style="font-size:42px; margin-bottom:12px;">🖼️❌</div>' +
           '<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">图片加载失败</div>' +
@@ -296,6 +310,7 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
       }
 
       const blob = await res.blob();
+      if (!previewIsCurrent()) return;
       adminDiskActiveObjectUrl = URL.createObjectURL(blob);
 
       bodyEl.innerHTML = '<div style="text-align:center; padding:12px; max-height:72vh; overflow:auto; display:flex; flex-direction:column; align-items:center; justify-content:center;">' +
@@ -309,6 +324,7 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
         '</div>' +
       '</div>';
     } catch (err) {
+      if (!previewIsCurrent() || err.name === 'AbortError') return;
       bodyEl.innerHTML = '<div style="text-align:center; padding:40px 16px;">' +
         '<div style="font-size:42px; margin-bottom:12px;">⚠️</div>' +
         '<div style="font-size:15px; font-weight:600; color:#cf1322; margin-bottom:6px;">网络异常，无法获取图片</div>' +
@@ -318,28 +334,32 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
     }
   } else if (isText) {
     try {
-      const res = await fetch(fileUrl);
+      const res = await fetch(fileUrl, { signal: controller.signal });
+      if (!previewIsCurrent()) return;
       if (!res.ok) {
         let errMsg = 'HTTP ' + res.status;
         try {
           const errData = await res.json();
           if (errData && errData.error) errMsg = errData.error;
         } catch {}
+        if (!previewIsCurrent()) return;
         bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#cf1322;">读取文件内容失败: ' + escapeHtml(errMsg) + '</div>';
         return;
       }
       const text = await res.text();
+      if (!previewIsCurrent()) return;
       bodyEl.innerHTML = '<div style="max-height:65vh; overflow:auto; padding:14px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;">' +
         '<pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all; line-height:1.5;">' + escapeHtml(text) + '</pre>' +
       '</div>';
     } catch (err) {
+      if (!previewIsCurrent() || err.name === 'AbortError') return;
       bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#cf1322;">读取文件内容失败: ' + escapeHtml(err.message) + '</div>';
     }
   } else {
     bodyEl.innerHTML = '<div style="padding:36px 16px; text-align:center;">' +
       '<div style="font-size:38px; margin-bottom:12px;">📄</div>' +
       '<p style="color:#595959; margin-bottom:16px; font-size:13.5px;">此文件格式暂不支持在线直接预览，请下载到本地查看</p>' +
-      '<a href="' + fileUrl + tokenQuery + '&download=1" download="' + escapeHtml(fileName) + '" class="btn-action-sm" style="display:inline-block; text-decoration:none; background:#1677ff; color:#fff; padding:6px 16px;">⬇️ 下载该文件</a>' +
+      '<a href="/api/cloud-disk/download?dir=' + encodeURIComponent(currentDir) + '&amp;name=' + encodeURIComponent(fileName) + '" download="' + escapeHtml(fileName) + '" class="btn-action-sm" style="display:inline-block; text-decoration:none; background:#1677ff; color:#fff; padding:6px 16px;">⬇️ 下载该文件</a>' +
     '</div>';
   }
 };
@@ -446,6 +466,8 @@ window.sendAdminDiskFileToDevice = async (fileName) => {
 
 async function uploadAdminDiskFiles(files) {
   if (!files || !files.length) return;
+  // 固定一次批量上传的目录，防止用户在文件读取期间切换目录导致误上传。
+  const uploadDir = adminDiskCurrentDir;
   const total = files.length;
   let successCount = 0;
 
@@ -456,7 +478,7 @@ async function uploadAdminDiskFiles(files) {
       const res = await fetch('/api/cloud-disk/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dir: adminDiskCurrentDir, name: file.name, contentBase64: base64 })
+        body: JSON.stringify({ dir: uploadDir, name: file.name, contentBase64: base64 })
       });
       const data = await res.json();
       if (data.ok) successCount++;
@@ -466,8 +488,9 @@ async function uploadAdminDiskFiles(files) {
     }
   }
 
-  showToast('成功上传 ' + successCount + '/' + total + ' 个文件到【' + adminDiskCurrentDir + '】', 'success');
-  loadAdminDiskFiles();
+  showToast('成功上传 ' + successCount + '/' + total + ' 个文件到【' + uploadDir + '】',
+    successCount === total ? 'success' : 'error');
+  if (uploadDir === adminDiskCurrentDir) loadAdminDiskFiles();
 }
 
 function readFileAsBase64Admin(file) {

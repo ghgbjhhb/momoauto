@@ -1,12 +1,17 @@
 'use strict';
 
 // 3. Users Management
+const usersRequests = createAdminLatestRequest();
+const cardsRequests = createAdminLatestRequest();
+const poolRequests = createAdminLatestRequest();
 async function loadUsers() {
   if (!usersTableBody) return;
+  const request = usersRequests.start();
   usersTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:#8c8c8c;">正在加载用户列表…</td></tr>';
   try {
-    const res = await fetch('/api/admin/users');
+    const res = await fetch('/api/admin/users', { signal: request.signal });
     const data = await res.json();
+    if (!request.isCurrent()) return;
     if (!data.ok) throw new Error(data.error);
 
     const users = data.users || [];
@@ -41,6 +46,7 @@ async function loadUsers() {
       </tr>
     `).join('');
   } catch (err) {
+    if (!request.isCurrent() || err.name === 'AbortError') return;
     usersTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#ff4d4f; padding:30px;">加载失败: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
@@ -200,6 +206,7 @@ updateBenefitUI();
 
 async function loadCards() {
   if (!cardsTableBody) return;
+  const request = cardsRequests.start();
   cardsTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8c8c8c;">正在加载卡密列表…</td></tr>';
   try {
     const status = cardFilterStatus ? cardFilterStatus.value : '';
@@ -208,8 +215,9 @@ async function loadCards() {
     if (status) params.set('status', status);
     if (type) params.set('type', type);
 
-    const res = await fetch(`/api/admin/cards?${params.toString()}`);
+    const res = await fetch(`/api/admin/cards?${params.toString()}`, { signal: request.signal });
     const data = await res.json();
+    if (!request.isCurrent()) return;
     if (!data.ok) throw new Error(data.error);
 
     const cards = data.cards || [];
@@ -264,7 +272,7 @@ async function loadCards() {
 
       return `
         <tr>
-          <td><code style="color:#1677ff; font-weight:700; cursor:pointer;" title="点击复制" onclick="copyCardCode('${c.card_code}')">${c.card_code}</code></td>
+          <td><code style="color:#1677ff; font-weight:700; cursor:pointer;" title="点击复制" data-admin-copy-card="${escapeHtml(c.card_code)}">${escapeHtml(c.card_code)}</code></td>
           <td>${contentDisplay}</td>
           <td><span class="badge-status ${c.status}">${statusText}</span></td>
           <td>${escapeHtml(c.batch_tag || '--')}</td>
@@ -275,13 +283,14 @@ async function loadCards() {
           <td>${formatDate(c.used_at)}</td>
           <td>
             ${c.status === 'unused' ? `
-              <button class="btn-action-sm danger" onclick="revokeCard('${c.id}', '${c.card_code}')">作废</button>
+              <button class="btn-action-sm danger" data-admin-revoke-card="${escapeHtml(c.id)}" data-admin-revoke-code="${escapeHtml(c.card_code)}">作废</button>
             ` : '<span style="color:#8c8c8c;">--</span>'}
           </td>
         </tr>
       `;
     }).join('');
   } catch (err) {
+    if (!request.isCurrent() || err.name === 'AbortError') return;
     cardsTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ff4d4f; padding:30px;">加载失败: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
@@ -355,6 +364,16 @@ window.revokeCard = async (cardId, cardCode = '') => {
 };
 
 cardsTableBody?.addEventListener('click', event => {
+  const copy = event.target.closest('[data-admin-copy-card]');
+  if (copy) {
+    copyCardCode(copy.dataset.adminCopyCard);
+    return;
+  }
+  const revoke = event.target.closest('[data-admin-revoke-card]');
+  if (revoke) {
+    revokeCard(revoke.dataset.adminRevokeCard, revoke.dataset.adminRevokeCode);
+    return;
+  }
   const user = event.target.closest('[data-admin-card-user]');
   if (!user) return;
   adminNavigate('users');
@@ -473,10 +492,12 @@ if (downloadCardsTxtBtn) {
 // 5. Device Pool Management
 async function loadPool() {
   if (!poolTableBody) return;
+  const request = poolRequests.start();
   poolTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:#8c8c8c;">正在加载设备池…</td></tr>';
   try {
-    const res = await fetch('/api/admin/pool');
+    const res = await fetch('/api/admin/pool', { signal: request.signal });
     const data = await res.json();
+    if (!request.isCurrent()) return;
     if (!data.ok) throw new Error(data.error);
 
     if (statPoolTotal) statPoolTotal.textContent = data.total || 0;
@@ -524,6 +545,7 @@ async function loadPool() {
       window.adminPendingPoolDeviceId = '';
     }
   } catch (err) {
+    if (!request.isCurrent() || err.name === 'AbortError') return;
     poolTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ff4d4f; padding:30px;">加载失败: ${escapeHtml(err.message)}</td></tr>`;
   }
 }

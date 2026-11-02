@@ -196,8 +196,13 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       const content = await fs.promises.readFile(logPath, 'utf8');
       const lines = content.trim().split('\n').filter(Boolean).slice(-300);
       json(response, 200, { ok: true, logs: lines });
-    } catch {
-      json(response, 200, { ok: true, logs: [] });
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        json(response, 200, { ok: true, logs: [] });
+      } else {
+        console.error('[Admin] 读取系统日志失败:', error);
+        json(response, 503, { ok: false, error: '系统日志读取失败，请稍后重试' });
+      }
     }
     return true;
   }
@@ -207,8 +212,11 @@ async function handleConsoleRoutes(ctx, request, response, url) {
     try {
       const logPath = path.join(PROJECT_ROOT, 'logs', 'server.log');
       await fs.promises.writeFile(logPath, '', 'utf8');
-    } catch {}
-    json(response, 200, { ok: true, message: '系统运行日志已清空' });
+      json(response, 200, { ok: true, message: '系统运行日志已清空' });
+    } catch (error) {
+      console.error('[Admin] 清空系统日志失败:', error);
+      json(response, 503, { ok: false, error: '系统日志清空失败，请检查文件访问状态' });
+    }
     return true;
   }
 

@@ -209,6 +209,23 @@ function showConfirm({ title = '确认操作', desc = '', okText = '确定', can
   });
 }
 
+// 独立的只读请求通道：新请求到来时取消旧请求，防止旧筛选结果覆盖新页面。
+function createAdminLatestRequest() {
+  let sequence = 0;
+  let controller = null;
+  return {
+    start() {
+      controller?.abort();
+      controller = new AbortController();
+      const requestId = ++sequence;
+      return {
+        signal: controller.signal,
+        isCurrent: () => requestId === sequence
+      };
+    }
+  };
+}
+
 // 1. Auth check
 async function checkAuth() {
   try {
