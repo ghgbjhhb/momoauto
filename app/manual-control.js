@@ -690,10 +690,11 @@ function stopManualVideo() {
 function bindCopyBtn(btnId, getText) {
   const btn = getEl(btnId);
   if (!btn) return;
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const text = getText();
     if (!text || text === '--') return;
-    window.copyToClipboard(text, '已复制虚拟机 ID: ' + text);
+    const copied = await window.copyToClipboard(text, '已复制虚拟机 ID: ' + text);
+    if (!copied || !btn.isConnected) return;
     const span = btn.querySelector('.copy-label') || btn.querySelector('.btn-text');
     if (span) {
       const orig = span.textContent;

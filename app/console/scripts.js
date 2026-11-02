@@ -1575,7 +1575,7 @@ function renderOverviewTasks() {
   if (!scripts.length && !bundles.length) {
     state.taskScriptId = '';
     state.taskBundleId = '';
-    listEl.innerHTML = '<div class="empty">暂无可用业务任务</div>';
+    renderMarkupIfChanged(listEl, '<div class="empty">暂无可用业务任务</div>');
     if (configEl) configEl.innerHTML = '<div class="empty">暂无可用任务</div>';
     return;
   }
@@ -1629,7 +1629,7 @@ function renderOverviewTasks() {
     `;
   }).join('');
 
-  listEl.innerHTML = scriptItems + bundleItems;
+  renderMarkupIfChanged(listEl, scriptItems + bundleItems);
 
   // 渲染底部快速配置与主执行条
   renderOverviewTaskConfig(configEl, currentDev, isRunning, forceRebuild);

@@ -149,15 +149,18 @@ window.ic = ic;
 
 /* ---------- 通用工具 ---------- */
 
-function copyToClipboard(text, successToast = '已复制到剪贴板') {
-  if (!text) { showToast('没有可复制的内容'); return; }
+async function copyToClipboard(text, successToast = '已复制到剪贴板') {
+  if (!text) { showToast('没有可复制的内容'); return false; }
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(String(text))
-      .then(() => showToast(successToast))
-      .catch(() => fallbackCopy(text, successToast));
-  } else {
-    fallbackCopy(text, successToast);
+    try {
+      await navigator.clipboard.writeText(String(text));
+      showToast(successToast);
+      return true;
+    } catch {
+      return fallbackCopy(text, successToast);
+    }
   }
+  return fallbackCopy(text, successToast);
 }
 window.copyToClipboard = copyToClipboard;
 
@@ -175,6 +178,7 @@ function fallbackCopy(text, successToast) {
   } catch { /* 浏览器拒绝写入剪贴板 */ }
   textarea.remove();
   showToast(copied ? successToast : '浏览器未允许复制，请检查剪贴板权限');
+  return copied;
 }
 
 let sessionRecheck = null;
@@ -404,6 +408,19 @@ function showInPageConfirm({ title, message, okText = '确定', cancelText = '�
 }
 window.showInPageConfirm = showInPageConfirm;
 
+/* ---------- 静态区局部更新：避免轮询不断销毁可点击节点 ---------- */
+
+// 仅适用于由调用方完整管理的区域：相同内容不重建 DOM，避免
+// 轮询刚好落在 pointerdown/pointerup 之间导致点击丢失、焦点或滚动归零。
+const lastRenderedMarkup = new WeakMap();
+function renderMarkupIfChanged(element, html) {
+  if (!element || lastRenderedMarkup.get(element) === html) return false;
+  element.innerHTML = html;
+  lastRenderedMarkup.set(element, html);
+  return true;
+}
+window.renderMarkupIfChanged = renderMarkupIfChanged;
+
 /* ---------- 外壳渲染（侧栏 / 顶栏 / 路由 / 主题） ---------- */
 
 const NAVS = [
@@ -465,20 +482,20 @@ function renderShell() {
     return navButtonHtml(p, t, i);
   }).join('');
   const nav = elements.navMenu;
-  if (nav) nav.innerHTML = navHtml;
+  renderMarkupIfChanged(nav, navHtml);
   const embedNav = elements.embedNav;
-  if (embedNav) embedNav.innerHTML = isEmbedMode ? navHtml : '';
+  renderMarkupIfChanged(embedNav, isEmbedMode ? navHtml : '');
   const crumb = elements.breadcrumb;
   if (crumb) {
     const name = NAVS.find(x => x[0] === state.page)?.[1] || '总览';
-    crumb.innerHTML = `工作台 ${ic('chevron', 13)} <strong>${escapeHtml(name)}</strong>`;
+    renderMarkupIfChanged(crumb, `工作台 ${ic('chevron', 13)} <strong>${escapeHtml(name)}</strong>`);
   }
   const themeBtn = elements.themeToggleBtn;
-  if (themeBtn) themeBtn.innerHTML = ic(state.theme === 'dark' ? 'sun' : 'moon', 18);
+  renderMarkupIfChanged(themeBtn, ic(state.theme === 'dark' ? 'sun' : 'moon', 18));
   const refreshBtn = elements.refreshDevices;
-  if (refreshBtn) refreshBtn.innerHTML = ic('refresh', 18);
+  renderMarkupIfChanged(refreshBtn, ic('refresh', 18));
   const brandMark = elements.brandMark;
-  if (brandMark) brandMark.innerHTML = ic('phone', 20);
+  renderMarkupIfChanged(brandMark, ic('phone', 20));
 }
 
 function setPage(page, { updateHash = true } = {}) {

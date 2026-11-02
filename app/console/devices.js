@@ -93,10 +93,11 @@ function renderStatusBar() {
 function renderDeviceChips() {
   const wrap = elements.deviceChips;
   if (!wrap) return;
-  wrap.innerHTML = state.devices.map(device => {
+  const html = state.devices.map(device => {
     const key = deviceStatusKey(device);
     return `<button class="device-chip ${state.selectedDeviceId === device.deviceId ? 'selected' : ''} ${key === 'down' ? 'down' : key === 'busy' ? 'running' : ''}" data-chip-device="${escapeHtml(device.deviceId)}" title="${escapeHtml(deviceLabel(device))}"><b>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</b><small>${STATUS_TEXT[key]}</small></button>`;
   }).join('');
+  renderMarkupIfChanged(wrap, html);
 }
 
 /* ---------- 画面预览 ---------- */
@@ -213,17 +214,23 @@ function updateDeviceMeta(device, stats = null) {
   const metaEl = byId('ovDeviceMeta');
   if (!metaEl || !device) return;
   const nameEl = byId('metaDevName');
-  if (nameEl) nameEl.textContent = `${deviceIndexLabel(device)} ${device.name}`;
+  if (nameEl) {
+    const label = `${deviceIndexLabel(device)} ${device.name}`;
+    if (nameEl.textContent !== label) nameEl.textContent = label;
+  }
 
   const ipEl = byId('metaDevIp');
   if (ipEl) {
-    ipEl.textContent = device.currentIp || '局域网';
-    ipEl.title = `当前 IP / 代理: ${device.currentIp || '自动分配'}`;
+    const ipText = device.currentIp || '局域网';
+    const ipTitle = `当前 IP / 代理: ${device.currentIp || '自动分配'}`;
+    if (ipEl.textContent !== ipText) ipEl.textContent = ipText;
+    if (ipEl.title !== ipTitle) ipEl.title = ipTitle;
   }
 
   const resEl = byId('metaDevRes');
   if (resEl) {
-    resEl.textContent = stats?.width && stats?.height ? `${stats.width}×${stats.height}` : '720×1280';
+    const resolution = stats?.width && stats?.height ? `${stats.width}×${stats.height}` : '720×1280';
+    if (resEl.textContent !== resolution) resEl.textContent = resolution;
   }
 
   // 直播帧可达 30fps；按钮只渲染一次，否则按下和释放鼠标期间重建 SVG
@@ -266,6 +273,8 @@ function createPreviewPlayer(device, canvas, hint, cover) {
     canvas,
     deviceId: id,
     onFrame(stats) {
+      // 切换云机时旧解码器可能仍排队回调，不能用旧设备覆盖新设备的信息栏。
+      if (state.selectedDeviceId !== id || state.page !== 'overview' || state.view !== 'single') return;
       markHealth(true);
       canvas.hidden = false;
       if (hint) hint.hidden = true;
@@ -274,7 +283,8 @@ function createPreviewPlayer(device, canvas, hint, cover) {
 
       const w = stats?.width || canvas.width || 720;
       const h = stats?.height || canvas.height || 1280;
-      updateDeviceMeta(device, { width: w, height: h });
+      // 使用最新设备快照而非建立视频连接时的旧对象，避免刷新后 IP/名称被旧帧覆盖。
+      updateDeviceMeta(currentDevice(), { width: w, height: h });
     },
     onMessage(message) {
       if (message.type === 'error' && hint) { hint.hidden = false; hint.textContent = message.message; }
@@ -420,23 +430,23 @@ function renderDeviceTable() {
   if (count) count.textContent = state.devices.length ? `共 ${list.length} 台` : '';
 
   if (!state.devices.length) {
-    body.innerHTML = `<tr><td colspan="7">
+    const changed = renderMarkupIfChanged(body, `<tr><td colspan="7">
       <div class="empty">
         <p>您名下暂无已分配的云手机</p>
         <p class="hint">点击顶部「兑换卡密」输入管理员提供的卡密即可激活云机</p>
         <p style="margin-top:var(--sp-12)"><button class="btn primary" id="emptyRedeemBtn" type="button">兑换卡密</button></p>
       </div>
-    </td></tr>`;
-    byId('emptyRedeemBtn')?.addEventListener('click', () => elements.openRedeemModalBtn?.click());
+    </td></tr>`);
+    if (changed) byId('emptyRedeemBtn')?.addEventListener('click', () => elements.openRedeemModalBtn?.click());
     return;
   }
 
   if (!list.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">没有匹配的设备</td></tr>';
+    renderMarkupIfChanged(body, '<tr><td colspan="7" class="empty">没有匹配的设备</td></tr>');
     return;
   }
 
-  body.innerHTML = list.map(device => {
+  const html = list.map(device => {
     const key = deviceStatusKey(device);
     const ver = String(device.sdkVersion || '').toUpperCase();
     const ip = device.currentIp
@@ -458,6 +468,7 @@ function renderDeviceTable() {
       </td>
     </tr>`;
   }).join('');
+  renderMarkupIfChanged(body, html);
 }
 
 function renderMiniStepper(device) {
