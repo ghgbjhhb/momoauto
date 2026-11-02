@@ -85,6 +85,10 @@ authService.onAllocationExpired = (deviceId, userId) => {
   revokeDeviceAccess(deviceId, userId)
     .catch(error => console.error('[Sweeper Revoke Failed]', error.message));
 };
+authService.onOwnedDeviceRevoked = (deviceId, userId) => {
+  revokeDeviceAccess(deviceId, userId)
+    .catch(error => console.error('[Owned Device Revoke Failed]', error.message));
+};
 setInterval(() => {
   try {
     authService.sweepExpiredAllocations();

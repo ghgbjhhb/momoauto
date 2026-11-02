@@ -574,8 +574,13 @@ class AuthService {
   // --- Per-User Platform Token ---
 
   setUserPlatformToken(userId, plainToken) {
+    const previous = this._userOwnedDevices.get(userId);
     this.db.setUserToken(userId, plainToken);
-    this._userOwnedDevices?.delete(userId);
+    this._userOwnedDevices.delete(userId);
+    // 令牌切换会撤销旧平台身份；现有任务不可继续复用旧的设备会话。
+    for (const deviceId of previous?.ids || []) {
+      this.onOwnedDeviceRevoked?.(deviceId, userId);
+    }
   }
 
   getUserPlatformToken(userId) {
@@ -585,10 +590,16 @@ class AuthService {
   setUserOwnedDevices(userId, deviceIds, expectedToken = this.getUserPlatformToken(userId)) {
     // 平台令牌切换过程中旧请求可能延迟返回，不允许旧身份的列表污染新身份。
     if (!expectedToken || this.getUserPlatformToken(userId) !== expectedToken) return false;
-    this._userOwnedDevices.set(userId, {
+    const previous = this._userOwnedDevices.get(userId);
+    const verified = {
       ids: new Set((deviceIds || []).map(String)),
       verifiedUntil: Date.now() + OWNED_DEVICE_VERIFICATION_MS
-    });
+    };
+    this._userOwnedDevices.set(userId, verified);
+    // 平台明确收回设备时，还需撤销已建立的手动/脚本/AI 会话。
+    for (const deviceId of previous?.ids || []) {
+      if (!verified.ids.has(deviceId)) this.onOwnedDeviceRevoked?.(deviceId, userId);
+    }
     return true;
   }
 
