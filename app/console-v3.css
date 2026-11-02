@@ -1615,7 +1615,7 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 .ov-wb-title {
-  font-size: var(--fs-15);
+  font-size: var(--fs-16);
   font-weight: var(--fw-700);
   color: var(--text);
   overflow: hidden;
@@ -1681,7 +1681,7 @@ body:has(#page-overview:not([hidden])) .page {
   flex-direction: column;
   gap: var(--sp-8);
   padding-top: var(--sp-12);
-  padding-bottom: 54px; /* 抬高 54px，按钮完全避开右下角日志浮窗胶囊！ */
+  padding-bottom: 0; /* 日志已收纳至右侧布局，无需为悬浮按钮预留空间 */
   border-top: 1px solid var(--line);
   flex: none;
 }
@@ -1694,7 +1694,7 @@ body:has(#page-overview:not([hidden])) .page {
   align-items: center;
   justify-content: center;
   gap: var(--sp-8);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--elev-btn);
 }
 
 .ov-wb-empty-fields {
@@ -1872,4 +1872,261 @@ body:has(#page-overview:not([hidden])) .page {
   font-size: var(--fs-10);
   color: var(--muted);
   flex: none;
+}
+
+
+/* ==========================================================================
+   总览右侧任务工作区：仅调整右半区，设备画面、导航及其他页面原样保留。
+   ========================================================================== */
+
+#page-overview .right-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1.45fr) auto minmax(0, 0.9fr);
+  gap: var(--sp-10);
+  align-items: stretch;
+  overflow: hidden;
+}
+
+#page-overview .right-col:has(.overview-log-dock.collapsed) {
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
+#page-overview .overview-tasks-panel {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  border-radius: var(--r-12);
+}
+
+#page-overview .overview-tasks-panel .panel-head {
+  min-height: var(--h-header);
+  gap: var(--sp-8);
+  padding: var(--sp-8) var(--sp-12);
+}
+
+#page-overview .ov-task-split {
+  grid-template-columns: minmax(160px, 0.36fr) minmax(0, 1fr);
+  background: var(--line);
+}
+
+#page-overview .ov-task-catalog {
+  padding: var(--sp-10);
+  gap: var(--sp-6);
+  background: var(--card);
+}
+
+#page-overview .ov-task-card {
+  width: 100%;
+  min-height: var(--h-toolbar);
+  padding: var(--sp-10);
+  text-align: left;
+  border-radius: var(--r-8);
+  gap: var(--sp-6);
+  box-shadow: none;
+}
+
+#page-overview .ov-task-card:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+#page-overview .ov-task-card .badge {
+  white-space: nowrap;
+  flex: none;
+}
+
+#page-overview .ov-task-title {
+  font-size: var(--fs-13);
+  font-weight: var(--fw-600);
+}
+
+#page-overview .ov-task-workbench {
+  padding: var(--sp-14);
+  gap: var(--sp-8);
+  background: var(--card);
+  overflow: hidden;
+}
+
+#page-overview .ov-wb-header {
+  flex-wrap: wrap;
+  align-items: center;
+  padding-bottom: var(--sp-8);
+}
+
+#page-overview .ov-wb-title {
+  font-size: var(--fs-16);
+}
+
+#page-overview .ov-wb-target {
+  white-space: nowrap;
+}
+
+#page-overview .ov-wb-desc {
+  line-height: var(--lh-normal);
+}
+
+#page-overview .ov-wb-fields {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  min-height: 0;
+  align-content: start;
+  flex: 1 1 auto;
+  padding-right: var(--sp-4);
+}
+
+#page-overview .ov-wb-field {
+  padding: var(--sp-8) var(--sp-10);
+  gap: var(--sp-6);
+  background: var(--soft);
+  flex: none;
+}
+
+#page-overview .ov-wb-field label {
+  font-size: var(--fs-12);
+}
+
+#page-overview .ov-wb-field input,
+#page-overview .ov-wb-field select,
+#page-overview .ov-wb-field textarea {
+  width: 100%;
+  background: var(--card);
+  font-size: var(--fs-13);
+  min-height: var(--h-control-lg);
+}
+
+#page-overview .ov-wb-footer {
+  padding-top: var(--sp-10);
+  padding-bottom: 0;
+  margin-top: auto;
+}
+
+#page-overview .ov-wb-btn-run {
+  height: var(--h-header);
+  box-shadow: var(--elev-btn);
+}
+
+#page-overview .ov-wb-empty-fields {
+  margin: 0;
+  padding: var(--sp-16);
+}
+
+#page-overview .ov-run-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-12);
+  padding: var(--sp-12) var(--sp-16);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-12);
+}
+
+#page-overview .ov-run-indicator {
+  width: var(--sp-10);
+  height: var(--sp-10);
+  flex: none;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+}
+
+#page-overview .ov-run-summary[data-status="running"] .ov-run-indicator {
+  background: var(--green);
+  /* 状态以实际颜色区分，避免额外叠加阴影 */
+}
+
+#page-overview .ov-run-summary[data-status="warning"] .ov-run-indicator {
+  background: var(--orange);
+}
+
+#page-overview .ov-run-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--sp-4);
+  flex: 1;
+}
+
+#page-overview .ov-run-details strong {
+  font-size: var(--fs-13);
+  color: var(--text);
+}
+
+#page-overview .ov-run-details span {
+  color: var(--muted);
+  font-size: var(--fs-12);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#page-overview .ov-run-target {
+  flex: none;
+  font-size: var(--fs-12);
+  color: var(--muted);
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 原右下角浮窗变为固定占据右侧布局的一块可折叠日志面板。 */
+#page-overview .right-col .overview-log-dock,
+#page-overview .right-col .overview-log-dock:not(.collapsed) {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-12);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+#page-overview .right-col .overview-log-dock.collapsed {
+  height: auto;
+  min-height: var(--h-header);
+}
+
+#page-overview .right-col .overview-log-dock.collapsed .dock-bar {
+  width: 100%;
+  min-height: var(--h-header);
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: var(--sp-8) var(--sp-12);
+}
+
+#page-overview .right-col .overview-log-dock:not(.collapsed) .dock-panel {
+  min-height: 0;
+}
+
+#page-overview .right-col .dock-log-box {
+  background: var(--card);
+  font-size: var(--fs-12);
+}
+
+/* 窄窗口压缩任务选择栏，输入区仍保留独立滚动与固定执行入口。 */
+@media (max-width: 1200px) {
+  #page-overview .ov-task-split {
+    grid-template-columns: minmax(132px, 0.34fr) minmax(0, 1fr);
+  }
+  #page-overview .ov-task-catalog {
+    padding: var(--sp-6);
+  }
+  #page-overview .ov-task-workbench {
+    padding: var(--sp-10);
+  }
+  #page-overview .ov-wb-target {
+    width: 100%;
+  }
 }

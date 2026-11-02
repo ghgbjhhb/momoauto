@@ -335,16 +335,15 @@ function initOverviewLogDock() {
   const dock = elements.overviewLogDock;
   if (!dock) return;
 
-  let isCollapsed = true;
-  try {
-    const saved = localStorage.getItem('yunmomo.overviewLogDock.collapsed');
-    if (saved === 'false') isCollapsed = false;
-  } catch {}
+  // 内嵌日志首次打开默认展开；独立保存新布局的折叠偏好，不沿用旧浮窗状态。
+  const preferenceKey = 'yunmomo.overviewLogDock.inlineCollapsed';
+  let isCollapsed = false;
+  try { isCollapsed = localStorage.getItem(preferenceKey) === 'true'; } catch {}
   dock.classList.toggle('collapsed', isCollapsed);
 
   function setDockCollapsed(val) {
     dock.classList.toggle('collapsed', val);
-    try { localStorage.setItem('yunmomo.overviewLogDock.collapsed', String(val)); } catch {}
+    try { localStorage.setItem(preferenceKey, String(val)); } catch {}
     if (!val) {
       if (elements.dockOutputBox) elements.dockOutputBox.scrollTop = elements.dockOutputBox.scrollHeight;
       if (elements.dockSystemLogBox) elements.dockSystemLogBox.scrollTop = elements.dockSystemLogBox.scrollHeight;

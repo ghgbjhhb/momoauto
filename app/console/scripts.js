@@ -643,16 +643,18 @@ function resolveBatchDevices(script) {
 }
 
 function collectTaskOptions(script) {
-  const panel = byId('taskDetailPanel');
+  const overview = state.page === 'overview' && state.taskScriptId === script.id
+    ? byId('ovTaskConfig') : null;
+  const panel = overview || byId('taskDetailPanel');
   const options = {};
   if (panel) {
-    for (const input of panel.querySelectorAll('[data-task-param]')) {
+    for (const input of panel.querySelectorAll(overview ? '[data-ov-param]' : '[data-task-param]')) {
       const value = String(input.value ?? '').trim();
       if (input.required && !value) {
         input.focus?.();
-        throw new Error((input.closest('.field')?.querySelector('label')?.textContent || '该参数') + '为必填项');
+        throw new Error((input.closest('.ov-wb-field, .field')?.querySelector('label')?.textContent || '该参数') + '为必填项');
       }
-      if (value) options[input.dataset.taskParam] = value;
+      if (value) options[overview ? input.dataset.ovParam : input.dataset.taskParam] = value;
     }
   }
   return options;
@@ -1584,48 +1586,36 @@ function renderOverviewTasks() {
     forceRebuild = true;
   }
 
-  // 渲染任务列表
-  const scriptItems = scripts.map(s => {
-    const active = state.taskScriptId === s.id ? 'active' : '';
-    const scriptRunning = state.activeRun?.scriptId === s.id;
+  // 总览任务目录只负责选择；执行操作统一放在配置区，避免误触和重复入口。
+  const scriptItems = scripts.map(script => {
+    const active = state.taskScriptId === script.id;
+    const running = state.activeRun?.scriptId === script.id;
     return `
-      <div class="ov-task-card ${active} ${scriptRunning ? 'running' : ''}" data-ov-card="script:${escapeHtml(s.id)}" title="${escapeHtml(s.description || s.title)}">
-        <div class="ov-task-card-left">
+      <button class="ov-task-card ${active ? 'active' : ''} ${running ? 'running' : ''}"
+        type="button" data-ov-card="script:${escapeHtml(script.id)}"
+        aria-pressed="${active}" title="${escapeHtml(script.description || script.title)}">
+        <span class="ov-task-card-left">
           <span class="ov-task-icon">${ic('tasks', 14)}</span>
-          <span class="ov-task-title">${escapeHtml(scriptTitle(s))}</span>
-          ${s.batch ? '<span class="badge ghost">全流程</span>' : ''}
-          ${scriptRunning ? '<span class="badge run xs">执行中</span>' : ''}
-        </div>
-        <div class="ov-task-card-actions">
-          <button class="btn xs flat" data-ov-select="script:${escapeHtml(s.id)}" type="button" title="展开配置参数">配置</button>
-          ${scriptRunning
-            ? `<button class="btn xs danger" data-ov-stop type="button" title="停止执行">${ic('stop', 12)} 停止</button>`
-            : `<button class="btn xs primary" data-ov-run-direct="script:${escapeHtml(s.id)}" type="button" title="立即执行此任务">${ic('play', 12)} 执行</button>`
-          }
-        </div>
-      </div>
+          <span class="ov-task-title">${escapeHtml(scriptTitle(script))}</span>
+        </span>
+        ${running ? '<span class="badge run xs">执行中</span>' : ''}
+      </button>
     `;
   }).join('');
 
-  const bundleItems = bundles.map(b => {
-    const active = state.taskBundleId === b.id ? 'active' : '';
-    const bRunning = state.activeBundleRun?.bundleId === b.id;
+  const bundleItems = bundles.map(bundle => {
+    const active = state.taskBundleId === bundle.id;
+    const running = state.activeBundleRun?.bundleId === bundle.id;
     return `
-      <div class="ov-task-card ${active} ${bRunning ? 'running' : ''}" data-ov-card="bundle:${escapeHtml(b.id)}" title="${escapeHtml(b.description || b.name)}">
-        <div class="ov-task-card-left">
+      <button class="ov-task-card ${active ? 'active' : ''} ${running ? 'running' : ''}"
+        type="button" data-ov-card="bundle:${escapeHtml(bundle.id)}"
+        aria-pressed="${active}" title="${escapeHtml(bundle.description || bundle.name)}">
+        <span class="ov-task-card-left">
           <span class="ov-task-icon">${ic('phoneDevice', 14)}</span>
-          <span class="ov-task-title">${escapeHtml(b.name)}</span>
-          <span class="badge ghost">${b.stepIds?.length || 0}步组合</span>
-          ${bRunning ? '<span class="badge run xs">执行中</span>' : ''}
-        </div>
-        <div class="ov-task-card-actions">
-          <button class="btn xs flat" data-ov-select="bundle:${escapeHtml(b.id)}" type="button" title="展开配置参数">配置</button>
-          ${bRunning
-            ? `<button class="btn xs danger" data-ov-stop type="button" title="停止组合执行">${ic('stop', 12)} 停止</button>`
-            : `<button class="btn xs primary" data-ov-run-direct="bundle:${escapeHtml(b.id)}" type="button" title="立即执行此组合">${ic('play', 12)} 执行</button>`
-          }
-        </div>
-      </div>
+          <span class="ov-task-title">${escapeHtml(bundle.name)}</span>
+        </span>
+        ${running ? '<span class="badge run xs">执行中</span>' : ''}
+      </button>
     `;
   }).join('');
 
@@ -1633,6 +1623,7 @@ function renderOverviewTasks() {
 
   // 渲染底部快速配置与主执行条
   renderOverviewTaskConfig(configEl, currentDev, isRunning, forceRebuild);
+  updateOverviewRunSummary();
 }
 
 function updateOverviewWorkbenchFooter(currentDev, isRunning) {
@@ -1780,6 +1771,53 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
   container.innerHTML = '<div class="empty">选择左侧任务查看配置</div>';
 }
 
+function updateOverviewRunSummary() {
+  const summary = byId('ovRunSummary');
+  if (!summary) return;
+  const currentDev = currentDevice();
+  const localRun = state.activeRun;
+  const bundleRun = state.activeBundleRun;
+  const sharedRun = !localRun && currentDev
+    ? (state.runtimeState?.runs || []).find(run =>
+        run.deviceId === currentDev.deviceId && ['starting', 'running', 'stopping'].includes(run.status))
+    : null;
+
+  let title = '任务待命';
+  let hint = '选择任务，配置参数后即可执行';
+  let deviceId = currentDev?.deviceId || '';
+  let status = 'idle';
+
+  if (localRun) {
+    deviceId = localRun.deviceId;
+    const script = state.scripts.find(item => item.id === localRun.scriptId);
+    title = localRun.unknown ? '任务状态待核实' : localRun.stopping ? '正在停止任务' : '任务运行中';
+    hint = script ? scriptTitle(script) : '正在执行脚本';
+    if (state.lastOutput?.runId === localRun.id) hint = state.lastOutput.title || hint;
+    status = localRun.unknown ? 'warning' : 'running';
+  } else if (bundleRun) {
+    const bundle = (state.bundles || []).find(item => item.id === bundleRun.bundleId);
+    title = bundleRun.stopped ? '正在停止组合任务' : '组合任务运行中';
+    hint = bundle?.name || '正在依次执行组合步骤';
+    status = 'running';
+  } else if (state.batchRunning) {
+    title = state.batchStopRequested ? '正在停止任务' : '任务运行中';
+    hint = '正在等待或执行当前任务';
+    status = 'running';
+  } else if (sharedRun) {
+    title = sharedRun.status === 'stopping' ? '设备任务正在停止' : '设备已有任务运行';
+    hint = sharedRun.title || '任务在服务端执行中';
+    status = 'running';
+  }
+
+  summary.dataset.status = status;
+  byId('ovRunStatusTitle').textContent = title;
+  byId('ovRunStatusHint').textContent = hint;
+  const device = state.devices.find(item => item.deviceId === deviceId);
+  byId('ovRunStatusTarget').textContent = device
+    ? `目标：${deviceIndexLabel(device)} ${device.name || ''}`
+    : deviceId ? `目标：${deviceId}` : '未选择设备';
+}
+
 function updateOverviewRuntime() {
   const currentDev = currentDevice();
   const currentDevRunning = currentDev ? deviceRunning(currentDev.deviceId) : false;
@@ -1788,7 +1826,7 @@ function updateOverviewRuntime() {
   const runningBadge = byId('ovRunningBadge');
   if (runningBadge) runningBadge.hidden = !isRunning;
 
-  // 就地更新左侧卡片类名与操作按钮，不重绘整个列表
+  // 就地更新任务目录的运行标记，不重绘输入表单。
   const listEl = byId('ovTaskList');
   if (listEl) {
     for (const card of listEl.querySelectorAll('.ov-task-card')) {
@@ -1802,26 +1840,19 @@ function updateOverviewRuntime() {
         running = state.activeBundleRun?.bundleId === id;
       }
       card.classList.toggle('running', running);
-      const actionBox = card.querySelector('.ov-task-card-actions');
-      if (actionBox) {
-        const hasStop = Boolean(actionBox.querySelector('[data-ov-stop]'));
-        if (running && !hasStop) {
-          actionBox.innerHTML = `
-            <button class="btn xs flat" data-ov-select="${escapeHtml(raw)}" type="button" title="查看配置参数">配置</button>
-            <button class="btn xs danger" data-ov-stop type="button" title="停止执行">${ic('stop', 12)} 停止</button>
-          `;
-        } else if (!running && hasStop) {
-          actionBox.innerHTML = `
-            <button class="btn xs flat" data-ov-select="${escapeHtml(raw)}" type="button" title="查看配置参数">配置</button>
-            <button class="btn xs primary" data-ov-run-direct="${escapeHtml(raw)}" type="button" title="立即执行">${ic('play', 12)} 执行</button>
-          `;
-        }
+      card.setAttribute('aria-pressed', String(card.classList.contains('active')));
+      const badge = card.querySelector('.badge.run');
+      if (running && !badge) {
+        card.insertAdjacentHTML('beforeend', '<span class="badge run xs">执行中</span>');
+      } else if (!running && badge) {
+        badge.remove();
       }
     }
   }
 
   // 就地更新右侧工作台按钮状态，绝不触碰正在输入的输入框表单
   updateOverviewWorkbenchFooter(currentDev, isRunning);
+  updateOverviewRunSummary();
 }
 
 function renderQuickTasks() {
@@ -1848,22 +1879,6 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
     return;
   }
 
-  const runDirect = event.target.closest('[data-ov-run-direct]');
-  if (runDirect) {
-    const [type, id] = runDirect.dataset.ovRunDirect.split(':');
-    const dev = currentDevice();
-    if (!dev) { showToast('请先选择目标云机'); return; }
-    if (type === 'script') {
-      const script = state.scripts.find(s => s.id === id);
-      if (script) await runScriptDirect(script, dev.deviceId);
-    } else if (type === 'bundle') {
-      const bundle = state.bundles.find(b => b.id === id);
-      if (bundle) await executeBundle(bundle, dev.deviceId);
-    }
-    updateOverviewRuntime();
-    return;
-  }
-
   const select = event.target.closest('[data-ov-select], [data-ov-card]');
   if (select) {
     const raw = select.dataset.ovSelect || select.dataset.ovCard;
@@ -1880,7 +1895,9 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
     const listEl = byId('ovTaskList');
     if (listEl) {
       for (const card of listEl.querySelectorAll('.ov-task-card')) {
-        card.classList.toggle('active', card.dataset.ovCard === raw);
+        const active = card.dataset.ovCard === raw;
+        card.classList.toggle('active', active);
+        card.setAttribute('aria-pressed', String(active));
       }
     }
     // 若任务变化，重新渲染右侧工作台；若点击当前已选中的任务，则保持焦点不动
@@ -1958,6 +1975,9 @@ eventBus.addEventListener('device:selected', () => {
 eventBus.addEventListener('runtime:changed', () => {
   if (state.page === 'tasks') updateTaskRuntime();
   if (state.page === 'overview') updateOverviewRuntime();
+});
+eventBus.addEventListener('output:changed', () => {
+  if (state.page === 'overview') updateOverviewRunSummary();
 });
 
 eventBus.addEventListener('batch:devices', () => {
