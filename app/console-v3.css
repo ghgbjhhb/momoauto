@@ -2171,3 +2171,61 @@ body:has(#page-overview:not([hidden])) .page {
     width: 100%;
   }
 }
+
+/* ==========================================================================
+   总览高缩放/窄视口布局：修复屏幕按钮被父容器裁切。
+   原问题：<=870px 时 .viewer 最小高度 520px，但概览页及其所有父元素
+   仍被锁死为 100vh + overflow:hidden。Chrome 实测按钮可位于视口外。
+   采用 noVNC 的视口伸缩原则：内容能重排，不能静默裁切交互控件。
+   ========================================================================== */
+@media (max-width: 870px) {
+  body:has(#page-overview:not([hidden])),
+  body:has(#page-overview:not([hidden])) .main {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  body:has(#page-overview:not([hidden])) .page,
+  #page-overview {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  #page-overview .overview {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    overflow: visible;
+  }
+
+  #page-overview .ov-left {
+    height: auto;
+    overflow: visible;
+  }
+
+  #page-overview .ov-device-panel {
+    width: min(100%, 480px);
+    min-width: 0;
+    height: auto;
+  }
+
+  #page-overview .viewer {
+    min-height: 0;
+    height: clamp(180px, calc(100dvh - 200px), 600px);
+    flex: 0 0 auto;
+  }
+
+  #page-overview .right-col {
+    height: auto;
+    grid-template-rows: auto auto minmax(180px, auto);
+    overflow: visible;
+  }
+
+  #page-overview .overview-tasks-panel {
+    height: auto;
+    min-height: var(--h-overview-narrow-task);
+  }
+  #page-overview .ov-task-split { min-height: var(--h-overview-narrow-steps); }
+  #page-overview .right-col .overview-log-dock:not(.collapsed) { min-height: var(--h-overview-narrow-log); }
+}
