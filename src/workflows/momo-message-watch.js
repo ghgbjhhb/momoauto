@@ -746,14 +746,40 @@ class WatchHub {
       return;
     }
 
-    const detail = opened.obs;
-    const title = extractChatContactName(detail.evidence?.ocrData);
-    if (title && normalize(title) !== normalize(peerName)) {
-      await captureStepScreenshot(this.tools, contactDir, 'error-target-mismatch', `[${peerName}] 目标不匹配(${title})画面`);
-      await this.coolDown(peerName, `顶栏联系人 [${title}] 与预期不符 (target_mismatch)`);
+    // 进入聊天页后，顶部横幅（如“是否关注对方”）会从屏幕最上方往下滑落展开，
+    // 在前数百毫秒过渡期间可能掠过并遮挡顶栏文字。
+    // 最多轮询等待 3 秒：一旦顶栏名字出现且一致则立刻继续；明确不匹配立即退出；超时无名字则安全跳过。
+    const targetDeadline = performance.now() + 3000;
+    let confirmedObs = opened.obs;
+    let targetVerified = false;
+
+    while (performance.now() < targetDeadline) {
+      const currentTitle = extractChatContactName(confirmedObs?.evidence?.ocrData);
+      if (currentTitle) {
+        if (normalize(currentTitle) === normalize(peerName)) {
+          targetVerified = true;
+          break;
+        } else {
+          // 顶栏明确显示为其他联系人（如误入 ghgg），坚决立刻拦截跳过
+          await captureStepScreenshot(this.tools, contactDir, 'error-target-mismatch', `[${peerName}] 目标不匹配(${currentTitle})画面`);
+          await this.coolDown(peerName, `顶栏联系人 [${currentTitle}] 与预期 [${peerName}] 不符 (target_mismatch)`);
+          return;
+        }
+      }
+      await this.pause(350);
+      const nextObs = await this.observe(4000);
+      if (nextObs?.ok && nextObs.page === 'chat_detail') {
+        confirmedObs = nextObs;
+      }
+    }
+
+    if (!targetVerified) {
+      await captureStepScreenshot(this.tools, contactDir, 'error-target-unconfirmed', `[${peerName}] 顶栏身份未确认画面`);
+      await this.coolDown(peerName, '进入聊天后 3 秒内顶栏名字未稳定落位，跳过本轮处理');
       return;
     }
-    await captureStepScreenshot(this.tools, contactDir, '02-chat-detail', `[${peerName}] 成功进入聊天界面`);
+
+    await captureStepScreenshot(this.tools, contactDir, '02-chat-detail', `[${peerName}] 成功进入并确认聊天界面`);
 
     // A failed history sync never reaches AI generation or the send button.
     // This prevents the Destiny/ghgg cross-contact context incident.

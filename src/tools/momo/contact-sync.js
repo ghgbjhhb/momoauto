@@ -688,21 +688,33 @@ async function syncMomoContacts(host, options, ctx) {
     await collect(tailAnchors);
     ctx.check();
 
-    // A fresh identity checkpoint immediately before the irreversible SQLite
-    // commit. A title missing/garbled by OCR is not evidence for a different
-    // contact, but it is not sufficient evidence for committing under this ID.
-    let commitFrame = await observe('before_db_commit');
-    let commitName = extractChatContactName(commitFrame.ocr);
-    if (!commitName) {
-      // 顶栏若因顶部动态浮层（如“是否关注对方”）或渲染过渡瞬间未能识别，稍作停顿再做一次确认
-      await ctx.sleep(400);
-      commitFrame = await observe('before_db_commit_retry');
+    // A fresh identity checkpoint immediately before the irreversible SQLite commit.
+    // If top bar is settling or transiently occluded by banners, poll up to 3s for confirmed identity.
+    const commitDeadline = performance.now() + 3000;
+    let commitFrame = null;
+    let commitName = null;
+
+    while (performance.now() < commitDeadline) {
+      commitFrame = await observe('before_db_commit');
       commitName = extractChatContactName(commitFrame.ocr);
+      if (commitName) {
+        if (normalize(commitName) === normalize(settings.contactName)) {
+          break;
+        } else {
+          fail('MOMO_CONTACT_MISMATCH',
+            `当前聊天对象是「${commitName}」，并非「${settings.contactName}」，已阻止消息入库`,
+            { expected: settings.contactName, observed: commitName, imagePath: commitFrame.imagePath });
+        }
+      }
+      if (performance.now() + 350 < commitDeadline) {
+        await ctx.sleep(350);
+      }
     }
+
     if (!commitName || normalize(commitName) !== normalize(settings.contactName)) {
       fail('MOMO_CONTACT_MISMATCH',
-        `消息入库前无法确认目标「${settings.contactName}」（当前顶栏：${commitName || '未识别'}），已停止写库`,
-        { expected: settings.contactName, observed: commitName, imagePath: commitFrame.imagePath });
+        `消息入库前 3 秒内无法确认目标「${settings.contactName}」（当前顶栏：${commitName || '未识别'}），已停止写库`,
+        { expected: settings.contactName, observed: commitName, imagePath: commitFrame?.imagePath });
     }
     log('contact_identity_confirmed_before_commit', {
       expected: settings.contactName, observed: commitName, imagePath: commitFrame.imagePath
