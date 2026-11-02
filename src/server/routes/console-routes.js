@@ -304,21 +304,32 @@ async function handleConsoleRoutes(ctx, request, response, url) {
     if (user.role === 'admin') {
       json(response, 200, { ok: true, devices: await listDevices() });
     } else {
-      // 用户填入的 token 为第一位优先级
+      // 自有云机和卡密租赁是并列的授权来源，不应该互相覆盖。
       const userToken = authService.getUserPlatformToken(user.id);
+      let ownedDevices = [];
       if (userToken) {
         try {
-          const userDevices = await listDevicesWithToken(userToken);
-          authService.setUserOwnedDevices(user.id, userDevices.map(d => d.deviceId));
-          json(response, 200, { ok: true, devices: userDevices });
-          return true;
-        } catch (err) {
-          console.warn(`[User Devices] 用户 ${user.email} 自有云机拉取异常: ${err.message}`);
+          ownedDevices = await listDevicesWithToken(userToken);
+          authService.setUserOwnedDevices(user.id, ownedDevices.map(device => device.deviceId));
+        } catch (error) {
+          // 平台临时超时不应撤销此前已核实的设备所有权；新 Token 会清除旧缓存。
+          console.warn(`[User Devices] 用户 ${user.id} 自有云机拉取异常: ${error.message}`);
         }
       }
-      // 未填 Token 时回退到通过卡密分配的管理员云手机
-      const master = await listDevices();
-      json(response, 200, { ok: true, devices: authService.getUserDevices(user.id, master) });
+
+      // 租赁数据始终来自权益数据库；管理员平台暂时离线时仍可显示已分配的设备。
+      let masterDevices = [];
+      if (authService.db.getActiveAllocationsForUser(user.id).length) {
+        try {
+          masterDevices = await listDevices();
+        } catch (error) {
+          console.warn(`[User Devices] 租赁设备状态拉取异常: ${error.message}`);
+        }
+      }
+      json(response, 200, {
+        ok: true,
+        devices: authService.getAccessibleDevices(user.id, ownedDevices, masterDevices)
+      });
     }
     return true;
   }

@@ -57,13 +57,15 @@ async function revokeAccess(userId, { deviceId = null, reason = 'Access revoked'
   }
 
   const { stopActiveScript } = require('./script-runner');
+  const { revokeAiReplyRuns } = require('./ai-reply-routes');
   const runs = [...activeScriptRuns.values()].filter(run =>
     run.ownerUserId === userId && (!deviceId || run.deviceId === deviceId));
   const actors = [...(sharedBrainManager?.actors.values() || [])].filter(actor =>
     actor.ownerUserId === userId && (!deviceId || actor.deviceId === deviceId));
   const results = await Promise.allSettled([
     ...runs.map(run => stopActiveScript({ scriptRunId: run.scriptRunId }, { role: 'admin' })),
-    ...actors.map(actor => sharedBrainManager.stopDevice(actor.deviceId, reason))
+    ...actors.map(actor => sharedBrainManager.stopDevice(actor.deviceId, reason)),
+    revokeAiReplyRuns(userId, deviceId)
   ]);
   const failures = results.filter(result => result.status === 'rejected');
   if (failures.length) throw new AggregateError(failures.map(result => result.reason),

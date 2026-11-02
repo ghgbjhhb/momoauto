@@ -558,6 +558,17 @@ class AuthService {
     });
   }
 
+  // 同一账号的两种云机来源可以并存；相同设备优先使用自有平台身份操作。
+  getAccessibleDevices(userId, ownedDevices = [], masterDevices = []) {
+    const devices = new Map(this.getUserDevices(userId, masterDevices).map(device =>
+      [String(device.deviceId), { ...device, accessSource: 'rented' }]));
+    for (const device of ownedDevices) {
+      if (!device?.deviceId) continue;
+      devices.set(String(device.deviceId), { ...device, accessSource: 'owned' });
+    }
+    return [...devices.values()];
+  }
+
   // --- Per-User Platform Token ---
 
   setUserPlatformToken(userId, plainToken) {

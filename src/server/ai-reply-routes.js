@@ -162,7 +162,7 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
     const client = accessToken ? new YunmomoClient({ token: accessToken }) : clientInstance;
 
     // 异步执行，不阻塞当前 HTTP 响应
-    (async () => {
+    runRecord.done = (async () => {
       try {
         const resObj = await runMomoAiReplyOnce(client, deviceId, {
           mode,
@@ -239,7 +239,21 @@ function handleAiReplyRoutes(req, res, urlObj, bodyJson = null, clientInstance =
   return false;
 }
 
+// 权限撤销属于任务生命周期操作：等待运行结束，确认工作流已释放设备锁后才允许回收完成。
+async function revokeAiReplyRuns(userId, deviceId = null) {
+  const runs = [...activeRuns.values()].filter(run =>
+    run.ownerUserId === userId && (!deviceId || run.deviceId === deviceId) &&
+    (run.status === 'running' || run.status === 'cancelling'));
+  for (const run of runs) {
+    run.status = 'cancelling';
+    run.updatedAt = new Date().toISOString();
+    run.abortController.abort(new Error('Device access revoked'));
+  }
+  await Promise.all(runs.map(run => run.done));
+}
+
 module.exports = {
   handleAiReplyRoutes,
+  revokeAiReplyRuns,
   activeRuns
 };
