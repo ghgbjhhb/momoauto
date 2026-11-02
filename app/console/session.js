@@ -564,6 +564,7 @@ async function init() {
     }
     await loadSharedRuntimeState();
     if (typeof resumePendingWebRun === 'function') resumePendingWebRun();
+    if (typeof resumeManagedWorkflow === 'function') resumeManagedWorkflow();
     const initialPage = isEmbedMode ? 'overview' : (typeof getPageFromUrl === 'function' ? getPageFromUrl() : 'overview');
     setPage(initialPage, { updateHash: true });
 

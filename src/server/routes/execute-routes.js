@@ -7,6 +7,7 @@ const { handleMomoBrainRoutes } = require('../momo-brain-routes');
 const { handleAiReplyRoutes, activeRuns } = require('../ai-reply-routes');
 const { defaultArbiter } = require('../device-arbiter');
 const { executeScript, stopActiveScript, launchWebScript, getWebScriptState } = require('../script-runner');
+const { launchWorkflow, stopWorkflow, getWorkflowStatus } = require('../workflow-runner');
 const {
   busyDevices,
   busyAccountScripts,
@@ -156,6 +157,24 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     json(response, 200, { ok: true, tokenConfigured: true, storage: 'user-db' });
     return true;
   }
+  // 组合/批量任务由 Windows 服务器继续派发后续步骤，不依赖浏览器保持连接。
+  if (request.method === 'POST' && url.pathname === '/api/workflows/start') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    json(response, 202, launchWorkflow(await readJsonBody(request), user));
+    return true;
+  }
+  if (request.method === 'GET' && url.pathname === '/api/workflows/status') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    json(response, 200, getWorkflowStatus(url.searchParams.get('workflowRunId'), user));
+    return true;
+  }
+  if (request.method === 'POST' && url.pathname === '/api/workflows/stop') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    const body = await readJsonBody(request);
+    json(response, 200, await stopWorkflow(body?.workflowRunId, user));
+    return true;
+  }
+
   // 网页采用后台任务 + 状态查询，HTTP/FRP 连接不承担任务生命周期。
   if (request.method === 'GET' && url.pathname === '/api/execute/status') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }

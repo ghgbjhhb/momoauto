@@ -529,52 +529,16 @@ function collectBundleRunOptions(bundle) {
 async function startBundleBatch() {
   const bundle = currentTaskBundle();
   if (!bundle) return;
-  if (state.batchRunning) { showToast('任务正在执行中'); return; }
-  if (state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本结束'); return; }
-  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
+  if (state.batchRunning || state.activeRun || state.activeBundleRun) {
+    showToast('请等待当前任务完成'); return;
+  }
   if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
-
   let stepOptions;
-  try {
-    stepOptions = collectBundleRunOptions(bundle);
-  } catch (err) {
-    showToast(err.message);
-    return;
-  }
-  const ids = state.batchDevices.filter(id => state.devices.some(d => d.deviceId === id));
+  try { stepOptions = collectBundleRunOptions(bundle); }
+  catch (error) { showToast(error.message); return; }
+  const ids = state.batchDevices.filter(id => state.devices.some(device => device.deviceId === id));
   if (!ids.length) { showToast('请先勾选至少一台可执行设备'); return; }
-
-  state.batchRunning = true;
-  state.batchStopRequested = false;
-  state.batchResults = ids.map(id => ({ deviceId: id, status: 'pending' }));
-  renderTaskDetail();
-  eventBus.dispatchEvent(new CustomEvent('task:running', { detail: { bundleId: bundle.id } }));
-
-  for (let i = 0; i < ids.length; i++) {
-    if (state.batchStopRequested) {
-      state.batchResults[i].status = 'skipped';
-      continue;
-    }
-    state.batchResults[i].status = 'running';
-    renderBatchResultsOnly();
-    const result = await executeBundle(bundle, ids[i], stepOptions);
-    const record = state.batchResults[i];
-    if (record) {
-      record.status = result?.unknown ? 'unknown' : result?.cancelled ? 'cancelled' : result?.ok ? 'ok' : 'failed';
-      record.message = result?.message || '';
-    }
-    renderBatchResultsOnly();
-    if (result?.cancelled || result?.unknown) state.batchStopRequested = true;
-    if (typeof loadDevices === 'function') loadDevices(true);
-  }
-
-  state.batchRunning = false;
-  renderTaskDetail();
-  loadSharedRuntimeState();
-  const ok = state.batchResults.filter(r => r.status === 'ok').length;
-  showToast(state.batchResults.some(r => r.status === 'unknown')
-    ? '组合任务存在状态未知的设备，已停止后续调度，请先核查现场'
-    : `组合任务结束：${ok}/${state.batchResults.length} 台成功`);
+  await executeBundle(bundle, ids, stepOptions);
 }
 
 function renderDevicePicker() {
@@ -735,72 +699,183 @@ async function onDetailClick(event) {
   }
 }
 
+/* ---------- 浏览器只负责创建和订阅；后续步骤均由 Windows 服务端派发 ---------- */
+
+async function followManagedWorkflow(runId) {
+  let lastProgress = '';
+  while (state.activeWorkflowRun?.id === runId) {
+    let snapshot;
+    try {
+      snapshot = await requestJson('/api/workflows/status?workflowRunId=' + encodeURIComponent(runId));
+    } catch (error) {
+      if (error.status === 404 || error.status === 401 || error.status === 403) {
+        state.activeWorkflowRun.unknown = true;
+        writeOutput('组合/批量任务状态无法确认', [error.message, '请核查 Windows 服务端和云机，禁止直接重新执行。']);
+        return { ok: false, unknown: true };
+      }
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      continue;
+    }
+    state.batchResults = snapshot.results.map(item => ({
+      deviceId: item.deviceId, status: item.status, message: item.message || ''
+    }));
+    if (state.page === 'tasks') renderBatchResultsOnly();
+    const progress = snapshot.currentStep + ':' + snapshot.currentDeviceId + ':' +
+      snapshot.results.map(item => item.status + ':' + item.completedSteps).join(',') +
+      ':' + (snapshot.output || '');
+    if (progress !== lastProgress) {
+      lastProgress = progress;
+      writeOutput('Windows 后台任务：' + snapshot.title, [
+        '已派发步骤：' + snapshot.currentStep + '/' + snapshot.totalSteps,
+        ...snapshot.results.map(item => item.deviceId + '：' + item.status +
+          '（' + item.completedSteps + '/' + item.totalSteps + ' 步）' +
+          (item.message ? '；' + item.message : '')),
+        ...(snapshot.output ? ['最近输出：', snapshot.output] : [])
+      ]);
+    }
+    if (snapshot.state === 'finished' || snapshot.state === 'cancelled' || snapshot.state === 'unknown') {
+      if (snapshot.state === 'unknown') {
+        state.activeWorkflowRun.unknown = true;
+        showToast('任务状态未知，请检查服务端和实际云机，禁止直接重试');
+        return { ok: false, unknown: true, message: snapshot.message };
+      }
+      try {
+        const saved = JSON.parse(sessionStorage.getItem('yunmomo.workflowRun') || 'null');
+        if (saved?.id === runId) sessionStorage.removeItem('yunmomo.workflowRun');
+      } catch {}
+      state.activeWorkflowRun = null;
+      state.activeBundleRun = null;
+      state.batchRunning = false;
+      state.batchStopRequested = false;
+      updateStopButton();
+      if (state.page === 'tasks') renderTaskDetail();
+      eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+      if (typeof requestAllPreviews === 'function') requestAllPreviews();
+      const ok = snapshot.state === 'finished' &&
+        snapshot.results.length > 0 && snapshot.results.every(item => item.status === 'ok');
+      showToast(snapshot.state === 'cancelled' ? '组合/批量任务已停止' :
+        '组合/批量任务完成：' + snapshot.results.filter(item => item.status === 'ok').length +
+        '/' + snapshot.results.length + ' 台成功');
+      return { ok, cancelled: snapshot.state === 'cancelled', message: snapshot.message };
+    }
+    await new Promise(resolve => setTimeout(resolve, document.hidden ? 6000 : 1500));
+  }
+  return { ok: false, unknown: true };
+}
+
+async function runManagedWorkflow(payload, deviceIds) {
+  if (state.batchRunning || state.activeRun || state.activeBundleRun) {
+    showToast('已有任务在执行，请先等待结束');
+    return { ok: false };
+  }
+  if (state.manualDeviceId) {
+    showToast('请先关闭手动操作窗');
+    return { ok: false };
+  }
+  const runId = createScriptRunId();
+  state.activeWorkflowRun = { id: runId, kind: payload.kind, bundleId: payload.bundleId };
+  state.activeBundleRun = payload.kind === 'bundle'
+    ? { bundleId: payload.bundleId, stopped: false } : null;
+  state.batchRunning = true;
+  state.batchStopRequested = false;
+  state.batchResults = deviceIds.map(deviceId => ({ deviceId, status: 'pending' }));
+  if (state.page === 'tasks') renderTaskDetail();
+  eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+  updateStopButton();
+  // 先记录编号再提交：浏览器恰好在请求过程中刷新，也只会恢复查询而不重下发。
+  try {
+    sessionStorage.setItem('yunmomo.workflowRun',
+      JSON.stringify({ id: runId, userId: state.currentUser?.id, kind: payload.kind,
+        bundleId: payload.bundleId, deviceIds }));
+  } catch {}
+  try {
+    try {
+      await requestJson('/api/workflows/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, deviceIds, workflowRunId: runId })
+      });
+    } catch (error) {
+      // 失联时不重复提交同一个副作用命令；用运行编号查询实际结果。
+      if (error.status && error.status !== 409 && error.status < 500) throw error;
+    }
+    return await followManagedWorkflow(runId);
+  } catch (error) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('yunmomo.workflowRun') || 'null');
+      if (saved?.id === runId) sessionStorage.removeItem('yunmomo.workflowRun');
+    } catch {}
+    state.activeWorkflowRun = null;
+    state.activeBundleRun = null;
+    state.batchRunning = false;
+    updateStopButton();
+    if (state.page === 'tasks') renderTaskDetail();
+    eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+    showToast('任务提交被拒绝：' + error.message);
+    return { ok: false, message: error.message };
+  }
+}
+
+function resumeManagedWorkflow() {
+  let saved;
+  try { saved = JSON.parse(sessionStorage.getItem('yunmomo.workflowRun') || 'null'); } catch { return; }
+  if (!saved?.id || saved.userId !== state.currentUser?.id) return;
+  if (state.activeWorkflowRun) return;
+  state.activeWorkflowRun = { id: saved.id, kind: saved.kind, bundleId: saved.bundleId };
+  state.activeBundleRun = saved.kind === 'bundle'
+    ? { bundleId: saved.bundleId, stopped: false } : null;
+  state.batchRunning = true;
+  updateStopButton();
+  state.batchResults = (saved.deviceIds || []).map(deviceId => ({ deviceId, status: 'pending' }));
+  followManagedWorkflow(saved.id);
+}
+window.resumeManagedWorkflow = resumeManagedWorkflow;
+
+async function requestStopManagedWorkflow() {
+  const current = state.activeWorkflowRun;
+  if (!current || current.unknown) {
+    showToast('无法确认任务状态，请先检查实际云机');
+    return;
+  }
+  state.batchStopRequested = true;
+  showToast('已请求停止 Windows 后台任务，等待当前步骤释放设备');
+  try {
+    await requestJson('/api/workflows/stop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowRunId: current.id })
+    });
+  } catch (error) {
+    showToast('停止请求未确认：' + error.message + '；请核查任务状态');
+  }
+}
+
 /* ---------- 批量执行引擎 ---------- */
 
 async function startTaskBatch() {
   const script = currentTaskScript();
   if (!script) return;
-  if (state.batchRunning) { showToast('任务正在执行中'); return; }
-  if (state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本结束'); return; }
-  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return; }
-  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
-
-  let options;
-  try {
-    options = collectTaskOptions(script);
-  } catch (err) {
-    showToast(err.message);
-    return;
+  if (state.batchRunning || state.activeRun || state.activeBundleRun) {
+    showToast('请等待当前任务完成'); return;
   }
-
+  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return; }
+  let options;
+  try { options = collectTaskOptions(script); }
+  catch (error) { showToast(error.message); return; }
   const ids = resolveBatchDevices(script);
   if (!ids.length) { showToast('请先勾选至少一台可执行设备'); return; }
-
   if (isVpcProxyScript(script) && options.action !== 'show' && options.action !== 'close') {
     const vpcData = await promptVpcProxyDialog();
     if (!vpcData) return;
     options.vpcData = vpcData;
   }
-
   if (script.destructive && !(await confirmDestructive(script, options, ids))) return;
-  if (script.destructive) options.resetConfirmed = true;
-
-  state.batchRunning = true;
-  state.batchStopRequested = false;
-  state.batchResults = ids.map(id => ({ deviceId: id, status: 'pending' }));
-  renderTaskDetail();
-  eventBus.dispatchEvent(new CustomEvent('task:running', { detail: { scriptId: script.id } }));
-
-  for (let i = 0; i < ids.length; i++) {
-    if (state.batchStopRequested) {
-      state.batchResults[i].status = 'skipped';
-      continue;
-    }
-    const deviceId = ids[i];
-    state.batchResults[i].status = 'running';
-    renderBatchResultsOnly();
-    const result = await runScriptOnDevice(script, deviceId, options);
-    const record = state.batchResults[i];
-    if (record) {
-      record.status = result.unknown ? 'unknown' : result.skipped ? 'skipped' : result.cancelled ? 'cancelled' : result.ok ? 'ok' : 'failed';
-      record.durationMs = result.durationMs;
-      record.message = result.message || '';
-    }
-    renderBatchResultsOnly();
-    if (result.cancelled || result.unknown) state.batchStopRequested = true;
-    if (typeof loadDevices === 'function') loadDevices(true);
-  }
-
-  state.batchRunning = false;
-  renderTaskDetail();
-  loadSharedRuntimeState();
-  const ok = state.batchResults.filter(r => r.status === 'ok').length;
-  showToast(state.batchResults.some(r => r.status === 'unknown')
-    ? '批量任务存在状态未知的设备，已停止后续调度，请先核查现场'
-    : `批量任务结束：${ok}/${state.batchResults.length} 台成功`);
+  await runManagedWorkflow({
+    kind: 'script', scriptId: script.id, options,
+    confirmedSteps: script.destructive ? [0] : []
+  }, ids);
 }
 
 function stopTaskBatch() {
+  if (state.activeWorkflowRun) { requestStopManagedWorkflow(); return; }
   if (!state.batchRunning && state.activeBundleRun) { stopRunningBundle(); return; }
   if (!state.batchRunning && state.activeRun) { stopRunningScript(); return; }
   if (!state.batchRunning) return;
@@ -1100,107 +1175,42 @@ function isVpcProxyScript(script) {
   return script.id === 'flow-03' || String(script.order) === '3' || script.id.startsWith('flow-03');
 }
 
-async function executeSingleStep(script, targetId, options = {}) {
-  return runScriptOnDevice(script, targetId, options);
-}
-
 async function executeBundle(bundle, targetId = null, stepOptions = null) {
-  if (state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return { ok: false, message: '已有脚本在执行' }; }
-  if (state.manualDeviceId) { showToast('请先关闭手动操作窗，再运行脚本'); return { ok: false, message: '手动操作中' }; }
-  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return { ok: false, message: '未连接云机平台' }; }
-  const deviceId = targetId || state.selectedDeviceId;
-  const steps = (bundle.stepIds || []).map((id, i) => {
-    const script = state.scripts.find(s => s.id === id);
-    // stepOptions 为详情面板收集的最终参数（已含清空语义），未提供时回退组合保存值
-    const options = Array.isArray(stepOptions) ? { ...(stepOptions[i] || {}) } : { ...(bundle.stepOptions?.[i] || {}) };
-    return script ? { script, options } : null;
-  }).filter(Boolean);
-  if (!steps.length) { showToast('此组合未包含有效脚本步骤'); return { ok: false, message: '组合未包含有效步骤' }; }
-  if (steps.some(step => step.script.requiresDevice) && !deviceId) { showToast('此组合需要操作云机，请先选择目标云机'); return { ok: false, message: '未选择目标云机' }; }
-
-  // 含「设置 VPC 代理」的步骤统一在组合开始前补一次代理数据输入，避免执行中途被打断
+  if (state.batchRunning || state.activeRun || state.activeBundleRun) {
+    showToast('请等待当前任务完成'); return { ok: false };
+  }
+  if (state.manualDeviceId) { showToast('请先关闭手动操作窗'); return { ok: false }; }
+  if (!state.tokenConfigured) { showToast('尚未连接云机平台'); return { ok: false }; }
+  const ids = Array.isArray(targetId) ? targetId : [targetId || state.selectedDeviceId].filter(Boolean);
+  if (!ids.length) { showToast('请先选择目标云机'); return { ok: false }; }
+  const steps = (bundle.stepIds || []).map((id, i) => ({
+    script: state.scripts.find(script => script.id === id),
+    options: Array.isArray(stepOptions) ? { ...(stepOptions[i] || {}) }
+      : { ...(bundle.stepOptions?.[i] || {}) }
+  }));
+  if (!steps.length || steps.some(step => !step.script)) {
+    showToast('组合步骤缺失，无法安全执行');
+    return { ok: false };
+  }
   const vpcSteps = steps.filter(step => isVpcProxyScript(step.script)
     && step.options.action !== 'show' && step.options.action !== 'close' && !step.options.vpcData);
   if (vpcSteps.length) {
-    const vpcData = await promptVpcProxyDialog();
-    if (!vpcData) return { ok: false, cancelled: true, message: '已取消代理数据输入' };
-    for (const step of vpcSteps) step.options.vpcData = vpcData;
+    const data = await promptVpcProxyDialog();
+    if (!data) return { ok: false, cancelled: true };
+    for (const step of vpcSteps) step.options.vpcData = data;
   }
-
-  const bundleRunState = { bundleId: bundle.id, stopped: false };
-  state.activeBundleRun = bundleRunState;
-  const total = steps.length;
-  let ok = true;
-  let cancelled = false;
-  let unknown = false;
-  writeOutput(`【开始执行组合脚本】: ${bundle.name}`, [
-    `功能备注：${bundle.description || '无'}`,
-    `目标设备：${deviceId ? deviceLabel(state.devices.find(d => d.deviceId === deviceId)) : '无需设备'}`,
-    ...steps.map((step, i) => `  ${i + 1}. ${step.script.title}${describeStepOptions(step)}`)
-  ]);
-
-  try {
-    for (let i = 0; i < total; i++) {
-      if (bundleRunState.stopped) {
-        writeOutput(`【组合脚本人为中断】: ${bundle.name}`, ['用户已主动停止组合脚本，剩余步骤已取消。']);
-        showToast('组合脚本已停止');
-        ok = false;
-        cancelled = true;
-        break;
-      }
-      const step = steps[i];
-      const script = step.script;
-      if (script.destructive) {
-        const confirmed = await confirmDestructive(script, step.options, [deviceId]);
-        if (!confirmed) {
-          writeOutput(`【组合脚本取消】: 步骤 ${i + 1} (${script.title}) 为破坏性操作，已按确认弹窗取消。`, ['组合脚本后续步骤已终止。']);
-          showToast(`步骤 ${i + 1} (${script.title}) 未确认执行，组合已停止`);
-          ok = false;
-          cancelled = true;
-          break;
-        }
-        step.options.resetConfirmed = true;
-      }
-      writeOutput(`▶ [步骤 ${i + 1}/${total}] 启动执行: ${script.title}`, [`正在运行子脚本 ${script.id}...`]);
-      const stepRes = await executeSingleStep(script, deviceId, step.options);
-      if (stepRes.unknown) {
-        writeOutput(`【组合脚本状态未知】: 步骤 ${i + 1} (${script.title}) 无法确认`,
-          ['后续步骤已停止调度，禁止直接重新执行，请先人工核查云机实际状态。']);
-        ok = false;
-        unknown = true;
-        break;
-      }
-      if (bundleRunState.stopped || stepRes.cancelled) {
-        writeOutput(`【组合脚本中断】: 步骤 ${i + 1} (${script.title}) 已停止。`, ['终止后续执行。']);
-        showToast(`组合脚本已在步骤 ${i + 1} 停止`);
-        ok = false;
-        cancelled = true;
-        break;
-      }
-      if (!stepRes.ok) {
-        writeOutput(`【组合脚本失败中断】: 步骤 ${i + 1} (${script.title}) 执行未达成`, ['组合脚本后续步骤已自动熔断中止。']);
-        showToast(`步骤 ${i + 1} (${script.title}) 执行失败，组合已中断`);
-        ok = false;
-        break;
-      }
-      writeOutput(`✓ [步骤 ${i + 1}/${total}] 成功达成: ${script.title}`, [`耗时: ${stepRes.durationMs ? (stepRes.durationMs / 1000).toFixed(1) + 's' : '--'}`]);
-      if (i === total - 1) {
-        writeOutput(`【组合脚本全部执行成功】${bundle.name}`, [`共 ${total} 个步骤全部依次顺利执行达成！`]);
-        showToast(`组合脚本【${bundle.name}】全部执行完成`);
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+  const confirmedSteps = [];
+  for (const [index, step] of steps.entries()) {
+    if (!step.script.destructive) continue;
+    if (!(await confirmDestructive(step.script, step.options, ids))) {
+      return { ok: false, cancelled: true };
     }
-  } catch (err) {
-    writeOutput(`【组合脚本异常失败】: ${bundle.name}`, [err.message]);
-    showToast('组合脚本异常: ' + err.message);
-    ok = false;
-  } finally {
-    state.activeBundleRun = null;
-    loadSharedRuntimeState();
-    if (typeof requestAllPreviews === 'function') requestAllPreviews();
+    confirmedSteps.push(index);
   }
-  return { ok, cancelled, unknown };
+  return runManagedWorkflow({
+    kind: 'bundle', bundleId: bundle.id,
+    stepOptions: steps.map(step => step.options), confirmedSteps
+  }, ids);
 }
 
 function describeStepOptions(step) {

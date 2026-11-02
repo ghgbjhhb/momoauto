@@ -4,7 +4,7 @@
 // 页面数据逻辑分布在 devices.js / scripts.js / ai-reply.js / momo-brain.js / session.js。
 
 // 构建标记：改动前端后递增，用于确认浏览器加载的是否为新版（控制台输出 + window.YunMomoConsoleBuild）
-window.YunMomoConsoleBuild = '20261102-web-state';
+window.YunMomoConsoleBuild = '20261102-server-workflows';
 console.info(`[yunmomo-console] build ${window.YunMomoConsoleBuild}`);
 
 // 全局防御：封杀浏览器原生 alert / confirm / prompt
@@ -62,6 +62,7 @@ const state = {
   runningScript: '',
   activeRun: null,
   activeBundleRun: null,
+  activeWorkflowRun: null,
   batchDevices: [],
   batchRunning: false,
   batchStopRequested: false,

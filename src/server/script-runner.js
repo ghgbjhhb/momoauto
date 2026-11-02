@@ -334,12 +334,12 @@ async function stopActiveScript(body = {}, user = null) {
   };
 }
 
-async function executeScript(body, user = null) {
+async function executeScript(body, user = null, workflowLease = null) {
   const knownScriptId = SCRIPT_DEFINITIONS.some(script => script.id === body?.scriptId) ? body.scriptId : undefined;
   const span = require('../automation/timing').begin('script.request', { root: true, scriptId: knownScriptId, deviceId: body?.deviceId });
   return span.run(async () => {
     try {
-      const result = await executeScriptMeasured(body, user);
+      const result = await executeScriptMeasured(body, user, workflowLease);
       const { runId, startedAt, finishedAt, durationMs } = span.end(result);
       return { ...result, runId, startedAt, finishedAt, durationMs };
     } catch (error) {
@@ -349,7 +349,7 @@ async function executeScript(body, user = null) {
   });
 }
 
-async function executeScriptMeasured(body, user = null) {
+async function executeScriptMeasured(body, user = null, workflowLease = null) {
   const ownerUserId = user?.id || '';
   const script = scriptById(body?.scriptId);
   assertScriptVisibleToUser(script, user);
@@ -380,6 +380,7 @@ async function executeScriptMeasured(body, user = null) {
   }
   let selected = null;
   let lockedDeviceId = '';
+  let borrowedWorkflowLease = false;
   let accountScriptLocked = false;
   try {
     if (run.stopRequested) {
@@ -407,13 +408,26 @@ async function executeScriptMeasured(body, user = null) {
     if (script.requiresDevice) {
       const requestedDeviceId = String(body?.deviceId || '');
       if (!requestedDeviceId) throw new Error('请先选择目标云机');
-      if (busyDevices.has(requestedDeviceId) || defaultArbiter.isDeviceBusy(requestedDeviceId) || [...manualBridges].some(bridge => bridge.isBusy(requestedDeviceId))) throw new Error('该设备正在执行脚本或手动控制，请先关闭操作窗');
+      if (workflowLease) {
+        // 仅服务端内部传入的、确实存在的父租约才允许跨组合步骤复用设备占用。
+        if (workflowLease.deviceId !== requestedDeviceId) throw new Error('工作流租约设备不一致');
+        defaultArbiter.assertLease(workflowLease);
+        const borrowed = defaultArbiter.borrowLease(requestedDeviceId, workflowLease.leaseToken, run.ownerId);
+        if (!borrowed.ok) throw new Error('工作流设备租约已失效');
+        borrowedWorkflowLease = true;
+      } else {
+        if (busyDevices.has(requestedDeviceId) || defaultArbiter.isDeviceBusy(requestedDeviceId) ||
+            [...manualBridges].some(bridge => bridge.isBusy(requestedDeviceId))) {
+          throw new Error('该设备正在执行脚本或手动控制，请先关闭操作窗');
+        }
+        busyDevices.add(requestedDeviceId);
+        if (!defaultArbiter.acquireDevice(requestedDeviceId, run.ownerId, { scriptId: script.id })) {
+          busyDevices.delete(requestedDeviceId);
+          throw new Error('该设备当前不可用，请稍后重试');
+        }
+      }
       lockedDeviceId = requestedDeviceId;
       run.deviceId = requestedDeviceId;
-      busyDevices.add(requestedDeviceId);
-      if (!defaultArbiter.acquireDevice(requestedDeviceId, run.ownerId, { scriptId: script.id })) {
-        throw new Error('该设备当前不可用，请稍后重试');
-      }
       selected = await selectedDevice(requestedDeviceId, token);
       if (run.stopRequested) {
         return { ok: false, cancelled: true, scriptRunId, scriptId: script.id, title: script.title,
@@ -444,7 +458,7 @@ async function executeScriptMeasured(body, user = null) {
     };
   } finally {
     if (lockedDeviceId) {
-      busyDevices.delete(lockedDeviceId);
+      if (!borrowedWorkflowLease) busyDevices.delete(lockedDeviceId);
       defaultArbiter.releaseDevice(lockedDeviceId, run.ownerId);
     }
     if (accountScriptLocked) busyAccountScripts.delete(script.id);
