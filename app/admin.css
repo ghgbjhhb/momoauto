@@ -386,7 +386,7 @@ body {
     .admin-log-viewport {
       flex: 1;
       min-height: 0;
-      background: var(--text-1);
+      background: var(--bg-subtle);
       padding: var(--sp-12) var(--sp-12);
       overflow-y: auto;
       display: flex;
@@ -779,48 +779,52 @@ body {
     }
   
 
-/* 管理后台按业务对象分组；原路径保留，次级入口转移到页内导航。 */
-.admin-sidebar .admin-nav-secondary { display: none; }
-.admin-section-nav {
-  display: flex;
-  flex: none;
-  gap: var(--sp-8);
-  align-items: center;
-  padding: var(--sp-8) var(--sp-12);
-  margin-bottom: var(--sp-16);
-  border: 1px solid var(--border);
-  border-radius: var(--r-8);
-  background: var(--bg-surface);
-}
-.admin-section-link {
-  border: 1px solid transparent;
-  border-radius: var(--r-6);
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--fs-13);
-  cursor: pointer;
-  padding: var(--sp-8) var(--sp-14);
-}
-.admin-section-link:hover { background: var(--bg-hover); }
-.admin-section-link.active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: var(--fw-600);
-}
-#tab-cluster.active {
+/* Keep all eight management routes in the left sidebar. No duplicated
+   per-page horizontal navigation above the embedded console. */
+.admin-sidebar { overflow-y: auto; min-height: 0; }
+.admin-main { min-width: 0; min-height: 0; }
+#tab-cluster.active { display: flex; overflow: hidden; }
+#tab-cluster .cluster-iframe { flex: 1 1 0; min-width: 0; min-height: 0; }
+
+/* Full-height log viewer: the toolbar may wrap, but only the log body scrolls.
+   Do not use a dark background with the same --text-1 foreground color. */
+#tab-logs.active {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
-#tab-cluster .admin-section-nav {
-  margin: var(--sp-12) var(--sp-12) 0;
-}
-#tab-cluster .cluster-iframe {
-  flex: 1;
+#tab-logs > .table-container {
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
+#tab-logs .table-toolbar { flex: 0 0 auto; min-width: 0; }
+#tab-logs .table-toolbar > div { min-width: 0; }
+#tab-logs .admin-log-viewport {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-subtle);
+}
+#tab-logs .admin-terminal-output {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  white-space: normal;
+  color: var(--text-1);
+}
+#tab-logs .log-row { min-width: 0; align-items: flex-start; }
+#tab-logs .log-content {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+#tab-logs .log-user { color: var(--accent); }
 #adminUserDetailOverlay[hidden] { display: none; }
 .admin-detail-overlay {
   position: fixed;
@@ -893,9 +897,4 @@ body {
   font-weight: var(--fw-600);
 }
 .admin-link-button:hover { text-decoration: underline; }
-@media (max-width: 780px) {
-  .admin-section-nav { overflow-x: auto; }
-  .admin-section-link { white-space: nowrap; }
-}
-
 .admin-target-row td { background: var(--accent-soft); }

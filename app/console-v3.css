@@ -171,22 +171,11 @@ a:focus-visible {
 
 .embed-nav { display: none; }
 
-body.embed .app { grid-template-columns: minmax(0, 1fr); }
-body.embed .sidebar, body.embed .topbar { display: none; }
-
-.embed-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4);
-  padding: var(--sp-8) var(--sp-12);
-  background: var(--top);
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-}
-
-.embed-nav .nav-btn { width: auto; padding: var(--sp-8) var(--sp-12); }
+/* Embedded admin console uses its own vertical navigation, never the expanded
+   device tree in a horizontal toolbar (that produced the large blank strip). */
+body.embed .app { grid-template-columns: 174px minmax(0, 1fr); }
+body.embed .sidebar { display: flex; overflow-y: auto; }
+body.embed .topbar, body.embed .embed-nav { display: none; }
 
 .shared-activity {
   background: var(--orange-light);
@@ -2228,4 +2217,29 @@ body:has(#page-overview:not([hidden])) .page {
   }
   #page-overview .ov-task-split { min-height: var(--h-overview-narrow-steps); }
   #page-overview .right-col .overview-log-dock:not(.collapsed) { min-height: var(--h-overview-narrow-log); }
+}
+
+/* Tiny admin iframe: preserve a real vertical navigation rail. The regular
+   mobile breakpoint changes .app to block and .sidebar to a horizontal row,
+   which must not leak into the embedded administrator console. */
+@media (max-width: 590px) {
+  body.embed .app { display: grid; grid-template-columns: 72px minmax(0, 1fr); }
+  body.embed .sidebar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    padding: var(--sp-8) var(--sp-4);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  body.embed .brand { justify-content: center; padding: 0 0 var(--sp-12); }
+  body.embed .brand-name { display: none; }
+  body.embed .nav { flex-direction: column; gap: var(--sp-4); }
+  body.embed .nav-btn { width: 100%; justify-content: center; padding: var(--sp-8); }
+  body.embed .nav-btn-main { justify-content: center; }
+  body.embed .nav-btn span { display: none; }
+  body.embed .nav-sub-list { display: none; }
 }

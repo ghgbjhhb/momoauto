@@ -81,13 +81,16 @@ async function fetchServerLogs() {
 
 function mergeSystemLogs(newEntries) {
   const existingRaws = new Set(allSystemLogs.map(l => l.raw || l.message));
+  let changed = false;
   for (const entry of newEntries) {
     const key = entry.raw || entry.message;
     if (!existingRaws.has(key)) {
       allSystemLogs.push(entry);
       existingRaws.add(key);
+      changed = true;
     }
   }
+  if (!changed) return;
   if (allSystemLogs.length > 500) {
     allSystemLogs = allSystemLogs.slice(-400);
   }

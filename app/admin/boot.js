@@ -8,7 +8,6 @@
     frame.src = frame.dataset.adminSrc;
     delete frame.dataset.adminSrc;
   }
-  initAdminSectionNav();
   switchTab(getTabFromUrl(), { updateHistory: false });
 })().catch(error => {
   console.error('[Admin] 初始化失败:', error);

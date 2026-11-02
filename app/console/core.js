@@ -484,7 +484,8 @@ function renderShell() {
   const nav = elements.navMenu;
   renderMarkupIfChanged(nav, navHtml);
   const embedNav = elements.embedNav;
-  renderMarkupIfChanged(embedNav, isEmbedMode ? navHtml : '');
+  // Embedded mode uses the regular vertical sidebar; no duplicated top menu.
+  renderMarkupIfChanged(embedNav, '');
   const crumb = elements.breadcrumb;
   if (crumb) {
     const name = NAVS.find(x => x[0] === state.page)?.[1] || '总览';

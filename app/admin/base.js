@@ -24,21 +24,6 @@ let adminAuthorized = false;
 let currentTab = 'cluster';
 
 // Tab Configuration & Subpage Routing
-const TAB_GROUPS = {
-  cluster: ['cluster', 'pool', 'disk'],
-  users: ['users', 'cards'],
-  ai: ['ai', 'sms'],
-  logs: ['logs']
-};
-const TAB_GROUP_LABELS = {
-  cluster: '设备与资源', pool: '租赁设备池', disk: '资源云盘',
-  users: '用户列表', cards: '卡密管理',
-  ai: 'AI 服务', sms: '接码服务', logs: '系统日志'
-};
-function adminGroupFor(tab) {
-  return Object.keys(TAB_GROUPS).find(group => TAB_GROUPS[group].includes(tab)) || 'cluster';
-}
-
 const TAB_CONFIG = {
   cluster: { title: '设备集群与控制台', path: '/admin/cluster' },
   disk: { title: '资源云盘 (真参/头像)', path: '/admin/disk' },
@@ -264,17 +249,12 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   if (!adminAuthorized) return;
   if (!TAB_CONFIG[targetTab]) targetTab = 'cluster';
   currentTab = targetTab;
-  const group = adminGroupFor(targetTab);
-
-  // Update Sidebar
+  // One stable navigation tree: the selected page is the active left tab.
   navItems.forEach(item => {
-    const tabKey = item.getAttribute('data-tab');
-    item.classList.toggle('active', tabKey === group);
-  });
-  document.querySelectorAll('[data-admin-go-tab]').forEach(button => {
-    const isActive = button.dataset.adminGoTab === targetTab;
-    button.classList.toggle('active', isActive);
-    button.setAttribute('aria-current', isActive ? 'page' : 'false');
+    const isActive = item.getAttribute('data-tab') === targetTab;
+    item.classList.toggle('active', isActive);
+    if (isActive) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   });
 
   // Update Tab Content Sections
@@ -305,22 +285,7 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   }
 }
 
-// 主要导航按业务对象组织，原来的子页面和 URL 原封不动保留。
-function initAdminSectionNav() {
-  for (const [group, tabs] of Object.entries(TAB_GROUPS)) {
-    for (const tab of tabs) {
-      const section = document.getElementById('tab-' + tab);
-      if (!section || section.querySelector('.admin-section-nav')) continue;
-      const bar = document.createElement('nav');
-      bar.className = 'admin-section-nav';
-      bar.setAttribute('aria-label', TAB_GROUP_LABELS[group] + '相关操作');
-      bar.innerHTML = tabs.map(key =>
-        `<button type="button" class="admin-section-link" data-admin-go-tab="${key}">${TAB_GROUP_LABELS[key]}</button>`
-      ).join('');
-      section.prepend(bar);
-    }
-  }
-}
+// Each original administrator route stays independently addressable in the left menu.
 function adminNavigate(tab) {
   switchTab(tab);
 }
@@ -375,12 +340,6 @@ window.adminOpenDiskDevice = deviceId => {
   window.adminRequestedDeviceId = deviceId;
   adminNavigate('disk');
 };
-
-document.addEventListener('click', event => {
-  const button = event.target.closest('[data-admin-go-tab]');
-  if (!button || !adminAuthorized) return;
-  switchTab(button.dataset.adminGoTab);
-});
 
 // Navigation Click Handling
 navItems.forEach(item => {
