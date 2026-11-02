@@ -62,11 +62,19 @@ function normalizeDraftText(text) {
     .replace(/～/g, '~');
 }
 
+function stripTrailingArtifacts(text) {
+  if (!text) return '';
+  return text.replace(/(?:发送|[\[\]\(\)\|\-_\~^\*·'"])+$/g, '').trim();
+}
+
 // Before touching the send button, require the entire observed draft to
-// equal the intended text. No fuzzy similarity or "nonempty paste" shortcut.
+// equal the intended text. Strip transient trailing cursor/artifacts, but
+// never allow missing/truncated content or fuzzy similarity shortcuts.
 function draftMatches(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string') return false;
-  return normalizeDraftText(actual) === normalizeDraftText(expected);
+  const nActual = stripTrailingArtifacts(normalizeDraftText(actual));
+  const nExpected = stripTrailingArtifacts(normalizeDraftText(expected));
+  return nActual === nExpected;
 }
 
 class ChatInput {

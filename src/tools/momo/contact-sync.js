@@ -691,8 +691,14 @@ async function syncMomoContacts(host, options, ctx) {
     // A fresh identity checkpoint immediately before the irreversible SQLite
     // commit. A title missing/garbled by OCR is not evidence for a different
     // contact, but it is not sufficient evidence for committing under this ID.
-    const commitFrame = await observe('before_db_commit');
-    const commitName = extractChatContactName(commitFrame.ocr);
+    let commitFrame = await observe('before_db_commit');
+    let commitName = extractChatContactName(commitFrame.ocr);
+    if (!commitName) {
+      // 顶栏若因顶部动态浮层（如“是否关注对方”）或渲染过渡瞬间未能识别，稍作停顿再做一次确认
+      await ctx.sleep(400);
+      commitFrame = await observe('before_db_commit_retry');
+      commitName = extractChatContactName(commitFrame.ocr);
+    }
     if (!commitName || normalize(commitName) !== normalize(settings.contactName)) {
       fail('MOMO_CONTACT_MISMATCH',
         `消息入库前无法确认目标「${settings.contactName}」（当前顶栏：${commitName || '未识别'}），已停止写库`,
