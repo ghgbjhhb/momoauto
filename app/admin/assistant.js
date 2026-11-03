@@ -191,6 +191,14 @@ function aiDebugRenderModelOptions(config) {
   aiDebugSetBusy(aiDebugBusy);
 }
 
+function aiDebugUpdatePromptCount() {
+  const prompt = document.getElementById('aiDebugPrompt');
+  const count = document.getElementById('aiDebugPromptCount');
+  if (!prompt || !count) return;
+  const max = Number(aiDebugConfig?.maxSystemPromptChars) || 20000;
+  count.textContent = prompt.value.length + ' / ' + max + ' 字';
+}
+
 async function aiDebugLoadConfig(force = false) {
   if (aiDebugLoading && !force) return aiDebugLoading;
   const promptInput = document.getElementById('aiDebugPrompt');
@@ -204,11 +212,13 @@ async function aiDebugLoadConfig(force = false) {
       if (configVersion !== aiDebugConfigVersion) return;
       if (!response.ok || !result.ok) throw new Error(result.error || '无法加载当前 AI 配置');
       aiDebugConfig = result;
+      if (promptInput) promptInput.maxLength = Number(result.maxSystemPromptChars) || 20000;
       if (promptInput && aiDebugPromptEditVersion === promptVersion &&
         (force || !aiDebugPromptChanged)) {
         promptInput.value = result.systemPrompt || '';
         aiDebugPromptChanged = false;
       }
+      aiDebugUpdatePromptCount();
       if (providerMeta) {
         providerMeta.textContent = '线上默认：' + (result.provider || '未知') +
           ' · ' + (result.model || '未指定');
@@ -242,8 +252,9 @@ async function aiDebugSendMessage() {
     aiDebugSetStatus('请输入不超过 1200 字的对方消息。', true);
     return;
   }
-  if (!prompt || prompt.length > 6000) {
-    aiDebugSetStatus('请输入不超过 6000 字的系统提示词。', true);
+  const maxPromptChars = Number(aiDebugConfig?.maxSystemPromptChars) || 20000;
+  if (!prompt || prompt.length > maxPromptChars) {
+    aiDebugSetStatus('请输入不超过 ' + maxPromptChars + ' 字的系统提示词。', true);
     return;
   }
   const selectedModel = aiDebugGetSelectedModel();
@@ -258,8 +269,9 @@ async function aiDebugSendMessage() {
   const nextHistory = [...aiDebugHistory, { sender: 'peer', text: message }];
   const maxMessages = Math.min(60, Number(aiDebugConfig.contextMaxMessages) || 60);
   const totalChars = prompt.length + nextHistory.reduce((total, item) => total + item.text.length, 0);
-  if (nextHistory.length > maxMessages || totalChars > 8000) {
-    aiDebugSetStatus('已达到真实模型的上下文预算，请清空测试聊天后继续。', true);
+  const maxTotalChars = Number(aiDebugConfig?.maxTotalChars) || 32000;
+  if (nextHistory.length > maxMessages || totalChars > maxTotalChars) {
+    aiDebugSetStatus('提示词和测试聊天累计超过 ' + maxTotalChars + ' 字，请清空测试聊天或缩短提示词。', true);
     return;
   }
 
@@ -345,8 +357,9 @@ async function aiDebugSavePrompt() {
   const promptInput = document.getElementById('aiDebugPrompt');
   const saveButton = document.getElementById('aiDebugSavePrompt');
   const prompt = promptInput?.value.trim() || '';
-  if (!prompt || prompt.length > 6000 || !aiDebugConfig) {
-    aiDebugSetStatus('系统提示词为空、过长或尚未加载，无法保存。', true);
+  const maxPromptChars = Number(aiDebugConfig?.maxSystemPromptChars) || 20000;
+  if (!prompt || prompt.length > maxPromptChars || !aiDebugConfig) {
+    aiDebugSetStatus('系统提示词须在 1～' + maxPromptChars + ' 字之间且配置已加载，才能保存。', true);
     return;
   }
   if (saveButton?.disabled) return;
@@ -394,6 +407,7 @@ function initAdminAiDebug() {
   if (aiDebugHistory.length) aiDebugReadTraces();
   aiDebugRender();
   aiDebugRenderTraces();
+  aiDebugUpdatePromptCount();
 
   const form = document.getElementById('aiDebugForm');
   const input = document.getElementById('aiDebugInput');
@@ -411,6 +425,7 @@ function initAdminAiDebug() {
   prompt?.addEventListener('input', () => {
     aiDebugPromptChanged = true;
     ++aiDebugPromptEditVersion;
+    aiDebugUpdatePromptCount();
   });
   document.getElementById('aiDebugModelSelect')?.addEventListener('change', event => {
     if (aiDebugBusy) return;

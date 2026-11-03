@@ -13,6 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PROJECT_ROOT } = require('../automation/runtime');
 const { assertSafeOutboundUrlSync } = require('../automation/url-guard');
+const { MAX_SYSTEM_PROMPT_CHARS } = require('./context');
 
 const CONFIG_DIR = path.join(PROJECT_ROOT, '.runtime', 'ai-reply');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
@@ -207,6 +208,11 @@ function getSanitizedSettings(deviceId = null, userId = null) {
 }
 
 function saveSettings(updates = {}, expectedRevision = null) {
+  if (updates.systemPrompt !== undefined && String(updates.systemPrompt).trim().length > MAX_SYSTEM_PROMPT_CHARS) {
+    const error = new Error(`系统提示词最多 ${MAX_SYSTEM_PROMPT_CHARS} 字`);
+    error.code = 'INVALID_SYSTEM_PROMPT';
+    throw error;
+  }
   ensureConfigDir();
   const current = loadSettings();
 

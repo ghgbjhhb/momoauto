@@ -32,10 +32,13 @@ const INTENT_OUTPUT_CONTRACT = [
  * 5. 预算校验：超预算明确抛出 CONTEXT_BUDGET_EXCEEDED，严禁静默截断历史或发半句。
  */
 
+const MAX_SYSTEM_PROMPT_CHARS = 20000;
+const MAX_CONTEXT_CHARS = 32000;
+
 function buildChatContext(rawMessages = [], config = {}, options = {}) {
   const systemPrompt = (config.systemPrompt || '').trim();
   const maxMessages = config.contextMaxMessages || 60;
-  const maxTotalChars = options.maxTotalChars || 8000; // 保守字数上限
+  const maxTotalChars = options.maxTotalChars || MAX_CONTEXT_CHARS; // 同时覆盖正式与调试回复，长提示词可正常使用
 
   const llmMessages = [];
 
@@ -100,4 +103,4 @@ function buildChatContext(rawMessages = [], config = {}, options = {}) {
   };
 }
 
-module.exports = { buildChatContext };
+module.exports = { buildChatContext, MAX_SYSTEM_PROMPT_CHARS, MAX_CONTEXT_CHARS };

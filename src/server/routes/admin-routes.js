@@ -187,10 +187,12 @@ async function handleAdminRoutes(ctx, request, response, url) {
     if (!requireAdmin(user, response)) return true;
     const { getSanitizedSettings } = require('../../ai/config');
     const cfg = getSanitizedSettings();
+    const { MAX_SYSTEM_PROMPT_CHARS, MAX_CONTEXT_CHARS } = require('../../ai/context');
     json(response, 200, {
       ok: true, systemPrompt: cfg.systemPrompt,
       revision: cfg.revision, model: cfg.model, provider: cfg.provider,
       hasApiKey: cfg.hasApiKey, contextMaxMessages: cfg.contextMaxMessages,
+      maxSystemPromptChars: MAX_SYSTEM_PROMPT_CHARS, maxTotalChars: MAX_CONTEXT_CHARS,
       models: getAdminDebugModelChoices(),
       handoffEnabled: cfg.handoffEnabled,
       handoffMinSelfMessages: getDebugHandoffMinSelfMessages(),
@@ -213,9 +215,10 @@ async function handleAdminRoutes(ctx, request, response, url) {
     };
     response.on('close', abortOnClose);
     try {
-      const body = await readJsonBody(request, 64000);
+      const body = await readJsonBody(request, 160000);
       const { getEffectiveConfig, loadSettings } = require('../../ai/config');
       const { generateReply } = require('../../ai/reply-service');
+      const { MAX_SYSTEM_PROMPT_CHARS, MAX_CONTEXT_CHARS } = require('../../ai/context');
       const config = getEffectiveConfig();
       const choices = getAdminDebugModelChoices();
       const modelSelection = body?.modelSelection;
@@ -244,8 +247,8 @@ async function handleAdminRoutes(ctx, request, response, url) {
         timeoutMs: configuredProvider.timeoutMs
       };
       const prompt = body?.systemPrompt;
-      if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 6000) {
-        json(response, 400, { ok: false, error: '请输入不超过 6000 字的系统提示词' });
+      if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > MAX_SYSTEM_PROMPT_CHARS) {
+        json(response, 400, { ok: false, error: `请输入不超过 ${MAX_SYSTEM_PROMPT_CHARS} 字的系统提示词` });
         return true;
       }
       const source = body?.history;
@@ -269,8 +272,8 @@ async function handleAdminRoutes(ctx, request, response, url) {
         totalChars += message.text.length;
         history.push({ sender: message.sender, text: message.text });
       }
-      if (history[history.length - 1].sender !== 'peer' || totalChars > 8000) {
-        json(response, 400, { ok: false, error: '对话必须以对方发言结束，且历史总字数不得超过 8000' });
+      if (history[history.length - 1].sender !== 'peer' || totalChars > MAX_CONTEXT_CHARS) {
+        json(response, 400, { ok: false, error: `对话必须以对方发言结束，且历史与提示词总字数不得超过 ${MAX_CONTEXT_CHARS}` });
         return true;
       }
       // 与 momo-ai-reply.js 调用相同的生成服务、上下文契约和进度统计。
