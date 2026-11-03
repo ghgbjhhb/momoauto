@@ -4,7 +4,7 @@
 
 ## 用法
 
-1. 用管理员账号进入新页面。右侧自动显示当前**全局**系统提示词和线上默认供应商/模型。在这行下方的「测试模型」下拉框切换本次调试使用的模型：包括后台已配置的供应商模型及 DeepSeek 官方服务支持的 Flash / Pro 选项。**此选择只影响测试对话，不更新真实业务的默认模型**；供应商 Key 留在服务端，下拉框不接触密钥。
+1. 用管理员账号进入新页面。右侧自动显示当前**全局**系统提示词和线上默认供应商/模型。在这行下方的「测试模型」下拉框切换本次调试使用的模型：包括后台已配置的供应商模型及 DeepSeek 官方服务支持的 Flash / Pro 选项。其下新增「思考强度」，按选择的模型动态提供实际支持的档位（含“跟随上游默认”）。**这两个选择只影响测试对话，不更新真实业务的默认模型或推理配置**；供应商 Key 留在服务端，下拉框不接触密钥。
 2. 在左侧输入一条“模拟对方发来的消息”，点击“生成回复”；普通轮次显示模型提取的 `reply` 正文。右侧「AI 调用日志 · 对方意图」记录每轮的 `stage`、`summary`、联系方式意向、JSON 格式校验、模型生成的 `reply`、Token 用量，以及最终分流原因。
 3. 可以在右侧临时编辑系统提示词，直接再次测试；**仅编辑和测试不会保存或修改真实 AI 设置**。
 4. 点击“保存为正式提示词”并在确认框再次确认，才会通过已有 `POST /api/admin/ai-settings` 更新全局提示词。保存请求带配置修订号，过期修订不自动覆盖其他管理员的更新。
@@ -16,9 +16,18 @@
 管理员进入「AI 服务设置 → 编辑供应商」，原来的「模型名称」仍然是该供应商实际自动回复的**默认模型**；下方新增「多个模型 ID（每行一个）」输入框。保存供应商后，所有条目都可以在 AI 调试对话的模型选择器中使用，**无需复制同一套 API Key 或创建重复供应商**。
 
 - 每个供应商最多 80 个模型 ID，自动去重，默认模型一定保留。旧版只有一个模型名称的配置自动兼容。
-- 所有可选模型使用该供应商原本的 endpoint、API Key、temperature、maxTokens 与 timeoutMs。只有在调试对话中手动选中模型时才会使用；不影响真实任务使用的默认模型。
+- 所有可选模型使用该供应商原本的 endpoint、API Key 和模型 ID。调试时如所选模型支持推理档位，会按推理模型要求调整本次请求的输出 Token 上限与超时，不修改保存的 temperature、maxTokens 或 timeoutMs；不影响真实任务使用的默认模型。
 - 本次从现有 GPT 网关的只读 `GET /models` 响应实际核对了 21 个模型，其中 8 个为 GPT 系列：`codex/gpt-6.1-sol`、`codex/gpt-6-astra`、`codex/gpt-6.1-terra`、`codex/gpt-6-sol`、`codex/gpt-6-luna`、`codex/gpt-5.6-sol`、`codex/gpt-5.6-terra`、`codex/gpt-5.6-luna`。已将这 8 个模型归入已有的 GPT 供应商配置。
 - 不会自动扫描、发送或收费测试这些模型；网关返回 ID 不等同于所有模型均具备 JSON-mode 或聊天调用能力，实际可用性仍需逐个在调试对话中检验。
+
+## 思考强度与上游 Chat Completions 兼容
+
+- **仅管理员调试页**提供档位选择：`跟随上游默认`（完全不发送 `reasoning_effort`），以及后端针对当前模型校验通过的选项。每个模型独立校验，不允许浏览器提交任意档位。选择保留在当前浏览器标签页，换模型时不兼容的档位自动回到默认。
+- **GPT 网关（已有 8 个 `codex/gpt-*` 模型）**：通过现有 OpenAI 兼容 `/chat/completions` 发送 `reasoning_effort`。GPT-6.1 Sol 与 GPT-6 Astra 不提供 `none`，其余已核对的型号可选 `none / low / medium / high / xhigh / max`。本次调试请求按官方推理模型格式使用 `max_completion_tokens`（它含推理 Token），不发送不兼容的 `temperature`；正式自动回复没有启用本选项，仍使用自己的既有配置。
+- **DeepSeek 官方**：仅 `deepseek-flash`、`deepseek-v4-pro` 提供 `none / low / high / max`；`none` 关闭思考。旧配置模型 `deepseek-chat` 不假设支持新版思考档位，只提供上游默认。DeepSeek 的 OpenAI Chat Completions 接口接受 `reasoning_effort`，无需切换到 Responses API，也不虚构一个额外的 DeepSeek 模型。
+- 调试推理模型有独立的输出 Token 与请求超时预算：默认/中/低至少 4096 Token，高/极高至少 8192、最大至少 16384（不思考时至少 1024），超时不少于 120 秒，极高/最大不少于 180 秒。**更强推理可能消耗更多 API Tokens，花费更高、等待更久。** 不适用于真实云机任务。
+- 右侧日志显示**本次请求的思考强度**与上游有返回时的 `reasoning_tokens`，不会展示内部推理文本。自建上游网关能否完整透传 `reasoning_effort`，仍需在重启后的真实管理员调试请求里验证；未做付费模型调用，不宣称上游已接受。
+- 实现参考：[OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[OpenAI 推理模型部署说明](https://developers.openai.com/api/docs/guides/deployment-checklist)、[DeepSeek 思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。未新增依赖，也未改变生产设备任务。
 
 ## 与正式回复的关系
 

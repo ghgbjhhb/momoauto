@@ -5,6 +5,7 @@
 const AI_DEBUG_HISTORY_KEY = 'yunmomo.admin.ai-debug.v1';
 const AI_DEBUG_TRACE_KEY = 'yunmomo.admin.ai-debug-trace.v1';
 const AI_DEBUG_MODEL_KEY = 'yunmomo.admin.ai-debug-model.v1';
+const AI_DEBUG_EFFORT_KEY = 'yunmomo.admin.ai-debug-effort.v1';
 let aiDebugReady = false;
 let aiDebugLoading = null;
 let aiDebugHistory = [];
@@ -16,6 +17,7 @@ let aiDebugPromptChanged = false;
 let aiDebugPromptEditVersion = 0;
 let aiDebugConfigVersion = 0;
 let aiDebugSelectedModelId = '';
+let aiDebugSelectedEffort = 'default';
 let aiDebugTraces = [];
 let aiDebugStickyIntent = false;
 let aiDebugHandoffState = '';
@@ -137,10 +139,19 @@ function aiDebugRenderTraces() {
       `后台预设话术 ${trace.decision?.sentCount ?? 0} 段（仅测试窗口模拟显示，未真实发送；生产流程会尝试拉黑）` :
       'AI 生成的 reply');
     addLine('模型', trace.call?.model || '未返回', 'admin-ai-lab-trace-muted');
+    const effort = trace.call?.reasoningEffort;
+    addLine('请求思考强度', effort === 'default' ? '上游默认（未传控制参数）' :
+      effort === 'unsupported' ? '该模型未开放设置（使用上游默认）' :
+        effort || '未返回', 'admin-ai-lab-trace-muted');
     const usage = trace.call?.usage;
     if (usage) {
       addLine('Tokens', `输入 ${usage.prompt_tokens ?? '—'} / 输出 ${usage.completion_tokens ?? '—'} / 合计 ${usage.total_tokens ?? '—'}`,
         'admin-ai-lab-trace-muted');
+      const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ??
+        usage.output_tokens_details?.reasoning_tokens;
+      if (Number.isFinite(reasoningTokens)) {
+        addLine('思考 Tokens', reasoningTokens, 'admin-ai-lab-trace-muted');
+      }
     }
     fragment.append(card);
   }
@@ -155,10 +166,45 @@ function aiDebugSetBusy(busy) {
   aiDebugBusy = busy;
   const select = document.getElementById('aiDebugModelSelect');
   if (select) select.disabled = busy || !Array.isArray(aiDebugConfig?.models) || !aiDebugConfig.models.length;
+  const effortSelect = document.getElementById('aiDebugEffortSelect');
+  if (effortSelect) {
+    effortSelect.disabled = busy || !(aiDebugGetSelectedModel()?.reasoningEfforts?.length > 0);
+  }
   const send = document.getElementById('aiDebugSend');
   if (send) {
     send.disabled = busy || !aiDebugGetSelectedModel()?.hasApiKey || aiDebugHandoffState === 'sent';
     send.textContent = busy ? '正在生成…' : '生成回复';
+  }
+}
+
+function aiDebugRenderEffortOptions(model) {
+  const select = document.getElementById('aiDebugEffortSelect');
+  const hint = document.getElementById('aiDebugEffortHint');
+  if (!select) return;
+  const available = Array.isArray(model?.reasoningEfforts) ? model.reasoningEfforts : [];
+  const labels = {
+    none: '关闭思考', low: '低', medium: '中',
+    high: '高', xhigh: '极高', max: '最大'
+  };
+  select.replaceChildren();
+  const defaultOption = document.createElement('option');
+  defaultOption.value = 'default';
+  defaultOption.textContent = '跟随上游默认（不传参数）';
+  select.append(defaultOption);
+  for (const effort of available) {
+    if (!labels[effort]) continue;
+    const option = document.createElement('option');
+    option.value = effort;
+    option.textContent = labels[effort] + '（' + effort + '）';
+    select.append(option);
+  }
+  if (!available.includes(aiDebugSelectedEffort)) aiDebugSelectedEffort = 'default';
+  select.value = aiDebugSelectedEffort;
+  select.disabled = aiDebugBusy || !available.length;
+  if (hint) {
+    hint.textContent = available.length ?
+      '仅控制本次调试的上游请求；更高强度可能更慢、消耗更多 Token。' :
+      '该模型暂未提供可设置的思考档位，使用上游默认行为。';
   }
 }
 
@@ -188,6 +234,7 @@ function aiDebugRenderModelOptions(config) {
   const selected = previous || choices.find(choice => choice.isDefault) || choices[0];
   aiDebugSelectedModelId = selected.id;
   select.value = selected.id;
+  aiDebugRenderEffortOptions(selected);
   aiDebugSetBusy(aiDebugBusy);
 }
 
@@ -266,6 +313,11 @@ async function aiDebugSendMessage() {
     aiDebugSetStatus('所选模型的供应商没有配置 API Key，请先在 AI 服务设置中配置。', true);
     return;
   }
+  if (aiDebugSelectedEffort !== 'default' &&
+      !selectedModel.reasoningEfforts?.includes(aiDebugSelectedEffort)) {
+    aiDebugSetStatus('当前模型不支持所选思考强度，请重新选择。', true);
+    return;
+  }
   const nextHistory = [...aiDebugHistory, { sender: 'peer', text: message }];
   const maxMessages = Math.min(60, Number(aiDebugConfig.contextMaxMessages) || 60);
   const totalChars = prompt.length + nextHistory.reduce((total, item) => total + item.text.length, 0);
@@ -288,6 +340,7 @@ async function aiDebugSendMessage() {
       body: JSON.stringify({
         systemPrompt: prompt,
         modelSelection: selectedModel.id,
+        reasoningEffort: aiDebugSelectedEffort,
         history: nextHistory.map(({ sender, text }) => ({ sender, text })),
         debugState: { stickyIntent: aiDebugStickyIntent, handoffState: aiDebugHandoffState }
       })
@@ -402,8 +455,13 @@ function initAdminAiDebug() {
   }
   aiDebugReady = true;
   aiDebugHistory = aiDebugReadHistory();
-  try { aiDebugSelectedModelId = sessionStorage.getItem(AI_DEBUG_MODEL_KEY) || ''; }
-  catch { aiDebugSelectedModelId = ''; }
+  try {
+    aiDebugSelectedModelId = sessionStorage.getItem(AI_DEBUG_MODEL_KEY) || '';
+    aiDebugSelectedEffort = sessionStorage.getItem(AI_DEBUG_EFFORT_KEY) || 'default';
+  } catch {
+    aiDebugSelectedModelId = '';
+    aiDebugSelectedEffort = 'default';
+  }
   if (aiDebugHistory.length) aiDebugReadTraces();
   aiDebugRender();
   aiDebugRenderTraces();
@@ -433,9 +491,21 @@ function initAdminAiDebug() {
     if (!selected) return;
     aiDebugSelectedModelId = selected.id;
     try { sessionStorage.setItem(AI_DEBUG_MODEL_KEY, selected.id); } catch {}
+    aiDebugRenderEffortOptions(selected);
+    try { sessionStorage.setItem(AI_DEBUG_EFFORT_KEY, aiDebugSelectedEffort); } catch {}
     aiDebugSetBusy(false);
     aiDebugSetStatus('已切换测试模型：' + selected.providerName + ' · ' + selected.model +
       '。仅影响调试对话，线上默认模型不变。');
+  });
+  document.getElementById('aiDebugEffortSelect')?.addEventListener('change', event => {
+    if (aiDebugBusy) return;
+    const effort = event.target.value;
+    if (effort !== 'default' && !aiDebugGetSelectedModel()?.reasoningEfforts?.includes(effort)) return;
+    aiDebugSelectedEffort = effort;
+    try { sessionStorage.setItem(AI_DEBUG_EFFORT_KEY, effort); } catch {}
+    aiDebugSetStatus(effort === 'default' ?
+      '思考强度改为上游默认；不会传 reasoning_effort 参数。' :
+      '思考强度已设为 ' + effort + '，只影响后续 AI 调试请求。');
   });
   document.getElementById('aiDebugClear')?.addEventListener('click', () => {
     ++aiDebugVersion;

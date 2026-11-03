@@ -2,6 +2,32 @@
 const { redact } = require('../automation/runtime');
 const { checkSignal, waitFor } = require('../automation/cancellation');
 const urlGuard = require('../automation/url-guard');
+
+// Only models with documented Chat Completions reasoning support appear in
+// the administrator selector. Unknown gateways/models stay on their defaults.
+const GPT_REASONING_MODELS = new Set([
+  'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-sol',
+  'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'
+]);
+const GPT_NO_NONE = new Set(['gpt-6.1-sol', 'gpt-6-astra']);
+const GPT_EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+const DEEPSEEK_EFFORTS = ['none', 'low', 'high', 'max'];
+
+function supportedReasoningEfforts(config = {}) {
+  const model = String(config.model || '').toLowerCase().split('/').pop();
+  if (config.provider === 'openai' && GPT_REASONING_MODELS.has(model)) {
+    return GPT_NO_NONE.has(model) ? GPT_EFFORTS.slice(1) : [...GPT_EFFORTS];
+  }
+  try {
+    if (config.provider === 'deepseek' &&
+        new URL(config.endpoint).hostname.toLowerCase() === 'api.deepseek.com' &&
+        (model === 'deepseek-flash' || model === 'deepseek-v4-pro')) {
+      return [...DEEPSEEK_EFFORTS];
+    }
+  } catch {}
+  return [];
+}
+
 function resolveChatCompletionsUrl(endpoint) {
   let url = String(endpoint || 'https://api.deepseek.com').trim().replace(/\/+$/, '');
   if (url.endsWith('/chat/completions')) return url;
@@ -29,13 +55,37 @@ class DeepSeekProvider {
         allowLoopback: true,
         allowPrivate: String(process.env.YUNMOMO_AI_ALLOW_PRIVATE || '').trim() === '1'
       });
+      const modelEfforts = supportedReasoningEfforts(config);
+      const requestedEffort = config.reasoningEffort;
+      if (requestedEffort !== undefined && requestedEffort !== 'default' &&
+          !modelEfforts.includes(requestedEffort)) {
+        const error = new Error('当前模型不支持所选思考强度');
+        error.code = 'INVALID_REASONING_EFFORT';
+        throw error;
+      }
+      // The admin playground supplies reasoningEffort='default' even when the
+      // field is omitted upstream. Production settings never get this field.
+      const debugGptReasoning = requestedEffort !== undefined &&
+        config.provider === 'openai' && modelEfforts.length > 0;
       // JSON 结构化输出：API 层强制返回合法 JSON（契约靠提示词会被用户人设指令压过）。
       // 部分第三方 OpenAI 兼容网关不支持 response_format，收到 400 时降级为纯提示词约束重试一次。
       let attemptJsonMode = config.responseFormat === 'json_object';
       let response;
       for (;;) {
-        const requestBody = { model: config.model || 'deepseek-chat', messages,
-          temperature: Number(config.temperature ?? .7), max_tokens: Number(config.maxTokens ?? 150), stream: false };
+        const requestBody = {
+          model: config.model || 'deepseek-chat', messages, stream: false
+        };
+        if (debugGptReasoning) {
+          // GPT-5.6/6 Chat Completions uses max_completion_tokens (includes
+          // reasoning tokens), and reasoning models reject temperature.
+          requestBody.max_completion_tokens = Number(config.maxTokens ?? 4096);
+        } else {
+          requestBody.temperature = Number(config.temperature ?? .7);
+          requestBody.max_tokens = Number(config.maxTokens ?? 150);
+        }
+        if (requestedEffort && requestedEffort !== 'default') {
+          requestBody.reasoning_effort = requestedEffort;
+        }
         if (attemptJsonMode) requestBody.response_format = { type: 'json_object' };
         response = await bounded((options.fetchFn || globalThis.fetch)(
           targetUrl, {
@@ -44,8 +94,14 @@ class DeepSeekProvider {
             body: JSON.stringify(requestBody)
           }));
         if (response.status === 400 && attemptJsonMode) {
-          attemptJsonMode = false;
-          continue;
+          // Preserve the old production JSON-mode fallback unchanged. Only
+          // explicit reasoning requests distinguish unsupported effort from
+          // an unsupported JSON response format.
+          if (requestedEffort === undefined ||
+              /response_format|json_object/i.test(await bounded(response.clone().text()))) {
+            attemptJsonMode = false;
+            continue;
+          }
         }
         break;
       }
@@ -96,10 +152,11 @@ class DeepSeekProvider {
     } catch (error) {
       if (options.signal?.aborted) throw Object.assign(new Error('API call cancelled'), { code: 'ABORTED' });
       if (controller.signal.aborted || error.code === 'API_TIMEOUT') throw Object.assign(new Error('API request timed out'), { code: 'API_TIMEOUT' });
-      if (error.code?.startsWith('API_') || error.code === 'EMPTY_RESPONSE') throw error;
+      if (error.code?.startsWith('API_') || error.code === 'EMPTY_RESPONSE' ||
+          error.code === 'INVALID_REASONING_EFFORT') throw error;
       throw Object.assign(new Error('API network failure: ' + redact(error.message, [apiKey])), { code: 'API_UNAVAILABLE' });
     } finally { clearTimeout(timer); options.signal?.removeEventListener('abort', forward); }
   }
 }
 DeepSeekProvider.chat = require('../automation/timing').timed('ai.provider.request', DeepSeekProvider.chat);
-module.exports = { DeepSeekProvider };
+module.exports = { DeepSeekProvider, supportedReasoningEfforts };

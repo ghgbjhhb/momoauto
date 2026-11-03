@@ -432,6 +432,11 @@
               <select id="aiDebugModelSelect" class="form-input" disabled>
                 <option value="">正在加载可选模型…</option>
               </select>
+              <label for="aiDebugEffortSelect">思考强度</label>
+              <select id="aiDebugEffortSelect" class="form-input" disabled>
+                <option value="default">跟随上游默认</option>
+              </select>
+              <span id="aiDebugEffortHint" class="admin-ai-lab-footnote">仅影响本窗口的 AI 调试请求。</span>
             </div>
             <label for="aiDebugPrompt">当前提示词（可编辑测试草稿） <span id="aiDebugPromptCount" style="float: right; color: var(--text-3); font-size: var(--fs-12); font-weight: normal">0 / 20000 字</span></label>
             <textarea id="aiDebugPrompt" class="form-input" maxlength="20000" spellcheck="false" placeholder="正在读取当前系统提示词…"></textarea>

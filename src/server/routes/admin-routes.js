@@ -21,6 +21,7 @@ function getDebugHandoffMinSelfMessages() {
 // No arbitrary model/endpoint/credential pair can be supplied by a browser.
 function getAdminDebugModelChoices() {
   const { listProviders } = require('../../ai/config');
+  const { supportedReasoningEfforts } = require('../../ai/provider');
   const result = [];
   for (const provider of listProviders()) {
     const models = Array.isArray(provider.models) && provider.models.length
@@ -37,6 +38,7 @@ function getAdminDebugModelChoices() {
         providerId: provider.id,
         providerName: provider.name,
         model,
+        reasoningEfforts: supportedReasoningEfforts({ ...provider, model }),
         hasApiKey: provider.hasApiKey,
         isDefault: provider.isDefault && model === provider.model
       });
@@ -229,6 +231,12 @@ async function handleAdminRoutes(ctx, request, response, url) {
         json(response, 400, { ok: false, error: '所选测试模型已失效，请重新打开模型选择列表' });
         return true;
       }
+      const reasoningEffort = body?.reasoningEffort === undefined ? 'default' : body.reasoningEffort;
+      if (reasoningEffort !== 'default' &&
+          !choice.reasoningEfforts.includes(reasoningEffort)) {
+        json(response, 400, { ok: false, error: '所选模型不支持该思考强度，请切换至可用档位' });
+        return true;
+      }
       const configuredProvider = loadSettings().providers.find(item => item.id === choice.providerId);
       if (!configuredProvider || !configuredProvider.apiKey?.trim()) {
         json(response, 422, { ok: false, error: '所选模型的供应商未配置有效 API Key' });
@@ -246,6 +254,17 @@ async function handleAdminRoutes(ctx, request, response, url) {
         maxTokens: configuredProvider.maxTokens,
         timeoutMs: configuredProvider.timeoutMs
       };
+      // Only this debug request receives reasoning control. The provider,
+      // its production default model and all persisted settings stay intact.
+      if (choice.reasoningEfforts.length) {
+        testConfig.reasoningEffort = reasoningEffort;
+        const tokenBudget = reasoningEffort === 'none' ? 1024 :
+          reasoningEffort === 'max' ? 16384 :
+            reasoningEffort === 'high' || reasoningEffort === 'xhigh' ? 8192 : 4096;
+        testConfig.maxTokens = Math.max(Number(testConfig.maxTokens) || 0, tokenBudget);
+        testConfig.timeoutMs = Math.max(Number(testConfig.timeoutMs) || 0,
+          reasoningEffort === 'max' || reasoningEffort === 'xhigh' ? 180000 : 120000);
+      }
       const prompt = body?.systemPrompt;
       if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > MAX_SYSTEM_PROMPT_CHARS) {
         json(response, 400, { ok: false, error: `请输入不超过 ${MAX_SYSTEM_PROMPT_CHARS} 字的系统提示词` });
@@ -331,6 +350,8 @@ async function handleAdminRoutes(ctx, request, response, url) {
           },
           call: {
             model: result.model,
+            providerName: choice.providerName,
+            reasoningEffort: choice.reasoningEfforts.length ? reasoningEffort : 'unsupported',
             requestId: result.requestId,
             usage: result.usage,
             finishReason: result.finishReason,
