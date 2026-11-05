@@ -2738,8 +2738,8 @@ body:has(#page-overview:not([hidden])) .page {
 .task-nav-item {
   display: flex;
   align-items: center;
-  gap: var(--sp-12);
-  padding: var(--sp-14) var(--sp-14);
+  gap: var(--sp-8);
+  padding: var(--sp-10) var(--sp-12);
   border-radius: var(--r-8);
   border: 1px solid transparent;
   background: transparent;
@@ -2755,15 +2755,30 @@ body:has(#page-overview:not([hidden])) .page {
   background: var(--blue-light);
   border-color: var(--blue-chip);
 }
+.task-nav-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
 .task-nav-title {
-  font-size: var(--fs-14);
+  font-size: var(--fs-13);
   font-weight: var(--fw-600);
   color: var(--text);
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .task-nav-item.active .task-nav-title {
   color: var(--blue);
   font-weight: var(--fw-700);
+}
+.task-nav-badge {
+  padding: 1px 7px;
+  font-size: var(--fs-11);
+  min-width: 20px;
+  text-align: center;
+  flex: none;
 }
 .task-nav-sub { display: none !important; }
 
