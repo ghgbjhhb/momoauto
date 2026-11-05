@@ -578,6 +578,7 @@ function configureScript(script, body, env) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw invalidOptions('脚本参数必须为对象');
   const definitions = script.parameters ?? [];
   const allowed = new Set(definitions.map(field => field.name));
+  allowed.add('resetConfirmed');
   if (script.id.startsWith('flow-03')) allowed.add('vpcData');
   if (script.id.startsWith('flow-06')) {
     allowed.add('mode');
@@ -597,7 +598,8 @@ function configureScript(script, body, env) {
       throw invalidOptions('脚本参数无效：' + field.label);
     }
   }
-  if (script.destructive && body.resetConfirmed !== true) throw invalidOptions('重置/改机会清除设备数据，请先确认目标设备及操作');
+  const isResetConfirmed = body.resetConfirmed === true || options.resetConfirmed === true;
+  if (script.destructive && !isResetConfirmed) throw invalidOptions('重置/改机会清除设备数据，请先确认目标设备及操作');
   if (script.id.startsWith('flow-02.1') || script.id.startsWith('flow-2.1')) {
     const rawVal = (options.filePath || options.fileName || '').trim();
     if (rawVal && rawVal.toLowerCase() !== 'todo' && rawVal.toLowerCase() !== 'auto') {
