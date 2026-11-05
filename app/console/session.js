@@ -222,6 +222,7 @@ async function loadSharedRuntimeState() {
       activeWorkflows: Array.isArray(data.activeWorkflows) ? data.activeWorkflows : [],
       manualDevices: Array.isArray(data.manualDevices) ? data.manualDevices : []
     };
+    state.deviceStates = (data.deviceStates && typeof data.deviceStates === 'object') ? data.deviceStates : {};
     // 自动调和：若前端本地持有活跃任务记录，但后端已确认无该任务活跃（排除刚启动5秒内缓冲），则清理僵尸态
     if (state.activeWorkflowRun && !state.activeWorkflowRun.interrupted) {
       const activeList = state.runtimeState.activeWorkflows || [];
@@ -626,7 +627,8 @@ async function init() {
     }
     await loadSharedRuntimeState();
     if (typeof resumePendingWebRun === 'function') resumePendingWebRun();
-    if (typeof resumeManagedWorkflow === 'function') resumeManagedWorkflow();
+    if (typeof syncManagedWorkflowsFromServer === 'function') syncManagedWorkflowsFromServer();
+    else if (typeof resumeManagedWorkflow === 'function') resumeManagedWorkflow();
     const initialPage = isEmbedMode ? 'overview' : (typeof getPageFromUrl === 'function' ? getPageFromUrl() : 'overview');
     setPage(initialPage, { updateHash: true });
 

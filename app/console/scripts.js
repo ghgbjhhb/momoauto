@@ -1109,28 +1109,41 @@ async function runManagedWorkflow(payload, deviceIds) {
   }
 }
 
-function resumeManagedWorkflow() {
-  let saved;
-  try { saved = JSON.parse(sessionStorage.getItem('yunmomo.workflowRun') || 'null'); } catch { return; }
-  if (!saved?.id || saved.userId !== state.currentUser?.id) return;
-  if (state.activeWorkflowRun) return;
-  state.activeWorkflowRun = {
-    id: saved.id,
-    kind: saved.kind,
-    bundleId: saved.bundleId || null,
-    scriptId: saved.scriptId || null,
-    title: saved.title || (saved.kind === 'bundle' ? '组合任务' : '业务脚本'),
-    startedAt: saved.startedAt || Date.now()
-  };
-  state.activeBundleRun = saved.kind === 'bundle'
-    ? { bundleId: saved.bundleId, stopped: false } : null;
-  state.batchRunning = true;
-  updateStopButton();
-  state.batchResults = (saved.deviceIds || []).map(deviceId => ({ deviceId, status: 'pending' }));
-  if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
-  followManagedWorkflow(saved.id);
+function syncManagedWorkflowsFromServer() {
+  try { sessionStorage.removeItem('yunmomo.workflowRun'); } catch {}
+  const activeList = state.runtimeState?.activeWorkflows || [];
+  if (!activeList.length) {
+    if (state.activeWorkflowRun) {
+      state.activeWorkflowRun = null;
+      state.activeBundleRun = null;
+      state.batchRunning = false;
+      updateStopButton();
+      if (state.page === 'tasks') renderTaskDetail();
+      if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+    }
+    return;
+  }
+  const currentWf = activeList[0];
+  if (currentWf && (!state.activeWorkflowRun || state.activeWorkflowRun.id !== currentWf.workflowRunId)) {
+    const raw = currentWf.rawSpec || {};
+    state.activeWorkflowRun = {
+      id: currentWf.workflowRunId,
+      kind: currentWf.kind,
+      bundleId: raw.bundleId || null,
+      scriptId: raw.scriptId || null,
+      title: currentWf.title || '工作流任务',
+      startedAt: Date.now()
+    };
+    state.activeBundleRun = currentWf.kind === 'bundle' ? { bundleId: raw.bundleId, stopped: false } : null;
+    state.batchRunning = true;
+    updateStopButton();
+    state.batchResults = (currentWf.results || []).map(r => ({ deviceId: r.deviceId, status: r.status }));
+    if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+    followManagedWorkflow(currentWf.workflowRunId);
+  }
 }
-window.resumeManagedWorkflow = resumeManagedWorkflow;
+window.syncManagedWorkflowsFromServer = syncManagedWorkflowsFromServer;
+window.resumeManagedWorkflow = syncManagedWorkflowsFromServer;
 
 async function resumeWorkflowRun(runId) {
   const id = runId || state.activeWorkflowRun?.id;
@@ -2005,6 +2018,13 @@ function formatOverviewRunButtonHtml(targets, isRunning, isBundle) {
 }
 
 
+/* ---------- 权威设备物理状态获取辅助 ---------- */
+function getDeviceState(deviceId) {
+  if (!deviceId) return { status: 'idle' };
+  return state.deviceStates?.[deviceId] || { status: 'idle' };
+}
+window.getDeviceState = getDeviceState;
+
 /* ---------- 任务运行时状态判定辅助 ---------- */
 function getCurrentlyRunningTaskInfo() {
   if (state.activeWorkflowRun && state.batchRunning) {
@@ -2049,21 +2069,26 @@ function updateOverviewWorkbenchFooter(currentDev, isRunning) {
   if (!footer) return;
 
   const isBundle = Boolean(state.taskBundleId);
-  const viewType = isBundle ? 'bundle' : 'script';
-  const viewId = isBundle ? state.taskBundleId : state.taskScriptId;
-  const runningTask = getCurrentlyRunningTaskInfo();
+  const viewTaskId = isBundle ? state.taskBundleId : state.taskScriptId;
+  const devState = getDeviceState(currentDev?.deviceId);
 
-  if (runningTask && runningTask.type === viewType && runningTask.id === viewId) {
-    if (!footer.querySelector('#ovCfgStopBtn')) {
-      footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止${isBundle ? '组合' : ''}执行</button>`;
+  if (devState.status === 'running') {
+    if (devState.taskId === viewTaskId) {
+      if (!footer.querySelector('#ovCfgStopBtn')) {
+        footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止${isBundle ? '组合' : ''}执行</button>`;
+      }
+    } else {
+      const conflictHtml = `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 设备运行中 (${escapeHtml(devState.taskTitle || '其他任务')})</button>`;
+      if (footer.innerHTML !== conflictHtml) footer.innerHTML = conflictHtml;
     }
-  } else if (runningTask) {
-    const conflictHtml = `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
-    if (footer.innerHTML !== conflictHtml) {
-      footer.innerHTML = conflictHtml;
-    }
+  } else if (devState.status === 'stopping') {
+    const stoppingHtml = `<button class="btn danger ov-wb-btn-run" disabled type="button">${ic('stop', 15)} 正在停止设备任务…</button>`;
+    if (footer.innerHTML !== stoppingHtml) footer.innerHTML = stoppingHtml;
+  } else if (devState.status === 'manual') {
+    const manualHtml = `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 设备处于手动控制中</button>`;
+    if (footer.innerHTML !== manualHtml) footer.innerHTML = manualHtml;
   } else {
-    const expectedHtml = formatOverviewRunButtonHtml(targets, isRunning, isBundle);
+    const expectedHtml = formatOverviewRunButtonHtml(targets, false, isBundle);
     const runBtn = footer.querySelector('#ovCfgRunBtn');
     if (!runBtn || footer.innerHTML !== expectedHtml) {
       footer.innerHTML = expectedHtml;
@@ -2136,14 +2161,20 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
       </div>
       <div class="ov-wb-footer">
         ${(() => {
-          const runningTask = getCurrentlyRunningTaskInfo();
-          if (runningTask && runningTask.type === 'script' && runningTask.id === script.id) {
-            return `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+          const devState = getDeviceState(currentDev?.deviceId);
+          if (devState.status === 'running') {
+            if (devState.taskId === script.id) {
+              return `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+            }
+            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 设备运行中 (${escapeHtml(devState.taskTitle || '其他任务')})</button>`;
           }
-          if (runningTask) {
-            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+          if (devState.status === 'stopping') {
+            return `<button class="btn danger ov-wb-btn-run" disabled type="button">${ic('stop', 15)} 正在停止设备任务…</button>`;
           }
-          return formatOverviewRunButtonHtml(targets, isRunning, false);
+          if (devState.status === 'manual') {
+            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 设备处于手动控制中</button>`;
+          }
+          return formatOverviewRunButtonHtml(targets, false, false);
         })()}
       </div>
     `;
@@ -2179,14 +2210,20 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
       </div>
       <div class="ov-wb-footer">
         ${(() => {
-          const runningTask = getCurrentlyRunningTaskInfo();
-          if (runningTask && runningTask.type === 'bundle' && runningTask.id === bundle.id) {
-            return `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`;
+          const devState = getDeviceState(currentDev?.deviceId);
+          if (devState.status === 'running') {
+            if (devState.taskId === bundle.id) {
+              return `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`;
+            }
+            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 设备运行中 (${escapeHtml(devState.taskTitle || '其他任务')})</button>`;
           }
-          if (runningTask) {
-            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+          if (devState.status === 'stopping') {
+            return `<button class="btn danger ov-wb-btn-run" disabled type="button">${ic('stop', 15)} 正在停止设备任务…</button>`;
           }
-          return formatOverviewRunButtonHtml(targets, isRunning, true);
+          if (devState.status === 'manual') {
+            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 设备处于手动控制中</button>`;
+          }
+          return formatOverviewRunButtonHtml(targets, false, true);
         })()}
       </div>
     `;
@@ -2310,10 +2347,36 @@ byId('ovTaskFilter')?.addEventListener('click', event => {
   renderOverviewTasks();
 });
 
+async function stopDeviceTask(deviceId) {
+  if (!deviceId) return;
+  showToast('正在停止设备任务…');
+  try {
+    const res = await requestJson('/api/devices/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId })
+    });
+    if (state.deviceStates && state.deviceStates[deviceId]) {
+      state.deviceStates[deviceId].status = 'idle';
+    }
+    updateOverviewWorkbenchFooter(currentDevice(), false);
+    await loadSharedRuntimeState();
+    showToast(res?.message || '已停止设备任务');
+  } catch (err) {
+    showToast('停止请求未确认：' + err.message);
+  }
+}
+window.stopDeviceTask = stopDeviceTask;
+
 byId('overviewTaskPanel')?.addEventListener('click', async event => {
   const stopBtn = event.target.closest('[data-ov-stop], #ovCfgStopBtn');
   if (stopBtn) {
-    stopTaskBatch();
+    const currentDev = currentDevice();
+    if (currentDev) {
+      await stopDeviceTask(currentDev.deviceId);
+    } else {
+      stopTaskBatch();
+    }
     return;
   }
 

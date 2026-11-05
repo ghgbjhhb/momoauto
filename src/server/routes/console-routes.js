@@ -275,7 +275,58 @@ async function handleConsoleRoutes(ctx, request, response, url) {
         }
       }
     }
-    json(response, 200, { ok: true, runs, activeWorkflows: getActiveWorkflowsSummary(user), manualDevices: [...manualByDevice.values()] });
+    const activeWfs = getActiveWorkflowsSummary(user);
+    const deviceStates = {};
+    for (const item of manualByDevice.values()) {
+      if (item.windows > 0) {
+        deviceStates[item.deviceId] = {
+          deviceId: item.deviceId,
+          status: 'manual',
+          taskType: null,
+          taskId: null,
+          taskTitle: '手动控制中',
+          runId: null
+        };
+      }
+    }
+    for (const run of visibleRuns) {
+      if (['starting', 'running', 'stopping'].includes(run.status)) {
+        deviceStates[run.deviceId] = {
+          deviceId: run.deviceId,
+          status: run.status === 'stopping' ? 'stopping' : 'running',
+          taskType: 'script',
+          taskId: run.scriptId,
+          taskTitle: scriptById(run.scriptId)?.title || run.scriptId,
+          runId: run.scriptRunId
+        };
+      }
+    }
+    for (const wf of activeWfs) {
+      if (wf.state === 'running' || wf.state === 'stopping') {
+        const taskId = wf.rawSpec?.scriptId || wf.rawSpec?.bundleId || null;
+        for (const res of (wf.results || [])) {
+          if (['pending', 'running', 'stopping'].includes(res.status)) {
+            if (!deviceStates[res.deviceId] || deviceStates[res.deviceId].status === 'idle') {
+              deviceStates[res.deviceId] = {
+                deviceId: res.deviceId,
+                status: res.status === 'stopping' || wf.state === 'stopping' ? 'stopping' : 'running',
+                taskType: wf.kind,
+                taskId: taskId,
+                taskTitle: wf.title,
+                runId: wf.workflowRunId
+              };
+            }
+          }
+        }
+      }
+    }
+    json(response, 200, {
+      ok: true,
+      runs,
+      activeWorkflows: activeWfs,
+      manualDevices: [...manualByDevice.values()],
+      deviceStates
+    });
     return true;
   }
 

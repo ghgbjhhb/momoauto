@@ -13,7 +13,9 @@ function deviceIndexLabel(device) {
 }
 
 function deviceRunning(deviceId) {
-  return state.runtimeState.runs.some(run => run.deviceId === deviceId);
+  const st = state.deviceStates?.[deviceId];
+  if (st && ['starting', 'running', 'stopping'].includes(st.status)) return true;
+  return (state.runtimeState?.runs || []).some(run => run.deviceId === deviceId);
 }
 
 // 画面流健康度：平台接口不回报在线状态，徽章状态以「显式离线信号 + 直播流实测」为准

@@ -72,6 +72,7 @@ const state = {
   previewRetry: new Map(),
   tileShots: new Map(),
   manualDeviceId: '',
+  deviceStates: {},
   runtimeState: { runs: [], manualDevices: [] },
   runtimeStateStale: false,
   devicesStale: false,

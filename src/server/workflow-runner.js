@@ -622,4 +622,35 @@ async function resumeWorkflow(id, user) {
   return { ok: true, accepted: true, workflowRunId: id, resumed: true };
 }
 
-module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary };
+async function stopWorkflowByDevice(deviceId, user) {
+  let matchedRun = null;
+  for (const [id, run] of workflows) {
+    if (run.finishedAt) continue;
+    if (user && user.role !== 'admin' && run.ownerUserId !== user.id) continue;
+    const hasDevice = (run.results || []).some(r => r.deviceId === deviceId && ['pending', 'running', 'stopping'].includes(r.status));
+    if (hasDevice) {
+      matchedRun = run;
+      break;
+    }
+  }
+  if (!matchedRun) {
+    return { ok: true, stopped: false, message: '该设备没有正在执行的工作流任务' };
+  }
+  if (matchedRun.activeDeviceRuns?.has(deviceId)) {
+    const active = matchedRun.activeDeviceRuns.get(deviceId);
+    if (active.type === 'bundle' && active.child) {
+      try { active.child.kill('SIGTERM'); } catch {}
+    }
+    if (active.type === 'script' && active.scriptRunId) {
+      try {
+        await stopActiveScript({ scriptRunId: active.scriptRunId }, { role: 'admin' });
+      } catch {}
+    }
+  }
+  try {
+    defaultArbiter.releaseDevice(deviceId, matchedRun.id);
+  } catch {}
+  return { ok: true, stopped: true, workflowRunId: matchedRun.id, deviceId, message: '已停止设备上的工作流步骤' };
+}
+
+module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice };

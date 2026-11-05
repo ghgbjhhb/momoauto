@@ -7,7 +7,7 @@ const { handleMomoBrainRoutes } = require('../momo-brain-routes');
 const { handleAiReplyRoutes, activeRuns } = require('../ai-reply-routes');
 const { defaultArbiter } = require('../device-arbiter');
 const { executeScript, stopActiveScript, launchWebScript, getWebScriptState } = require('../script-runner');
-const { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow } = require('../workflow-runner');
+const { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, stopWorkflowByDevice } = require('../workflow-runner');
 const {
   busyDevices,
   busyAccountScripts,
@@ -226,6 +226,26 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     const result = await executeScript(body, user);
     clearDeviceCache();
     json(response, 200, result);
+    return true;
+  }
+
+  // --- Device-Level Direct Stop (单机精准停靠，绝对幂等) ---
+  if (request.method === 'POST' && url.pathname === '/api/devices/stop') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    const body = await readJsonBody(request);
+    const deviceId = String(body?.deviceId || '').trim();
+    if (!deviceId) {
+      json(response, 400, { ok: false, error: '缺少 deviceId' });
+      return true;
+    }
+    if (user.role !== 'admin' && !await authService.ensureDeviceAccess(user, deviceId)) {
+      json(response, 403, { ok: false, error: '无权操作此设备' });
+      return true;
+    }
+    try { await stopActiveScript({ deviceId }, user); } catch {}
+    try { await stopWorkflowByDevice(deviceId, user); } catch {}
+    try { defaultArbiter.releaseDevice(deviceId, 'user-stop'); } catch {}
+    json(response, 200, { ok: true, deviceId, status: 'idle', message: '已请求停止设备任务并释放设备' });
     return true;
   }
 
