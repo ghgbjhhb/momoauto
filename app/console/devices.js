@@ -50,12 +50,20 @@ function switchToView(view) {
 }
 window.switchToView = switchToView;
 
+let preferredGridCols = localStorage.getItem('ov_grid_cols') || '3';
 function updateViewerControls() {
   const isGrid = state.view === 'grid';
   const quickWrap = byId('ovDevQuickWrap');
   if (quickWrap) quickWrap.hidden = isGrid;
   const refreshBtn = byId('ovRefreshShotsBtn');
   if (refreshBtn) refreshBtn.hidden = !isGrid;
+  const colsToggle = byId('ovGridColsToggle');
+  if (colsToggle) {
+    colsToggle.hidden = !isGrid;
+    for (const btn of colsToggle.querySelectorAll('.segment')) {
+      btn.classList.toggle('active', btn.dataset.cols === preferredGridCols);
+    }
+  }
   const countBadge = byId('ovDeviceCountBadge');
   if (countBadge) {
     const onlineCount = state.devices.filter(d => isOnline(d)).length;
@@ -404,6 +412,9 @@ function updateGridSelection() {
   if (!stage) return false;
   const grid = stage.querySelector('.device-grid');
   if (!grid) return false;
+  if (grid.dataset.cols !== preferredGridCols) {
+    grid.dataset.cols = preferredGridCols;
+  }
   const tiles = grid.querySelectorAll('.device-tile');
   if (tiles.length !== state.devices.length) return false;
   for (const tile of tiles) {
@@ -428,7 +439,7 @@ function renderGridViewer(forceRebuild = false) {
     return;
   }
 
-  stage.innerHTML = '<div class="device-grid" role="region" aria-label="设备监控矩阵">' + state.devices.map(device => {
+  stage.innerHTML = '<div class="device-grid" data-cols="' + preferredGridCols + '" role="region" aria-label="设备监控矩阵">' + state.devices.map(device => {
     const key = deviceStatusKey(device);
     const online = isOnline(device);
     const isSelected = state.selectedDeviceId === device.deviceId;
