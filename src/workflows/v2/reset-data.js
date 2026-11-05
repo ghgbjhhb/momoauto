@@ -117,9 +117,11 @@ async function main(argv = process.argv.slice(2)) {
   const save = () => fs.writeFile(reportPath, redact(JSON.stringify(report, null, 2)), 'utf8');
   await save();
 
-  const devLabel = `${plan.device.name ? plan.device.name + ' (' + plan.device.id + (plan.device.code ? ' / ' + plan.device.code : '') + ')' : plan.device.id}`;
-  console.log(`[1/2] 正在向云端下发“重置数据”指令 (目标云机: ${devLabel})...`);
-  console.log(`[警告] ${plan.warning}`);
+  const devLabel = `${plan.device.name ? plan.device.name + ' (' + plan.device.id + ')' : plan.device.id}`;
+  const relPath = path.relative(PROJECT_ROOT, reportPath).replace(/\\/g, '/');
+
+  console.log(`[目标设备] ${devLabel}`);
+  console.log(`[执行操作] 重置数据`);
 
   try {
     const response = await submitResetData(client, plan);
@@ -127,21 +129,20 @@ async function main(argv = process.argv.slice(2)) {
     report.submittedAt = new Date().toISOString();
     report.response = response;
     report.resetCompletionVerified = false;
-    report.note = '重置指令已成功下发至云端；云机正在执行清空数据与恢复出厂设置。未验证清数据/重启完成，不能立即进入初始化流程。';
     await save();
 
-    console.log(`[2/2] 重置数据指令已成功下发至云端！`);
-    console.log(`>>> 重置数据指令下发成功 OK (设备: ${devLabel})`);
-    console.log(`[提示] 云机重置通常需要 30~60 秒恢复出厂设置并重启，请在控制台或画面恢复至桌面后再进行后续初始化流程。`);
-    console.log(redact(JSON.stringify(report, null, 2)));
+    console.log(`[执行状态] 已提交云端`);
+    console.log(`[执行结果] 成功`);
+    console.log(`[完整日志] ${relPath}`);
   } catch (error) {
-    report.status = 'submission-not-confirmed';
+    report.status = 'failed';
     report.error = redact(error.message);
     if (error.status !== undefined) report.httpStatus = error.status;
     if (error.data !== undefined) report.errorDetail = error.data;
-    report.note = '未自动重试；请求异常不代表后台未执行，请先查看云机状态再决定是否再次提交。';
     await save();
-    console.error(redact(JSON.stringify(report, null, 2)));
+
+    console.log(`[执行状态] 失败: ${error.message}`);
+    console.log(`[完整日志] ${relPath}`);
     throw error;
   }
 }
@@ -151,9 +152,11 @@ async function runStep(context = {}) {
   const deviceId = context.phone?.deviceId || context.deviceId || process.env.YUNMOMO_DEVICE_ID;
   const sdkVersion = context.options?.sdkVersion || process.env.YUNMOMO_SDK_VERSION || 'v2';
   const plan = await prepareResetData(client, deviceId, { sdkVersion });
-  console.log(`正在向云端下发“重置数据”指令 (目标云机: ${plan.device.id})...`);
+  console.log(`[目标设备] ${plan.device.id}`);
+  console.log(`[执行操作] 重置数据`);
   const response = await submitResetData(client, plan);
-  console.log(`重置数据指令下发成功 OK`);
+  console.log(`[执行状态] 已提交云端`);
+  console.log(`[执行结果] 成功`);
   return { success: true, response, plan };
 }
 

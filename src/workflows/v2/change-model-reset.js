@@ -136,26 +136,35 @@ async function main(argv = process.argv.slice(2)) {
   const report = { ...publicPlan(plan), status: 'submitting', startedAt: new Date().toISOString(), reportPath };
   const save = () => fs.writeFile(reportPath, redact(JSON.stringify(report, null, 2)), 'utf8');
   await save();
-  console.log(redact(JSON.stringify(report, null, 2)));
+
+  const devLabel = `${plan.device.name ? plan.device.name + ' (' + plan.device.id + ')' : plan.device.id}`;
+  const relPath = path.relative(PROJECT_ROOT, reportPath).replace(/\\/g, '/');
+
+  console.log(`[目标设备] ${devLabel}`);
+  console.log(`[执行操作] 改机重置 (机型: ${plan.selectedModel?.name || plan.model?.name || plan.modelName || '随机'}, 地区: ${plan.countryCode || 'CN'})`);
+
   try {
     const response = await submitChangeModelReset(client, plan);
     report.status = 'submitted';
     report.submittedAt = new Date().toISOString();
     report.response = response;
     report.resetCompletionVerified = false;
-    report.note = '接口已返回；按网页说明改机成功 30 秒后自动重置。未验证清数据/重启完成，不能立即进入初始化流程。';
     await save();
-    console.log(redact(JSON.stringify(report, null, 2)));
+
+    console.log(`[执行状态] 已提交云端`);
+    console.log(`[执行结果] 成功`);
+    console.log(`[完整日志] ${relPath}`);
   } catch (error) {
-    report.status = 'submission-not-confirmed';
+    report.status = 'failed';
     report.error = redact(error.message);
     if (error.status !== undefined) report.httpStatus = error.status;
     if (error.data !== undefined) report.errorDetail = error.data;
-    report.note = '未自动重试；请求异常不代表后台未执行，请先查看云机状态再决定是否再次提交。';
     await save();
-    console.error(redact(JSON.stringify(report, null, 2)));
+
+    console.log(`[执行状态] 失败: ${error.message}`);
+    console.log(`[完整日志] ${relPath}`);
     throw error;
-  }
+    }
 }
 
 prepareChangeModelReset = require('../../automation/timing').timed('workflow.change-model-reset.prepareChangeModelReset', prepareChangeModelReset);
