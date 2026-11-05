@@ -69,6 +69,7 @@ const state = {
   taskScriptId: '',
   taskParamValues: {},
   previewPlayers: new Map(),
+  previewLru: [],
   previewRetry: new Map(),
   tileShots: new Map(),
   manualDeviceId: '',

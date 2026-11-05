@@ -73,7 +73,7 @@ function createVideoStreams({ client }) {
 
   function scheduleIdleClose(entry) {
     if (entry.viewers.size || entry.holders.size || entry.waiters.size || entry.closed) return;
-    entry.idle = setTimeout(() => entry.close(), 1500);
+    entry.idle = setTimeout(() => entry.close(), 30000);
     entry.idle.unref();
   }
 

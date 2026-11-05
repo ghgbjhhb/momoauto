@@ -195,6 +195,7 @@ function closeAllPlayers() {
     window.dispatchEvent(new CustomEvent('device-preview:closed', { detail: { deviceId, player } }));
     try { player.close(); } catch {}
   }
+  if (state.previewLru) state.previewLru.length = 0;
   streamHealth.clear();
 }
 
@@ -203,6 +204,31 @@ function stopPreview() {
 }
 window.stopPreview = stopPreview;
 
+const MAX_WARM_PREVIEWS = 4;
+
+function touchPreviewLru(deviceId) {
+  if (!deviceId) return;
+  state.previewLru = (state.previewLru || []).filter(id => id !== deviceId);
+  state.previewLru.unshift(deviceId);
+}
+
+function evictPreviewLru(keepId) {
+  if (!state.previewLru) state.previewLru = [];
+  while (state.previewPlayers.size >= MAX_WARM_PREVIEWS) {
+    const victimIndex = state.previewLru.slice().reverse().findIndex(id => id !== keepId && state.previewPlayers.has(id));
+    if (victimIndex === -1) break;
+    const realIndex = state.previewLru.length - 1 - victimIndex;
+    const victimId = state.previewLru[realIndex];
+    state.previewLru.splice(realIndex, 1);
+    const victimPlayer = state.previewPlayers.get(victimId);
+    if (victimPlayer) {
+      state.previewPlayers.delete(victimId);
+      try { victimPlayer.close(); } catch {}
+      window.dispatchEvent(new CustomEvent('device-preview:closed', { detail: { deviceId: victimId, player: victimPlayer } }));
+    }
+  }
+}
+
 function hasLiveFrame(player) {
   const at = player?.stats?.frameAt || 0;
   return Boolean(at) && Date.now() - at < 5000;
@@ -210,80 +236,98 @@ function hasLiveFrame(player) {
 
 function renderSingleViewer() {
   const stage = elements.viewerStage;
+  if (!stage) return;
   const device = currentDevice();
   const id = device ? device.deviceId : '';
 
-  if (!device) {
-    stage.dataset.viewerDevice = '';
-    let frame = stage.querySelector('.device-frame');
-    if (!frame) {
-      stage.innerHTML = `
-        <div class="phone-stage">
-          <div class="device-frame" style="aspect-ratio: 720 / 1280;"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
-          <div class="viewer-hint">${state.tokenConfigured ? '暂无云机，请先兑换卡密' : '尚未连接云机平台'}</div>
-          <div class="offline-cover" hidden>设备离线</div>
-        </div>
-      `;
-    } else {
-      const hint = stage.querySelector('.viewer-hint');
-      if (hint) {
-        hint.textContent = state.tokenConfigured ? '暂无云机，请先兑换卡密' : '尚未连接云机平台';
-        hint.hidden = false;
-      }
-      const canvas = frame.querySelector('canvas');
-      if (canvas) canvas.hidden = true;
-    }
-    renderViewerCaption();
-    return;
-  }
-
-  // 关闭非当前设备的直播占用
-  for (const [pid, player] of state.previewPlayers) {
-    if (pid !== id) {
-      state.previewPlayers.delete(pid);
-      try { player.close(); } catch {}
-    }
-  }
-
-  // 保留已渲染的 DOM 与画布（保留最后一帧），仅设备切换时重建
-  let frame = stage.querySelector('.device-frame');
-  if (!frame || stage.dataset.viewerDevice !== id) {
-    stage.dataset.viewerDevice = id;
+  let phoneStage = stage.querySelector('.phone-stage');
+  if (!phoneStage) {
     stage.innerHTML = `
       <div class="phone-stage">
-        <div class="device-frame" style="aspect-ratio: 720 / 1280;"><canvas class="device-canvas" aria-label="云手机实时画面" hidden></canvas></div>
         <div class="viewer-hint" hidden>正在连接画面…</div>
         <div class="offline-cover" hidden>设备离线</div>
       </div>
     `;
-    frame = stage.querySelector('.device-frame');
+    phoneStage = stage.querySelector('.phone-stage');
+  }
+
+  const hint = phoneStage.querySelector('.viewer-hint');
+  const cover = phoneStage.querySelector('.offline-cover');
+
+  if (!device) {
+    stage.dataset.viewerDevice = '';
+    for (const f of phoneStage.querySelectorAll('.device-frame')) {
+      f.hidden = true;
+    }
+    if (hint) {
+      hint.textContent = state.tokenConfigured ? '暂无云机，请先兑换卡密' : '尚未连接云机平台';
+      hint.hidden = false;
+    }
+    if (cover) cover.hidden = true;
+    renderViewerCaption();
+    return;
+  }
+
+  stage.dataset.viewerDevice = id;
+  touchPreviewLru(id);
+
+  // 维护多设备 Canvas DOM 视图池：每个设备拥有独立 frame 与 canvas，切换时仅切 hidden，保留 GPU 最后一帧
+  let currentFrame = phoneStage.querySelector(`.device-frame[data-frame-device="${id}"]`);
+  if (!currentFrame) {
+    currentFrame = document.createElement('div');
+    currentFrame.className = 'device-frame';
+    currentFrame.dataset.frameDevice = id;
+    currentFrame.style.aspectRatio = '720 / 1280';
+    currentFrame.innerHTML = `<canvas class="device-canvas" aria-label="云手机实时画面"></canvas>`;
+    phoneStage.insertBefore(currentFrame, hint);
+  }
+
+  for (const f of phoneStage.querySelectorAll('.device-frame')) {
+    f.hidden = (f !== currentFrame);
   }
 
   updateDeviceMeta(device);
 
-  const canvas = frame.querySelector('canvas');
-  const hint = stage.querySelector('.viewer-hint');
-  const cover = stage.querySelector('.offline-cover');
+  const canvas = currentFrame.querySelector('canvas');
+  const existingPlayer = state.previewPlayers.get(id);
+  const isPlayerAlive = existingPlayer && !existingPlayer.closed && existingPlayer.socket?.readyState === WebSocket.OPEN;
 
-  if (!state.previewPlayers.has(id)) {
+  if (isPlayerAlive) {
+    // 命中温流播放器：请求即时关键帧对齐，0ms 零等待秒切
+    existingPlayer.refresh();
+    canvas.hidden = false;
+    if (hasLiveFrame(existingPlayer) || existingPlayer.stats?.rendered > 0) {
+      if (cover) cover.hidden = true;
+      if (hint) hint.hidden = true;
+    } else if (!isOnline(device)) {
+      if (cover) cover.hidden = false;
+      if (hint) hint.hidden = true;
+    } else if (hint) {
+      if (cover) cover.hidden = true;
+      hint.textContent = '画面恢复中…';
+      hint.hidden = false;
+    }
+  } else {
+    if (existingPlayer) {
+      try { existingPlayer.close(); } catch {}
+      state.previewPlayers.delete(id);
+    }
+    evictPreviewLru(id);
     clearTimeout(state.previewRetry.get(id));
     state.previewRetry.delete(id);
-    if (hint) { hint.textContent = '正在连接画面…'; hint.hidden = false; }
+
+    // 若 Canvas 已经绘制过画面，保持显示避免白屏/黑屏
+    if (canvas.width > 0 && canvas.height > 0) {
+      canvas.hidden = false;
+      if (hint) hint.hidden = true;
+    } else if (hint) {
+      hint.textContent = '正在连接画面…';
+      hint.hidden = false;
+    }
+    if (cover) cover.hidden = true;
     createPreviewPlayer(device, canvas, hint, cover);
-  } else if (hasLiveFrame(state.previewPlayers.get(id))) {
-    // 直播流仍在出帧：即使平台声明离线也以画面实测为准，不遮挡
-    if (cover) cover.hidden = true;
-    if (hint) hint.hidden = true;
-  } else if (!isOnline(device)) {
-    // 平台明确回报离线且无直播帧时才显示「设备离线」遮罩，与徽章状态同口径
-    if (cover) cover.hidden = false;
-    if (hint) hint.hidden = true;
-  } else if (hint) {
-    // 在线但直播流短暂断帧（画面静止/切回页面后解码器重建），watchdog 正在要关键帧自动恢复
-    if (cover) cover.hidden = true;
-    hint.textContent = '画面恢复中…';
-    hint.hidden = false;
   }
+
   renderViewerCaption();
 }
 
@@ -360,9 +404,11 @@ function createPreviewPlayer(device, canvas, hint, cover) {
     deviceId: id,
     mode: 'single',
     onFrame(stats) {
-      // 切换云机时旧解码器可能仍排队回调，不能用旧设备覆盖新设备的信息栏。
-      if (state.selectedDeviceId !== id || state.page !== 'overview' || state.view !== 'single') return;
+      // 1. 无论前台还是温存后台，收到帧即确立流健康状态
       markHealth(true);
+
+      // 2. 只有当前单台大屏聚焦此设备时，才同步前台状态与元数据
+      if (state.selectedDeviceId !== id || state.page !== 'overview' || state.view !== 'single') return;
       canvas.hidden = false;
       if (hint) hint.hidden = true;
       if (cover) cover.hidden = true;
@@ -370,28 +416,33 @@ function createPreviewPlayer(device, canvas, hint, cover) {
 
       const w = stats?.width || canvas.width || 720;
       const h = stats?.height || canvas.height || 1280;
-      // 使用最新设备快照而非建立视频连接时的旧对象，避免刷新后 IP/名称被旧帧覆盖。
       updateDeviceMeta(currentDevice(), { width: w, height: h });
     },
     onMessage(message) {
-      if (message.type === 'error' && hint) { hint.hidden = false; hint.textContent = message.message; }
+      if (message.type === 'error' && state.selectedDeviceId === id && hint) {
+        hint.hidden = false;
+        hint.textContent = message.message;
+      }
     },
     onError(error) {
       markHealth(false);
-      if (hint) { hint.hidden = false; hint.textContent = error.message; }
-      renderStatusBadges();
+      if (state.selectedDeviceId === id) {
+        if (hint) { hint.hidden = false; hint.textContent = error.message; }
+        renderStatusBadges();
+      }
     },
     onClose(code) {
       if (state.previewPlayers.get(id) !== player) return;
       state.previewPlayers.delete(id);
       markHealth(false);
       window.dispatchEvent(new CustomEvent('device-preview:closed', { detail: { deviceId: id, player } }));
-      // 保留最后一帧画面，仅叠加提示；状态徽章随之切为「离线」直到重连成功
-      if (hint) { hint.hidden = false; hint.textContent = code ? '画面连接中断，正在重连…' : '画面已暂停'; }
-      if (cover) cover.hidden = true;
-      renderStatusBadges();
-      if (CloudVideoPlayer.canReconnect(code) && state.page === 'overview' && state.view === 'single' && state.selectedDeviceId === id) {
-        state.previewRetry.set(id, setTimeout(() => renderSingleViewer(), 3000));
+      if (state.selectedDeviceId === id) {
+        if (hint) { hint.hidden = false; hint.textContent = code ? '画面连接中断，正在重连…' : '画面已暂停'; }
+        if (cover) cover.hidden = true;
+        renderStatusBadges();
+        if (CloudVideoPlayer.canReconnect(code) && state.page === 'overview' && state.view === 'single') {
+          state.previewRetry.set(id, setTimeout(() => renderSingleViewer(), 3000));
+        }
       }
     }
   });
