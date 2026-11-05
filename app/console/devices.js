@@ -277,6 +277,20 @@ function renderSingleViewer() {
   stage.dataset.viewerDevice = id;
   touchPreviewLru(id);
 
+  // 清理已从当前账号中移除或解绑的失效设备 DOM 与长连接
+  const currentDeviceIds = new Set(state.devices.map(d => d.deviceId));
+  for (const f of phoneStage.querySelectorAll('.device-frame')) {
+    if (f.dataset.frameDevice && !currentDeviceIds.has(f.dataset.frameDevice)) {
+      f.remove();
+    }
+  }
+  for (const [pid, p] of state.previewPlayers) {
+    if (!currentDeviceIds.has(pid)) {
+      state.previewPlayers.delete(pid);
+      try { p.close(); } catch {}
+    }
+  }
+
   // 维护多设备 Canvas DOM 视图池：每个设备拥有独立 frame 与 canvas，切换时仅切 hidden，保留 GPU 最后一帧
   let currentFrame = phoneStage.querySelector(`.device-frame[data-frame-device="${id}"]`);
   if (!currentFrame) {

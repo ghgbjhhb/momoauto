@@ -473,7 +473,7 @@ function openManualControl(device) {
 
     // 优先复制左侧已有画面快照，秒速上屏，零等待无黑屏
     const previewPlayer = window.state?.previewPlayers?.get(device.deviceId);
-    const prevCanvas = previewPlayer?.canvas;
+    const prevCanvas = previewPlayer?.canvas || document.querySelector(`.device-frame[data-frame-device="${device.deviceId}"] canvas`);
     if (prevCanvas && prevCanvas.width && prevCanvas.height) {
       try {
         controlImage.width = prevCanvas.width;
