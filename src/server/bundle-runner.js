@@ -112,12 +112,22 @@ async function main() {
   let allOk = true;
 
   try {
+    const startStepIndex = Number.parseInt(process.env.YUNMOMO_START_STEP_INDEX || '0', 10) || 0;
+    if (startStepIndex > 0) {
+      console.log(`[组合流水线] 命中断点续传指令，前 ${startStepIndex} 个已完成步骤直接跳过，从第 ${startStepIndex + 1} 步开始接力执行。`);
+    }
+
     for (let index = 0; index < steps.length; index++) {
       const stepDef = steps[index];
       const script = scriptById(stepDef.scriptId);
       if (!script) throw new Error(`未找到步骤编号对应的定义: ${stepDef.scriptId}`);
 
       const title = script.title || stepDef.scriptId;
+      if (index < startStepIndex) {
+        console.log(`[步骤 ${index + 1}/${steps.length}] ⏩ [断点跳过已完成] ${title}`);
+        continue;
+      }
+
       console.log(`\n================================================================================`);
       console.log(`::step-start:${index}:${stepDef.scriptId}::`);
       console.log(`[步骤 ${index + 1}/${steps.length}] 开始执行: ${title}`);

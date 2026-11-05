@@ -933,17 +933,20 @@ async function onDetailClick(event) {
 
 async function followManagedWorkflow(runId) {
   let lastProgress = '';
+  let retryCount = 0;
   while (state.activeWorkflowRun?.id === runId) {
     let snapshot;
     try {
       snapshot = await requestJson('/api/workflows/status?workflowRunId=' + encodeURIComponent(runId));
+      retryCount = 0;
     } catch (error) {
-      if (error.status === 404 || error.status === 401 || error.status === 403) {
+      retryCount++;
+      if (error.status === 401 || error.status === 403 || retryCount > 30) {
         state.activeWorkflowRun.unknown = true;
-        writeOutput('组合/批量任务状态无法确认', [error.message, '请核查 Windows 服务端和云机，禁止直接重新执行。']);
+        writeOutput('组合/批量任务状态无法确认', [error.message, '请核查 Windows 服务端和云机。']);
         return { ok: false, unknown: true };
       }
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       continue;
     }
     state.batchResults = snapshot.results.map(item => ({
@@ -962,6 +965,19 @@ async function followManagedWorkflow(runId) {
           (item.message ? '；' + item.message : '')),
         ...(snapshot.output ? ['最近输出：', snapshot.output] : [])
       ]);
+    }
+    if (snapshot.state === 'interrupted') {
+      state.activeWorkflowRun = { ...state.activeWorkflowRun, interrupted: true, runId };
+      state.batchRunning = false;
+      state.batchStopRequested = false;
+      updateStopButton();
+      writeOutput('任务中断已安全存盘', [
+        '任务执行意外中断（服务重启或断开），各设备进度已落盘保留：',
+        ...snapshot.results.map(item => item.deviceId + '：已完成 ' + item.completedSteps + '/' + item.totalSteps + ' 步'),
+        '可随时恢复执行继续推进剩余步骤。'
+      ]);
+      showToast('任务中断，已保存断点进度');
+      return { ok: false, interrupted: true };
     }
     if (snapshot.state === 'finished' || snapshot.state === 'cancelled' || snapshot.state === 'unknown') {
       if (snapshot.state === 'unknown') {
@@ -1059,6 +1075,32 @@ function resumeManagedWorkflow() {
   followManagedWorkflow(saved.id);
 }
 window.resumeManagedWorkflow = resumeManagedWorkflow;
+
+async function resumeWorkflowRun(runId) {
+  const id = runId || state.activeWorkflowRun?.id;
+  if (!id) {
+    showToast('无可用任务编号进行恢复');
+    return;
+  }
+  showToast('正在从断点恢复执行...');
+  try {
+    const res = await requestJson('/api/workflows/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowRunId: id })
+    });
+    if (res?.ok) {
+      state.batchRunning = true;
+      state.activeWorkflowRun = { id, kind: 'bundle' };
+      updateStopButton();
+      showToast('已接力启动后续步骤');
+      return await followManagedWorkflow(id);
+    }
+  } catch (err) {
+    showToast('断点恢复失败：' + err.message);
+  }
+}
+window.resumeWorkflowRun = resumeWorkflowRun;
 
 async function requestStopManagedWorkflow() {
   const current = state.activeWorkflowRun;

@@ -47,6 +47,82 @@ function resolveDeviceVpcData(vpcData, deviceIndex) {
 }
 const RETENTION_MS = 30 * 60 * 1000;
 const FINISHED_LIMIT = 128;
+const WORKFLOWS_DIR = path.join(PROJECT_ROOT, 'storage', 'workflows');
+
+function isPidAlive(pid) {
+  if (!pid || typeof pid !== 'number' || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+function persistWorkflow(run) {
+  if (!run || !run.id) return;
+  try {
+    fs.mkdirSync(WORKFLOWS_DIR, { recursive: true });
+    const targetFile = path.join(WORKFLOWS_DIR, `${run.id}.json`);
+    const tempFile = path.join(WORKFLOWS_DIR, `${run.id}.${process.pid}.tmp`);
+    const payload = {
+      id: run.id,
+      ownerUserId: run.ownerUserId,
+      kind: run.kind,
+      title: run.title,
+      state: run.state,
+      stopRequested: Boolean(run.stopRequested),
+      stopUnconfirmed: Boolean(run.stopUnconfirmed),
+      currentStep: run.currentStep,
+      totalSteps: run.totalSteps,
+      results: run.results,
+      message: run.message,
+      lastOutput: run.lastOutput,
+      createdAt: run.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      finishedAt: run.finishedAt,
+      rawSpec: run.rawSpec
+    };
+    fs.writeFileSync(tempFile, JSON.stringify(payload, null, 2), 'utf8');
+    fs.renameSync(tempFile, targetFile);
+  } catch {}
+}
+
+function loadWorkflowFromDisk(id) {
+  const filePath = path.join(WORKFLOWS_DIR, `${id}.json`);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const data = JSON.parse(raw);
+    const run = {
+      ...data,
+      activeDeviceRuns: new Map(),
+      deviceOutputs: new Map(),
+      done: null
+    };
+    // 调和 (Reconciliation): 若任务在磁盘上是 running，但主服务重启导致内存丢失
+    if (run.state === 'running') {
+      let anyChildAlive = false;
+      for (const item of (run.results || [])) {
+        if (item.pid && isPidAlive(item.pid)) {
+          anyChildAlive = true;
+        } else if (item.status === 'running') {
+          item.status = 'interrupted';
+          item.message = '服务重启导致执行中断';
+        }
+      }
+      if (!anyChildAlive) {
+        run.state = 'interrupted';
+        run.message = '服务重启中断任务执行，已保存断点，可点击【断点恢复】继续执行剩余步骤';
+        run.finishedAt = Date.now();
+        persistWorkflow(run);
+      }
+    }
+    return run;
+  } catch {
+    return null;
+  }
+}
 
 function bad(message, status = 400) {
   return Object.assign(new Error(message), { status });
@@ -66,8 +142,12 @@ setInterval(pruneWorkflows, 60 * 1000).unref();
 function getWorkflow(id, user) {
   if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw bad('任务编号无效');
   pruneWorkflows();
-  const run = workflows.get(id);
-  if (!run) throw bad('任务编号不存在；可能已过期或服务已重启，请检查设备状态', 404);
+  let run = workflows.get(id);
+  if (!run) {
+    run = loadWorkflowFromDisk(id);
+    if (run) workflows.set(id, run);
+  }
+  if (!run) throw bad('任务编号不存在或已过期', 404);
   if (user.role !== 'admin' && run.ownerUserId !== user.id) throw bad('无权查看其他用户的任务', 403);
   return run;
 }
@@ -174,10 +254,12 @@ function launchWorkflow(body, user) {
     currentStep: 0, totalSteps: steps.length * ids.length,
     activeDeviceRuns: new Map(), deviceOutputs: new Map(),
     results: ids.map(deviceId => ({
-      deviceId, status: 'pending', completedSteps: 0, totalSteps: steps.length, message: ''
-    })), message: '', lastOutput: '', finishedAt: null, done: null
+      deviceId, status: 'pending', completedSteps: 0, totalSteps: steps.length, message: '', pid: null
+    })), message: '', lastOutput: '', createdAt: Date.now(), finishedAt: null, done: null,
+    rawSpec: body
   };
   workflows.set(id, run);
+  persistWorkflow(run);
   run.done = executeWorkflow(run, steps, user).catch(error => {
     run.state = 'unknown';
     for (const entry of run.results) {
@@ -190,6 +272,7 @@ function launchWorkflow(body, user) {
   }).finally(() => {
     run.finishedAt = Date.now();
     if (run.state === 'running') run.state = run.stopRequested ? 'cancelled' : 'finished';
+    persistWorkflow(run);
     pruneWorkflows();
   });
   return { ok: true, accepted: true, workflowRunId: id };
@@ -339,12 +422,14 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
     });
     const bundleSpec = JSON.stringify(deviceSteps);
 
+    const startStepIndex = entry.completedSteps || 0;
     const env = {
       ...process.env,
       YUNMOMO_DEVICE_ID: entry.deviceId,
       YUNMOMO_TOKEN: userToken,
       YUNMOMO_BUNDLE_RUN_ID: run.id,
       YUNMOMO_BUNDLE_SPEC: bundleSpec,
+      YUNMOMO_START_STEP_INDEX: String(startStepIndex),
     };
 
     const child = spawn(process.execPath, [workerScript], {
@@ -353,6 +438,9 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
+
+    entry.pid = child.pid;
+    persistWorkflow(run);
 
     run.activeDeviceRuns.set(entry.deviceId, { type: 'bundle', child });
     let fullOutput = '';
@@ -366,6 +454,7 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
       if (endMatch) {
         const stepIdx = parseInt(endMatch[1], 10);
         entry.completedSteps = stepIdx + 1;
+        persistWorkflow(run);
       }
     };
 
@@ -373,17 +462,21 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
     child.stderr.on('data', handleOutput);
 
     child.on('error', err => {
+      entry.pid = null;
       run.activeDeviceRuns.delete(entry.deviceId);
       entry.status = 'failed';
       entry.message = '流水线启动异常: ' + err.message;
+      persistWorkflow(run);
       resolve({ ok: false, error: err });
     });
 
     child.on('close', code => {
+      entry.pid = null;
       run.activeDeviceRuns.delete(entry.deviceId);
       if (code === 0) {
         entry.status = 'ok';
         entry.completedSteps = steps.length;
+        persistWorkflow(run);
         resolve({ ok: true });
       } else {
         if (run.stopRequested) {
@@ -393,6 +486,7 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
           entry.status = 'failed';
           entry.message = `组合执行失败 (退出代码: ${code})`;
         }
+        persistWorkflow(run);
         resolve({ ok: false, exitCode: code });
       }
     });
@@ -427,4 +521,56 @@ function getWorkflowStatus(id, user) {
   return statusSnapshot(getWorkflow(id, user));
 }
 
-module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus };
+async function resumeWorkflow(id, user) {
+  const run = getWorkflow(id, user);
+  if (run.state === 'running') {
+    throw bad('任务当前正在运行中，无需恢复');
+  }
+  if (!run.rawSpec) {
+    throw bad('缺少任务原始定义，无法执行断点恢复');
+  }
+
+  // 检查是否所有设备都已达到目标步数
+  const unfinished = run.results.filter(r => (r.completedSteps || 0) < r.totalSteps);
+  if (!unfinished.length) {
+    run.state = 'finished';
+    run.message = '所有设备全部步骤均已完成';
+    persistWorkflow(run);
+    return statusSnapshot(run);
+  }
+
+  const { steps, title } = buildSteps(run.rawSpec, user);
+  run.state = 'running';
+  run.stopRequested = false;
+  run.message = '正在从断点恢复执行...';
+  run.finishedAt = null;
+
+  for (const entry of run.results) {
+    if ((entry.completedSteps || 0) < entry.totalSteps) {
+      entry.status = 'pending';
+      entry.message = `准备从第 ${(entry.completedSteps || 0) + 1} 步接力`;
+    }
+  }
+
+  persistWorkflow(run);
+
+  run.done = executeWorkflow(run, steps, user).catch(error => {
+    run.state = 'unknown';
+    for (const entry of run.results) {
+      if (entry.status === 'running') {
+        entry.status = 'unknown';
+        defaultArbiter.quarantineDevice(entry.deviceId, 'Workflow execution uncertain');
+      }
+    }
+    run.message = redact(error.message || '流程异常，禁止直接重复执行');
+  }).finally(() => {
+    run.finishedAt = Date.now();
+    if (run.state === 'running') run.state = run.stopRequested ? 'cancelled' : 'finished';
+    persistWorkflow(run);
+    pruneWorkflows();
+  });
+
+  return { ok: true, accepted: true, workflowRunId: id, resumed: true };
+}
+
+module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow };
