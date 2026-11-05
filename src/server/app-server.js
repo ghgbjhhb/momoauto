@@ -55,7 +55,7 @@ async function handler(request, response) {
       }
 
       // 未登录游客访问受保护接口，静默避免刷屏
-      const isGuestAuthProbe = !currentUser && (status === 401 || status === 403) && (reqUrl.startsWith('/api/devices') || reqUrl.startsWith('/api/cloud-disk') || reqUrl.startsWith('/api/user'));
+      const isGuestAuthProbe = !currentUser && (status === 401 || status === 403);
 
       if (status >= 500) {
         console.error(`[API ERROR] ${logLine}`);
@@ -104,7 +104,7 @@ async function handler(request, response) {
     const safeUrl = authGuard.redact(request.url || '');
     if (level === 'ERROR') {
       console.error(`[API UNHANDLED] ${request.method} ${safeUrl} -> ${status}:`, error);
-      appendServerLog('ERROR', `UNHANDLED ${request.method} ${safeUrl} -> ${status}: ${message}`, error?.stack || '');
+      appendServerLog('ERROR', `UNHANDLED ${request.method} ${safeUrl} -> ${status}: ${message}`);
     } else {
       console.warn(`[API REJECTED] ${request.method} ${safeUrl} -> ${status}: ${message}`);
       appendServerLog('WARN', `REJECTED ${request.method} ${safeUrl} -> ${status}: ${message}`);

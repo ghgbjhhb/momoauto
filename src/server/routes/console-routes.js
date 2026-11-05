@@ -360,19 +360,29 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       json(response, 403, { ok: false, error: '无权查看此设备画面或该设备已到期回收' });
       return true;
     }
-    const result = await previewImage(deviceId, user);
-    const headers = {
-      'Content-Type': result.contentType || 'image/jpeg',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff'
-    };
-    if (result.source) headers['X-Screenshot-Source'] = String(result.source);
-    if (result.width) headers['X-Image-Width'] = String(result.width);
-    if (result.height) headers['X-Image-Height'] = String(result.height);
-    if (result.decodedAt) headers['X-Frame-Decoded-At'] = String(result.decodedAt);
-    response.writeHead(200, headers);
-    response.end(result.data);
-    return true;
+    try {
+      const result = await previewImage(deviceId, user);
+      const headers = {
+        'Content-Type': result.contentType || 'image/jpeg',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      };
+      if (result.source) headers['X-Screenshot-Source'] = String(result.source);
+      if (result.width) headers['X-Image-Width'] = String(result.width);
+      if (result.height) headers['X-Image-Height'] = String(result.height);
+      if (result.decodedAt) headers['X-Frame-Decoded-At'] = String(result.decodedAt);
+      response.writeHead(200, headers);
+      response.end(result.data);
+      return true;
+    } catch (err) {
+      const status = (err.status && err.status >= 400 && err.status < 600) ? err.status : 502;
+      json(response, status, {
+        ok: false,
+        error: err.message || '获取云机画面快照失败',
+        code: err.code || 'SCREENSHOT_FAILED'
+      });
+      return true;
+    }
   }
 
   // --- Cloud Disk Routes ---

@@ -1,6 +1,23 @@
 'use strict';
 
 // 6. Admin Dedicated System Logs
+function parseServerLogLines(lines) {
+  const entries = [];
+  for (const rawLine of lines) {
+    const trimmed = (rawLine || '').trim();
+    if (!trimmed) continue;
+    if (/^at\s+/.test(trimmed) || /^\s+at\s+/.test(rawLine)) {
+      if (entries.length > 0) {
+        const last = entries[entries.length - 1];
+        last.details = last.details ? (last.details + '\n' + trimmed) : trimmed;
+      }
+      continue;
+    }
+    entries.push(parseServerLogLine(rawLine));
+  }
+  return entries;
+}
+
 function parseServerLogLine(line) {
   let level = 'INFO';
   let cleanMsg = line;
@@ -77,7 +94,7 @@ async function fetchServerLogs() {
     const data = await res.json();
     if (!request.isCurrent() || serverLogsClearPending) return;
     if (res.ok && data.ok && Array.isArray(data.logs)) {
-      const serverEntries = data.logs.map(parseServerLogLine);
+      const serverEntries = parseServerLogLines(data.logs);
       mergeSystemLogs(serverEntries);
     }
   } catch {

@@ -408,24 +408,28 @@ body {
       display: flex;
       align-items: baseline;
       gap: var(--sp-8);
-      padding: var(--sp-2) var(--sp-6);
+      padding: var(--sp-4) var(--sp-8);
       border-radius: var(--r-4);
       font-family: var(--font-sans);
+      border-left: 3px solid transparent;
+      transition: background-color 0.12s ease;
     }
     .log-row:hover {
-      background: var(--bg-overlay);
+      background: var(--bg-hover);
     }
     .log-row.log-row-error {
-      background: var(--bg-overlay);
+      background: var(--danger-soft, #fff0ed);
+      border-left-color: var(--danger);
     }
     .log-row.log-row-error:hover {
-      background: var(--bg-overlay);
+      background: rgba(213, 73, 65, 0.12);
     }
     .log-row.log-row-warn {
-      background: var(--bg-overlay);
+      background: var(--warn-soft, #fff1e9);
+      border-left-color: var(--warn);
     }
     .log-row.log-row-warn:hover {
-      background: var(--bg-overlay);
+      background: rgba(227, 115, 24, 0.12);
     }
 
     .log-time {
@@ -439,9 +443,9 @@ body {
 
     .log-badge {
       display: inline-block;
-      padding: 0 var(--sp-4);
+      padding: 0 var(--sp-6);
       font-size: var(--fs-11);
-      font-weight: var(--fw-500);
+      font-weight: var(--fw-600);
       line-height: var(--lh-normal);
       border-radius: var(--r-4);
       text-transform: uppercase;
@@ -452,52 +456,55 @@ body {
       user-select: none;
     }
     .log-badge-error {
-      background: var(--bg-overlay);
+      background: var(--danger-soft, #fff0ed);
       color: var(--danger);
-      border: 1px solid var(--border);
+      border: 1px solid rgba(213, 73, 65, 0.3);
     }
     .log-badge-warn {
-      background: var(--bg-overlay);
+      background: var(--warn-soft, #fff1e9);
       color: var(--warn);
-      border: 1px solid var(--border);
+      border: 1px solid rgba(227, 115, 24, 0.3);
     }
     .log-badge-info {
-      background: var(--bg-overlay);
+      background: var(--accent-soft, #e8f3ff);
       color: var(--accent);
-      border: 1px solid var(--border);
+      border: 1px solid rgba(0, 82, 217, 0.25);
     }
     .log-badge-http {
-      background: var(--bg-overlay);
-      color: var(--border-strong);
+      background: var(--bg-subtle, #fafbfc);
+      color: var(--text-2);
       border: 1px solid var(--border);
     }
     .log-badge-debug {
-      background: var(--bg-overlay);
-      color: var(--border-strong);
+      background: var(--bg-subtle, #fafbfc);
+      color: var(--text-3);
       border: 1px solid var(--border);
     }
 
     .log-tag {
       font-size: var(--fs-11);
       font-weight: var(--fw-500);
-      padding: 0 var(--sp-4);
+      padding: 0 var(--sp-6);
       line-height: var(--lh-normal);
       border-radius: var(--r-4);
       flex-shrink: 0;
       user-select: none;
       letter-spacing: 0.3px;
+      background: var(--bg-subtle, #fafbfc);
+      border: 1px solid var(--border);
     }
     .log-tag-server {
-      color: var(--border-strong);
-      background: var(--bg-overlay);
+      color: var(--text-2);
+      background: var(--bg-subtle, #fafbfc);
     }
     .log-tag-client {
       color: var(--ok);
-      background: var(--bg-overlay);
+      background: var(--ok-soft, #e3f9e9);
+      border-color: rgba(43, 164, 113, 0.3);
     }
     .log-tag-http {
-      color: var(--border-strong);
-      background: var(--bg-overlay);
+      color: var(--text-2);
+      background: var(--bg-subtle, #fafbfc);
     }
 
     .log-content {
@@ -523,7 +530,7 @@ body {
     .log-status-failed { color: var(--danger); font-weight: var(--fw-500); }
 
     .log-duration { color: var(--text-3); font-size: var(--fs-11); }
-    .log-user { color: var(--accent-soft); }
+    .log-user { color: var(--accent); font-weight: var(--fw-500); }
     .log-arrow { color: var(--text-3); padding: 0 var(--sp-2); }
     .log-details { color: var(--text-3); font-size: var(--fs-11); margin-left: var(--sp-6); }
 
