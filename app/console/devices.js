@@ -36,6 +36,48 @@ window.deviceIndexLabel = deviceIndexLabel;
 // 状态仅在变化时刷新徽章/统计，避免直播每帧触发 DOM 重排
 let lastStatusSnapshot = '';
 
+
+function switchToView(view) {
+  state.view = view;
+  const panel = byId('ovDevicePanel') || elements.ovDevicePanel;
+  if (panel) panel.dataset.view = view;
+  const overview = byId('page-overview');
+  if (overview) overview.dataset.view = view;
+  for (const seg of document.querySelectorAll('#viewToggle .segment')) {
+    seg.classList.toggle('active', seg.dataset.view === view);
+  }
+  renderViewer();
+}
+window.switchToView = switchToView;
+
+function updateViewerControls() {
+  const isGrid = state.view === 'grid';
+  const quickWrap = byId('ovDevQuickWrap');
+  if (quickWrap) quickWrap.hidden = isGrid;
+  const refreshBtn = byId('ovRefreshShotsBtn');
+  if (refreshBtn) refreshBtn.hidden = !isGrid;
+  const countBadge = byId('ovDeviceCountBadge');
+  if (countBadge) {
+    const onlineCount = state.devices.filter(d => isOnline(d)).length;
+    countBadge.textContent = onlineCount + '台在线';
+    countBadge.hidden = !state.devices.length;
+  }
+}
+
+function renderDeviceQuickSelect() {
+  const select = byId('ovDevQuickSelect');
+  if (!select) return;
+  const currentId = state.selectedDeviceId;
+  const optionsHtml = state.devices.map(d => {
+    const key = deviceStatusKey(d);
+    return '<option value="' + escapeHtml(d.deviceId) + '">' + deviceIndexLabel(d) + ' ' + escapeHtml(d.name) + ' (' + STATUS_TEXT[key] + ')</option>';
+  }).join('');
+  if (select.innerHTML !== optionsHtml) {
+    select.innerHTML = optionsHtml;
+  }
+  if (currentId) select.value = currentId;
+}
+
 function renderStatusBadges(force = false) {
   const device = currentDevice();
   const snapshot = state.devices.map(d => deviceStatusKey(d)).join(',') + '|' + (device ? deviceStatusKey(device) : '');
@@ -43,6 +85,7 @@ function renderStatusBadges(force = false) {
   lastStatusSnapshot = snapshot;
   renderStatusBar();
   renderDeviceChips();
+  renderDeviceQuickSelect();
   if (typeof renderShell === 'function') renderShell();
   if (state.view === 'single') { renderViewerCaption(); updateDeviceMeta(device); }
   if (state.page === 'devices') renderDeviceTable();
@@ -106,8 +149,15 @@ function renderViewer() {
   const stage = elements.viewerStage;
   if (!stage) return;
   lastStatusSnapshot = '';
-  if (state.view === 'grid') { renderGridViewer(); return; }
-  renderSingleViewer();
+  const panel = byId('ovDevicePanel') || elements.ovDevicePanel;
+  if (panel) panel.dataset.view = state.view;
+  const overview = byId('page-overview');
+  if (overview) overview.dataset.view = state.view;
+  updateViewerControls();
+  renderDeviceQuickSelect();
+  if (state.view === 'grid') { renderGridViewer(); }
+  else { renderSingleViewer(); }
+  updateDeviceMeta(currentDevice());
 }
 
 function closeAllPlayers() {
@@ -213,6 +263,10 @@ function renderSingleViewer() {
 function updateDeviceMeta(device, stats = null) {
   const metaEl = byId('ovDeviceMeta');
   if (!metaEl || !device) return;
+  const modeTag = byId('metaModeTag');
+  if (modeTag) modeTag.hidden = state.view !== 'grid';
+  const switchSingleBtn = byId('metaSwitchSingleBtn');
+  if (switchSingleBtn) switchSingleBtn.hidden = state.view !== 'grid';
   const nameEl = byId('metaDevName');
   if (nameEl) {
     const label = `${deviceIndexLabel(device)} ${device.name}`;
@@ -250,6 +304,11 @@ function updateDeviceMeta(device, stats = null) {
 window.updateDeviceMeta = updateDeviceMeta;
 
 byId('ovDeviceMeta')?.addEventListener('click', event => {
+  const switchSingle = event.target.closest('#metaSwitchSingleBtn');
+  if (switchSingle) {
+    if (typeof window.switchToView === 'function') window.switchToView('single');
+    return;
+  }
   const copy = event.target.closest('#metaCopyIdBtn');
   const manual = event.target.closest('#metaManualBtn');
   if (!copy && !manual) return;
@@ -344,13 +403,44 @@ function renderGridViewer() {
   stage.dataset.viewerDevice = '';
   closeAllPlayers();
 
-  stage.innerHTML = `<div class="device-grid">${state.devices.map(device => {
+  if (!state.devices.length) {
+    stage.innerHTML = '<div class="viewer-empty-box"><div class="empty-icon">📱</div><div class="empty-title">' + (state.tokenConfigured ? '暂无可预览云机' : '尚未连接云机平台') + '</div><div class="empty-sub">请先在管理后台或设置中配置设备</div></div>';
+    return;
+  }
+
+  stage.innerHTML = '<div class="device-grid" role="region" aria-label="设备监控矩阵">' + state.devices.map(device => {
     const key = deviceStatusKey(device);
-    return `<button class="device-tile ${state.selectedDeviceId === device.deviceId ? 'selected' : ''}" data-tile-device="${escapeHtml(device.deviceId)}" type="button" title="切换到 ${escapeHtml(deviceLabel(device))}">
-      <span class="tile-shot" data-shot-for="${escapeHtml(device.deviceId)}">${isOnline(device) ? '快照中…' : '离线'}</span>
-      <span class="tile-bottom"><i class="small-dot ${key === 'down' ? 'down' : key === 'busy' ? 'busy' : ''}"></i>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</span>
-    </button>`;
-  }).join('')}</div>`;
+    const online = isOnline(device);
+    const isSelected = state.selectedDeviceId === device.deviceId;
+    return '<div class="device-tile ' + (isSelected ? 'selected ' : '') + (online ? '' : 'is-offline') + '" data-tile-device="' + escapeHtml(device.deviceId) + '" tabindex="0" role="button" aria-pressed="' + isSelected + '">' +
+      '<div class="tile-header">' +
+        '<div class="tile-id-badge">' +
+          '<i class="small-dot ' + (key === 'down' ? 'down' : key === 'busy' ? 'busy' : '') + '"></i>' +
+          '<span class="tile-name">' + deviceIndexLabel(device) + ' ' + escapeHtml(device.name) + '</span>' +
+        '</div>' +
+        '<div class="tile-actions">' +
+          '<button class="tile-action-btn" type="button" data-tile-action="single" title="以单台全屏查看此设备" aria-label="进入单台大屏">' +
+            '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>' +
+          '</button>' +
+          '<button class="tile-action-btn" type="button" data-tile-action="manual" title="打开手动控制" aria-label="打开手动控制">' +
+            '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="tile-screen-wrap">' +
+        '<div class="tile-screen" data-shot-for="' + escapeHtml(device.deviceId) + '">' +
+          (online ? '<div class="tile-skeleton"><div class="tile-shimmer"></div><span class="tile-hint">获取快照…</span></div>' : '<div class="tile-offline"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="2" width="14" height="20" rx="2.5"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg><span>设备离线</span></div>') +
+        '</div>' +
+        '<div class="tile-hover-overlay">' +
+          '<span class="tile-hover-text">双击进入单台</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="tile-footer">' +
+        '<span class="tile-ip cell-mono" title="' + escapeHtml(device.currentIp || '自动分配') + '">' + escapeHtml(device.currentIp || '自动代理') + '</span>' +
+        '<span class="tile-status-tag ' + key + '">' + STATUS_TEXT[key] + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('') + '</div>';
 
   for (const device of state.devices) {
     if (isOnline(device)) queueTileShot(device);
@@ -388,7 +478,7 @@ async function fetchTileShot(device) {
   } catch {
     state.tileShots.delete(id);
     const slot = document.querySelector(`[data-shot-for="${CSS.escape(id)}"]`);
-    if (slot) slot.textContent = '快照不可用';
+    if (slot) slot.innerHTML = '<div class="tile-shot-failed"><span>快照不可用</span><button class="tile-retry-btn" type="button" data-retry-shot="' + CSS.escape(id) + '" title="重试">重试</button></div>';
   } finally {
     shotActive--;
     const next = shotQueue.shift();
@@ -397,12 +487,13 @@ async function fetchTileShot(device) {
 }
 
 function drawTileShot(deviceId, entry) {
-  const slot = document.querySelector(`[data-shot-for="${CSS.escape(deviceId)}"]`);
+  const slot = document.querySelector('[data-shot-for="' + CSS.escape(deviceId) + '"]');
   if (!slot) return;
   let canvas = slot.querySelector('canvas');
   if (!canvas) {
-    slot.textContent = '';
+    slot.innerHTML = '';
     canvas = document.createElement('canvas');
+    canvas.className = 'tile-canvas';
     slot.append(canvas);
   }
   canvas.width = entry.bitmap.width;
@@ -561,6 +652,33 @@ byId('deviceRefreshBtn')?.addEventListener('click', async () => {
   await loadStatus();
   if (state.tokenConfigured) await loadDevices();
   refreshTileShots();
+});
+
+
+// 双击卡片直达单台模式
+elements.viewerStage?.addEventListener?.('dblclick', event => {
+  const tile = event.target.closest('[data-tile-device]');
+  if (tile) {
+    selectDevice(tile.dataset.tileDevice);
+    switchToView('single');
+  }
+});
+
+// 单台模式快捷切机下拉
+byId('ovDevQuickSelect')?.addEventListener('change', event => {
+  if (event.target.value) selectDevice(event.target.value);
+});
+
+// 刷新快照按钮
+byId('ovRefreshShotsBtn')?.addEventListener('click', () => {
+  state.tileShots.clear();
+  const btn = byId('ovRefreshShotsBtn');
+  if (btn) btn.classList.add('is-refreshing');
+  setTimeout(() => btn?.classList.remove('is-refreshing'), 700);
+  for (const device of state.devices) {
+    if (isOnline(device)) queueTileShot(device);
+  }
+  showToast('正在刷新全部设备快照…');
 });
 
 elements.deviceTableBody?.addEventListener?.('click', event => {

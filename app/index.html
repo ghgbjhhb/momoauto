@@ -36,17 +36,26 @@
 
       <main class="page" id="page">
         <!-- 1. 总览 -->
-        <section class="page-section" id="page-overview">
+        <section class="page-section" id="page-overview" data-view="single">
           <div class="overview">
             <div class="ov-left">
-              <section class="panel ov-device-panel">
+              <section class="panel ov-device-panel" id="ovDevicePanel" data-view="single">
                 <div class="panel-head">
                   <div class="panel-head-left">
                     <h2>设备画面</h2>
+                    <span class="badge ok xs" id="ovDeviceCountBadge" hidden>0台在线</span>
+                    <div class="ov-dev-quick-wrap" id="ovDevQuickWrap" title="快捷切换当前云机">
+                      <select class="ov-dev-quick-select" id="ovDevQuickSelect" aria-label="快捷切换云手机"></select>
+                    </div>
                   </div>
-                  <div class="segmented" id="viewToggle">
-                    <button class="segment active" data-view="single" type="button" title="单台画面">单台</button>
-                    <button class="segment" data-view="grid" type="button" title="多设备宫格">宫格</button>
+                  <div class="panel-head-right">
+                    <button class="btn icon-only ghost xs" id="ovRefreshShotsBtn" type="button" title="刷新全部设备快照" aria-label="刷新快照" hidden>
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                    </button>
+                    <div class="segmented" id="viewToggle">
+                      <button class="segment active" data-view="single" type="button" title="单台画面">单台</button>
+                      <button class="segment" data-view="grid" type="button" title="多设备宫格">宫格</button>
+                    </div>
                   </div>
                 </div>
                 <div class="viewer" id="viewerStage">
@@ -59,11 +68,13 @@
                 <!-- 紧凑单行：标签 + 小字，零浪费空间 -->
                 <div class="ov-device-meta" id="ovDeviceMeta">
                   <div class="meta-tags">
+                    <span class="meta-tag-mode" id="metaModeTag" hidden>聚焦</span>
                     <span class="meta-tag dev-name" id="metaDevName">#01 SF</span>
                     <span class="meta-tag-sub cell-mono" id="metaDevIp" title="当前IP/代理">socks5://...</span>
                     <span class="meta-tag-sub" id="metaDevRes">720×1280</span>
                   </div>
                   <div class="meta-tools">
+                    <button class="btn xs outline" id="metaSwitchSingleBtn" type="button" title="以单台全屏查看此设备" hidden>切至单台</button>
                     <button class="btn icon-only ghost xs" id="metaCopyIdBtn" type="button" title="复制设备 ID"></button>
                     <button class="btn xs primary" id="metaManualBtn" type="button">手动控制</button>
                   </div>
