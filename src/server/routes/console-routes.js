@@ -9,6 +9,7 @@ const { YunmomoClient } = require('../../index');
 const { extractDeviceInfo } = require('../../workflows/v2/import-real-params');
 const { SCRIPT_DEFINITIONS, scriptById } = require('../script-catalog');
 const { readRunOwner } = require('../script-runner');
+const { getActiveWorkflowsSummary } = require('../workflow-runner');
 const {
   PROJECT_ROOT,
   CLOUD_DISK_ROOT,
@@ -108,21 +109,23 @@ async function previewImage(deviceId, tokenOrUser = null, options = {}) {
   const hd = Boolean(options.hd);
   const jobKey = `${deviceId}_${token || 'global'}_${hd ? 'hd' : 'low'}`;
   if (screenshotJobs.has(jobKey)) return screenshotJobs.get(jobKey);
-  // 前端默认使用轻量级低分辨率 JPEG 快照以极大节省网络流量；自动化调试等显式传入 hd 时使用 720P 原生高清流
-  const pending = hd
-    ? c.screenshot(deviceId, {
-        source: 'stream',
-        udid: device.udid || undefined,
-        maxSize: 1280,
-        bitrate: 4194304,
-        maxAgeMs: 400,
-        timeoutMs: 15000
-      })
-    : c.screenshot(deviceId, {
-        source: 'rest',
-        level: 2,
-        timeoutMs: 10000
-      });
+  // 统一 720P 流式截图复用通道：优先命中本地流中枢已解码的 720P 关键帧缓冲（零延迟/零多余开销）
+  const bridge = [...manualBridges][0];
+  const pending = (async () => {
+    if (bridge?.captureScreenshot) {
+      try {
+        return await bridge.captureScreenshot(device, { maxAgeMs: 1200, timeoutMs: 12000 }, token);
+      } catch {}
+    }
+    return c.screenshot(deviceId, {
+      source: 'stream',
+      udid: device.udid || undefined,
+      maxSize: 1280,
+      bitrate: 4194304,
+      maxAgeMs: 800,
+      timeoutMs: 15000
+    });
+  })();
   screenshotJobs.set(jobKey, pending);
   try {
     return await pending;
@@ -272,7 +275,7 @@ async function handleConsoleRoutes(ctx, request, response, url) {
         }
       }
     }
-    json(response, 200, { ok: true, runs, manualDevices: [...manualByDevice.values()] });
+    json(response, 200, { ok: true, runs, activeWorkflows: getActiveWorkflowsSummary(user), manualDevices: [...manualByDevice.values()] });
     return true;
   }
 

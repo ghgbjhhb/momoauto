@@ -29,7 +29,7 @@
         'DEVICE_ACCESS_REVOKED', 'DEVICE_EXPIRED', 'ACCOUNT_BANNED'].includes(code);
     }
 
-    constructor({ canvas, deviceId, interactive = false, onMessage = () => {}, onFrame = () => {},
+    constructor({ canvas, deviceId, interactive = false, mode = 'single', onMessage = () => {}, onFrame = () => {},
       onError = () => {}, onClose = () => {} }) {
       if (!deviceId || typeof deviceId !== 'string') {
         throw new Error('CloudVideoPlayer: 缺少有效 deviceId');
@@ -50,6 +50,7 @@
       const url = new URL(interactive ? '/api/control' : '/api/video', location.href);
       url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       url.searchParams.set('deviceId', deviceId);
+      if (mode) url.searchParams.set('mode', mode);
       this.socket = new WebSocket(url);
       this.socket.binaryType = 'arraybuffer';
       this.socket.onopen = () => {

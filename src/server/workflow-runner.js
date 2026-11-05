@@ -494,7 +494,22 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
 }
 
 async function stopWorkflow(id, user) {
-  const run = getWorkflow(id, user);
+  let run;
+  try {
+    run = getWorkflow(id, user);
+  } catch (error) {
+    if (error.status === 404) {
+      return {
+        ok: true,
+        workflowRunId: id,
+        state: 'finished',
+        stopped: true,
+        message: '任务已不存在或已结束',
+        results: []
+      };
+    }
+    throw error;
+  }
   if (run.finishedAt) return statusSnapshot(run);
   run.stopRequested = true;
   run.state = 'stopping';
@@ -518,7 +533,41 @@ async function stopWorkflow(id, user) {
 }
 
 function getWorkflowStatus(id, user) {
-  return statusSnapshot(getWorkflow(id, user));
+  let run;
+  try {
+    run = getWorkflow(id, user);
+  } catch (error) {
+    if (error.status === 404) {
+      return {
+        ok: true,
+        workflowRunId: id,
+        state: 'finished',
+        message: '任务已过期或不存在',
+        results: []
+      };
+    }
+    throw error;
+  }
+  return statusSnapshot(run);
+}
+
+function getActiveWorkflowsSummary(user) {
+  const active = [];
+  for (const [id, run] of workflows) {
+    if (run.finishedAt) continue;
+    if (user && user.role !== 'admin' && run.ownerUserId !== user.id) continue;
+    active.push({
+      workflowRunId: run.id,
+      kind: run.kind,
+      title: run.title,
+      state: run.state,
+      currentStep: run.currentStep,
+      totalSteps: run.totalSteps,
+      results: (run.results || []).map(r => ({ deviceId: r.deviceId, status: r.status })),
+      rawSpec: run.rawSpec
+    });
+  }
+  return active;
 }
 
 async function resumeWorkflow(id, user) {
@@ -573,4 +622,4 @@ async function resumeWorkflow(id, user) {
   return { ok: true, accepted: true, workflowRunId: id, resumed: true };
 }
 
-module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow };
+module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary };

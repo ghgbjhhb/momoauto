@@ -60,6 +60,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     if (ws.readyState !== WebSocket.OPEN) return;
     const interactive = url.pathname === '/api/control' || url.pathname === '/api/control-input';
     const inputOnly = url.pathname === '/api/control-input';
+    const streamMode = url.searchParams.get('mode') || 'single';
     const pageId = /^[A-Za-z0-9_-]{8,128}$/.test(url.searchParams.get('pageId') || '')
       ? url.searchParams.get('pageId') : '';
     let deviceSession = interactive ? manualDevices.get(deviceId) : null;
@@ -300,7 +301,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
       };
       const videoLease = lease.videoLease = inputOnly
         ? videos.hold(device, callbacks, userToken)
-        : videos.subscribe(device, ws, callbacks, userToken);
+        : videos.subscribe(device, ws, callbacks, userToken, streamMode);
       const control = lease.control = await videoLease.ready;
       if (lease.closed) { videoLease.release(); return; }
       lease.generation = control._generation;
@@ -314,6 +315,8 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     });
   });
   return {
+    videos,
+    captureScreenshot: (device, options, token) => videos.captureScreenshot(device, options, token),
     isBusy: deviceId => manualDevices.has(deviceId),
     closeDevice(deviceId, reason = 'DEVICE_EXPIRED', userId = null) {
       revokeSessions(lease => lease.deviceId === deviceId && (!userId || lease.user.id === userId), reason);

@@ -307,7 +307,7 @@ function updateDeviceMeta(device, stats = null) {
 
   const resEl = byId('metaDevRes');
   if (resEl) {
-    const resolution = '720×1280';
+    const resolution = '720×1280 (原画)';
     if (resEl.textContent !== resolution) resEl.textContent = resolution;
   }
 
@@ -355,6 +355,7 @@ function createPreviewPlayer(device, canvas, hint, cover) {
   const player = new CloudVideoPlayer({
     canvas,
     deviceId: id,
+    mode: 'single',
     onFrame(stats) {
       // 切换云机时旧解码器可能仍排队回调，不能用旧设备覆盖新设备的信息栏。
       if (state.selectedDeviceId !== id || state.page !== 'overview' || state.view !== 'single') return;
