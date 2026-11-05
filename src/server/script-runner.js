@@ -612,17 +612,12 @@ function configureScript(script, body, env) {
   }
   if (script.id.startsWith('flow-06')) {
     const address = options.address?.trim() || '';
-    let mode = options.mode?.trim();
+    const mode = address ? 'search' : 'ip';
+    env.YUNMOMO_LOCATION_MODE = mode;
     if (address) {
-      mode = 'search';
       env.YUNMOMO_LOCATION_ADDRESS = address;
     } else {
-      mode = (mode === 'search') ? 'search' : 'ip';
       delete env.YUNMOMO_LOCATION_ADDRESS;
-    }
-    env.YUNMOMO_LOCATION_MODE = mode;
-    if (mode === 'search' && !address) {
-      throw invalidOptions('搜索模式下必须提供目标搜索地址');
     }
   }
   if (script.id === 'flow-09-v2') {
