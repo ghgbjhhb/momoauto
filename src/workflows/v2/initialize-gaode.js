@@ -37,6 +37,7 @@ const DEFAULT_PROMPT_SETTLE_MS = 900;
 const DEFAULT_APP_VISIBLE_MS = 500;
 const DEFAULT_STABLE_OBSERVATIONS = 3;
 const DEFAULT_MAX_PAGES_PER_DIRECTION = 5;
+const DEFAULT_MAX_PROMPT_ACTIONS = 12;
 
 function matchesDevice(record, targetId) {
   if (!record) return false;
@@ -195,10 +196,11 @@ async function initializeGaode(phone, control, worker, directory, state, opened,
   let promptActions = [];
   let promptActionCount = 0;
   const deadline = Date.now() + options.initTimeoutMs;
+  const maxPromptActions = numberOr(options?.maxPromptActions, DEFAULT_MAX_PROMPT_ACTIONS);
 
   while (Date.now() <= deadline) {
     const action = findPromptAction(observation);
-    if (action && promptActionCount < options.maxPromptActions) {
+    if (action && promptActionCount < maxPromptActions) {
       const point = tapBox(control, action.box, observation);
       logger?.file(`Found prompt action: "${action.label}" at (${point.x}, ${point.y})`, { action, point });
       logger?.console(`[3/4] 检测并处理弹窗: "${action.label}" (第 ${promptActionCount + 1} 个)...`);
@@ -499,6 +501,7 @@ async function runStep(context = {}) {
     promptSettleMs: numberOr(process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
     appVisibleMs: numberOr(process.env.YUNMOMO_GAODE_APP_VISIBLE_MS, DEFAULT_APP_VISIBLE_MS),
     stableObservations: numberOr(process.env.YUNMOMO_STABLE_OBSERVATIONS, DEFAULT_STABLE_OBSERVATIONS),
+    maxPromptActions: numberOr(process.env.YUNMOMO_GAODE_MAX_PROMPTS, DEFAULT_MAX_PROMPT_ACTIONS),
     maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
     ...(context.options || {})
   };

@@ -390,11 +390,12 @@ async function ensureYayaLoggedInAndReady(phone, control, worker, directory, sta
   const promptActions = [];
   const maxWaitMs = options.loginTimeoutMs || DEFAULT_LOGIN_TIMEOUT_MS;
   const deadline = Date.now() + maxWaitMs;
+  const maxPromptActions = numberOr(options?.maxPromptActions, 12);
 
   while (Date.now() <= deadline) {
     // 1. 检查权限/协议等前置弹窗
     const action = findPromptAction(observation);
-    if (action && promptActionCount < options.maxPromptActions) {
+    if (action && promptActionCount < maxPromptActions) {
       const point = tapBox(control, action.box, observation);
       logger?.file(`Found prompt action: "${action.label}" at (${point.x}, ${point.y})`, { action, point });
       logger?.console(`[弹窗处理] 检测并点击: "${action.label}"...`);
