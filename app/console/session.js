@@ -105,12 +105,34 @@ function renderSettingsAccount() {
 
 /* ---------- 状态与数据加载 ---------- */
 
+function updateSessionPanelState() {
+  const badge = byId('sessionStatusBadge');
+  const input = byId('sessionToken');
+  const btn = byId('connectSession');
+  if (state.tokenConfigured) {
+    if (badge) {
+      badge.className = 'badge ok';
+      badge.textContent = '已连接';
+    }
+    if (input) input.placeholder = '已配置 (如需更换请粘贴新 Token)';
+    if (btn) btn.textContent = '更新并连接';
+  } else {
+    if (badge) {
+      badge.className = 'badge warn';
+      badge.textContent = '未连接';
+    }
+    if (input) input.placeholder = '粘贴平台会话 Token';
+    if (btn) btn.textContent = '连接';
+  }
+}
+
 async function loadStatus() {
   try {
     const status = await requestJson('/api/status');
     state.tokenConfigured = status.tokenConfigured === true;
     const sessionPanel = byId('sessionPanel');
     if (sessionPanel) sessionPanel.hidden = false;
+    updateSessionPanelState();
     if (state.tokenConfigured) {
       setService('ready', (status.sessionSource === 'local-session' || status.sessionSource === 'user-db') ? '网页登录态已就绪' : '已连接');
     } else {
@@ -428,6 +450,9 @@ function initSettingsPage() {
   byId('settingsThemeBtn')?.addEventListener('click', toggleTheme);
   byId('settingsLogoutBtn')?.addEventListener('click', doLogout);
   elements.userLogoutBtn?.addEventListener('click', doLogout);
+  byId('settingsRedeemBtn')?.addEventListener('click', () => {
+    byId('openRedeemModalBtn')?.click();
+  });
 
   // 修改密码弹窗
   const passwordAlert = byId('passwordAlert');

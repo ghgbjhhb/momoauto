@@ -470,8 +470,8 @@ body:has(#page-overview:not([hidden])) .page {
 
 /* 宫格模式下：智能展开为监控矩阵 */
 .ov-device-panel[data-view="grid"] {
-  width: clamp(480px, 46vw, 760px);
-  max-width: 760px;
+  width: clamp(520px, 50vw, 980px);
+  max-width: 980px;
 }
 
 /* 顶栏与底栏 100% 充满面板 */
@@ -538,6 +538,16 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 /* 刷新快照按钮动画 */
+
+.ov-grid-cols-toggle {
+  display: inline-flex;
+}
+.ov-grid-cols-toggle .segment {
+  font-size: 11px;
+  padding: 2px 7px;
+  height: 24px;
+}
+
 #ovRefreshShotsBtn.is-refreshing svg {
   animation: ovSpin 0.6s linear infinite;
 }
@@ -743,11 +753,12 @@ body:has(#page-overview:not([hidden])) .page {
 /* ---------------- 宫格自适应矩阵与卡片 ---------------- */
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
-  gap: var(--sp-10);
+  /* 默认每行最多 3 台，彻底避免卡片被压得太小 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-12);
   width: 100%;
   height: 100%;
-  padding: var(--sp-10);
+  padding: var(--sp-12);
   box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
@@ -755,14 +766,27 @@ body:has(#page-overview:not([hidden])) .page {
   scrollbar-width: thin;
 }
 
-/* 设备只有 1~2 台时弹性居中大图 */
+/* 用户选择每行 2 列超大图模式 */
+.device-grid[data-cols="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-16);
+  padding: var(--sp-14);
+}
+
+/* 用户选择每行 3 列标准大图模式（每行最多3台） */
+.device-grid[data-cols="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 设备只有 1 台时弹性居中大图 */
 .device-grid:has(> .device-tile:last-child:nth-child(1)) {
-  grid-template-columns: minmax(180px, 280px);
+  grid-template-columns: minmax(260px, 380px);
   justify-content: center;
 }
 
+/* 设备只有 2 台时双列舒展充满 */
 .device-grid:has(> .device-tile:last-child:nth-child(2)) {
-  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* 设备监控卡片 */
@@ -2803,4 +2827,34 @@ body:has(#page-overview:not([hidden])) .page {
   font-size: var(--fs-12);
   color: var(--muted);
   font-weight: var(--fw-500);
+}
+
+
+/* ---------- 设置页克制重构 ---------- */
+.settings-layout {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-16);
+}
+
+.setup-action-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-12);
+}
+
+.input-action-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-10);
+  margin-top: var(--sp-8);
+}
+.input-action-group .input {
+  flex: 1;
+}
+.input-action-group .btn {
+  flex: none;
+  white-space: nowrap;
 }
