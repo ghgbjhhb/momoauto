@@ -284,7 +284,7 @@ function writeOutput(title, lines, meta = {}) {
   const rawDeviceId = meta.deviceId || state.activeRun?.deviceId || (typeof currentDevice === 'function' ? currentDevice()?.deviceId : '') || '';
   const targetDeviceIds = String(rawDeviceId).split(',').map(s => s.trim()).filter(Boolean);
 
-  if (targetDeviceIds.length > 0 && state.deviceLogs) {
+  if (!meta.skipDeviceLogStore && targetDeviceIds.length > 0 && state.deviceLogs) {
     for (const devId of targetDeviceIds) {
       state.deviceLogs.set(devId, text);
       if (runId && state.deviceActiveRunIds) state.deviceActiveRunIds.set(devId, runId);
@@ -303,7 +303,7 @@ function writeOutput(title, lines, meta = {}) {
   const isCurrentDev = targetDeviceIds.length === 0 || (currentDev && targetDeviceIds.includes(currentDev.deviceId));
 
   const dockBox = elements.dockOutputBox;
-  if (dockBox && isCurrentDev) {
+  if (!meta.skipDockOutput && dockBox && isCurrentDev) {
     dockBox.textContent = text;
     // 智能吸底（Stick-to-bottom）：仅当用户位于底部时自动跟随，向上翻阅历史时绝不强拽用户
     if (state.logDockAutoScroll !== false) {
@@ -311,8 +311,8 @@ function writeOutput(title, lines, meta = {}) {
     }
   }
 
-  state.lastOutput = { at, title, runId, logFile, deviceId };
-  state.logFeed = [{ at, title, runId, deviceId }, ...state.logFeed].slice(0, 12);
+  state.lastOutput = { at, title, runId, logFile, deviceId: rawDeviceId };
+  state.logFeed = [{ at, title, runId, deviceId: rawDeviceId }, ...state.logFeed].slice(0, 12);
   updateLogMeta();
   eventBus.dispatchEvent(new CustomEvent('output:changed'));
 }

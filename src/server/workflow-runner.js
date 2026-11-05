@@ -191,7 +191,7 @@ function statusSnapshot(run) {
       if (out && out.trim()) {
         const shortId = devId.length > 8 ? devId.slice(-6) : devId;
         entries.push(`[设备 ${shortId}]\n` + out.trim().split('\n').slice(-15).join('\n'));
-        deviceOutputsObj[devId] = safeOutput(run.ownerUserId, out).slice(-4000);
+        deviceOutputsObj[devId] = safeOutput(run.ownerUserId, out).slice(-16000);
       }
     }
     if (entries.length > 0) logText = entries.join('\n\n');
@@ -199,7 +199,7 @@ function statusSnapshot(run) {
   const completedSteps = run.results.reduce((sum, item) => sum + (item.completedSteps || 0), 0);
   const activeDevices = run.activeDeviceRuns ? [...run.activeDeviceRuns.keys()] : [];
   return {
-    output: safeOutput(run.ownerUserId, logText).slice(-4000),
+    output: safeOutput(run.ownerUserId, logText).slice(-8000),
     deviceOutputs: deviceOutputsObj,
     ok: true, workflowRunId: run.id, state: run.state, kind: run.kind,
     title: run.title, stopRequested: run.stopRequested,

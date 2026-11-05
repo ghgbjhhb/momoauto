@@ -1009,12 +1009,21 @@ async function followManagedWorkflow(runId) {
       continue;
     }
     state.batchResults = snapshot.results.map(item => ({
-      deviceId: item.deviceId, status: item.status, message: item.message || ''
+      deviceId: item.deviceId,
+      status: item.status,
+      completedSteps: item.completedSteps,
+      totalSteps: item.totalSteps,
+      message: (item.completedSteps != null && item.totalSteps)
+        ? `${item.completedSteps}/${item.totalSteps} 步${item.message ? ' · ' + item.message : ''}`
+        : (item.message || '')
     }));
     if (state.page === 'tasks') renderBatchResultsOnly();
+    const outputsFingerprint = Object.entries(snapshot.deviceOutputs || {})
+      .map(([k, v]) => `${k}:${v ? v.length : 0}`)
+      .join(';');
     const progress = snapshot.currentStep + ':' + snapshot.currentDeviceId + ':' +
       snapshot.results.map(item => item.status + ':' + item.completedSteps).join(',') +
-      ':' + (snapshot.output || '');
+      ':' + (snapshot.output || '') + ':' + outputsFingerprint;
     if (progress !== lastProgress) {
       lastProgress = progress;
       const commonLog = [
@@ -1025,24 +1034,35 @@ async function followManagedWorkflow(runId) {
         ...(snapshot.output ? ['最近输出：', snapshot.output] : [])
       ];
 
-      // 将服务端返回的每台设备独立日志缓存至前端设备切片
+      // 将服务端返回的每台设备独立日志缓存至前端设备切片（杜绝被多设备汇总覆盖）
       if (snapshot.deviceOutputs && typeof snapshot.deviceOutputs === 'object') {
-        const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
         for (const [devId, out] of Object.entries(snapshot.deviceOutputs)) {
-          if (state.deviceLogs) state.deviceLogs.set(devId, out);
-        }
-        if (curDev && snapshot.deviceOutputs[curDev.deviceId]) {
-          const curLog = snapshot.deviceOutputs[curDev.deviceId].trim();
-          const dockBox = elements.dockOutputBox;
-          if (dockBox && curLog) {
-            dockBox.textContent = curLog;
-            if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
-          }
+          if (state.deviceLogs && out) state.deviceLogs.set(devId, out);
         }
       }
 
+      // 总览页 Dock：当前查看的设备若有真实输出，优先独占展示该设备真实命令流并实时吸底滚动
+      const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
+      const dockBox = elements.dockOutputBox;
+      let hasCurDevRealLog = false;
+      if (curDev && snapshot.deviceOutputs && snapshot.deviceOutputs[curDev.deviceId]) {
+        const curLog = snapshot.deviceOutputs[curDev.deviceId].trim();
+        if (dockBox && curLog) {
+          dockBox.textContent = curLog;
+          if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+          hasCurDevRealLog = true;
+        }
+      } else if (dockBox && !curDev) {
+        // 未聚焦特定设备时显示合并输出或任务派发摘要
+        const merged = snapshot.output || commonLog.join('\n');
+        dockBox.textContent = merged;
+        if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+      }
+
       writeOutput('Windows 后台任务：' + snapshot.title, commonLog, {
-        deviceId: snapshot.currentDeviceId || (snapshot.results[0]?.deviceId)
+        deviceId: snapshot.currentDeviceId || (snapshot.results[0]?.deviceId),
+        skipDeviceLogStore: true,
+        skipDockOutput: hasCurDevRealLog
       });
     }
     if (snapshot.state === 'interrupted') {
@@ -1120,7 +1140,8 @@ async function runManagedWorkflow(payload, deviceIds) {
     bundleId: payload.bundleId || null,
     scriptId: payload.scriptId || null,
     title: taskTitle,
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    following: true
   };
   state.activeBundleRun = payload.kind === 'bundle'
     ? { bundleId: payload.bundleId, stopped: false } : null;
@@ -1369,7 +1390,8 @@ function renderBatchResultsOnly() {
   const old = panel.querySelector('.run-results');
   if (old) old.remove();
   const results = renderBatchResults();
-  if (results) panel.querySelector('.details')?.insertAdjacentHTML('beforeend', results);
+  const container = panel.querySelector('.details-scroll, .details') || panel;
+  if (results && container) container.insertAdjacentHTML('beforeend', results);
   const badge = byId('detailRunBadge');
   if (badge) {
     const done = state.batchResults.filter(r => !['pending', 'running'].includes(r.status)).length;
