@@ -379,6 +379,9 @@ async function runStep(context = {}) {
   const actionParam = String(context.options?.action || '').trim().toLowerCase();
   process.env.YUNMOMO_DEVICE_ID = deviceId;
   process.env.YUNMOMO_CONFIRM_VPC_PROXY = 'YES';
+  if (context.options?.vpcData) {
+    process.env.YUNMOMO_VPC_DATA = String(context.options.vpcData).trim();
+  }
   if (actionParam === 'show' || actionParam === 'status') {
     if (!process.argv.includes('--show')) process.argv.push('--show');
   } else if (actionParam === 'close' || actionParam === 'stop') {

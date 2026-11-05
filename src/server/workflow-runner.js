@@ -19,6 +19,32 @@ function safeOutput(userId, output) {
   if (userToken) value = value.split(userToken).join('[redacted]');
   return value;
 }
+
+function resolveDeviceVpcData(vpcData, deviceIndex) {
+  if (!vpcData || typeof vpcData !== 'string') return vpcData;
+  const raw = vpcData.replace(/^\uFEFF/, '').trim();
+  if (!raw) return vpcData;
+
+  // 1. JSON 数组格式
+  if (raw.startsWith('[') || raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 1) {
+        const safeIdx = Number.isInteger(deviceIndex) && deviceIndex >= 0 ? deviceIndex : 0;
+        return JSON.stringify(parsed[safeIdx % parsed.length]);
+      }
+      return vpcData;
+    } catch {}
+  }
+
+  // 2. 多行文本格式（每行一条代理）
+  const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (lines.length <= 1) return raw;
+
+  // 多条代理按设备在选定列表中的序号（0, 1, 2...）一对一分配，若代理行数少于设备数则循环轮询复用
+  const safeIdx = Number.isInteger(deviceIndex) && deviceIndex >= 0 ? deviceIndex : 0;
+  return lines[safeIdx % lines.length];
+}
 const RETENTION_MS = 30 * 60 * 1000;
 const FINISHED_LIMIT = 128;
 
@@ -221,13 +247,18 @@ async function executeWorkflow(run, steps, user) {
           const step = steps[index];
           const scriptRunId = randomUUID();
           run.activeDeviceRuns.set(entry.deviceId, { type: 'script', scriptRunId });
+          const deviceIndex = run.results.findIndex(r => r.deviceId === entry.deviceId);
+          const stepOptions = { ...(step.options || {}) };
+          if (stepOptions.vpcData) {
+            stepOptions.vpcData = resolveDeviceVpcData(stepOptions.vpcData, deviceIndex);
+          }
           let result;
           try {
             result = await executeScript({
               scriptRunId,
               scriptId: step.script.id,
               deviceId: entry.deviceId,
-              options: step.options,
+              options: stepOptions,
               resetConfirmed: Boolean(step.script.destructive)
             }, user, lease);
           } catch (error) {
@@ -294,7 +325,15 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
   return new Promise((resolve) => {
     const userToken = authService.getUserPlatformToken(user.id);
     const workerScript = path.join(PROJECT_ROOT, 'src', 'server', 'bundle-runner.js');
-    const bundleSpec = JSON.stringify(steps.map(s => ({ scriptId: s.script.id, options: s.options })));
+    const deviceIndex = run.results.findIndex(r => r.deviceId === entry.deviceId);
+    const deviceSteps = steps.map(s => {
+      const opts = { ...(s.options || {}) };
+      if (opts.vpcData) {
+        opts.vpcData = resolveDeviceVpcData(opts.vpcData, deviceIndex);
+      }
+      return { scriptId: s.script.id, options: opts };
+    });
+    const bundleSpec = JSON.stringify(deviceSteps);
 
     const env = {
       ...process.env,

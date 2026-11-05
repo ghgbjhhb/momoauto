@@ -394,9 +394,9 @@
       <h3 id="vpcDialogTitle">配置 VPC 静态代理</h3>
       <button class="btn sm" id="closeVpcDialogBtn" type="button">×</button>
     </div>
-    <p class="dlg-note">请直接粘贴代理文本（支持 IP:端口:账号:密码 或 socks5:// 格式）：</p>
+    <p class="dlg-note">请直接粘贴代理文本（多台设备可每行一条按顺序一对一分配；单行则全部共享）：</p>
     <div class="dlg-field">
-      <textarea id="vpcRawInput" class="input textarea" placeholder="在此粘贴代理信息…" rows="6"></textarea>
+      <textarea id="vpcRawInput" class="input textarea" placeholder="在此粘贴代理信息（支持多行按设备顺序独享分配，格式：IP:端口:账号:密码 或 socks5://）…" rows="6"></textarea>
     </div>
     <div class="dlg-actions">
       <button class="btn" id="cancelVpcBtn" type="button">取消</button>
