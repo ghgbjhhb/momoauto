@@ -321,3 +321,58 @@
 
   color-scheme: dark;
 }
+
+/* TDesign-inspired administrator workspace.
+   Scoped to data-admin-theme so user consoles retain their own design. */
+:root[data-ui="v2"][data-admin-theme="tdesign"] {
+  --bg-page: #f3f5f7;
+  --bg-surface: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-subtle: #fafbfc;
+  --bg-hover: #f2f3f5;
+  --bg-selected: #e8f3ff;
+  --bg-selected-hover: #d9e9ff;
+  --bg-overlay: rgba(20, 25, 37, 0.48);
+  --text-1: #1f2329;
+  --text-2: #4e5969;
+  --text-3: #86909c;
+  --text-on-accent: #ffffff;
+  --border: #e5e6eb;
+  --border-strong: #c9cdd4;
+  --accent: #0052d9;
+  --accent-hover: #003cab;
+  --accent-soft: #e8f3ff;
+  --ok: #2ba471;
+  --ok-soft: #e3f9e9;
+  --warn: #e37318;
+  --warn-soft: #fff1e9;
+  --danger: #d54941;
+  --danger-soft: #fff0ed;
+  --info: #0052d9;
+  --info-soft: #e8f3ff;
+  --focus-ring: 0 0 0 2px rgba(0, 82, 217, 0.19);
+  --elev-1: 0 1px 3px rgba(25, 38, 60, 0.035);
+  --elev-2: 0 8px 28px rgba(25, 38, 60, 0.09);
+  --elev-3: 0 24px 56px rgba(25, 38, 60, 0.18);
+  --td-nav-width: 244px;
+  --td-header-height: 64px;
+}
+
+:root[data-ui="v2"][data-admin-theme="tdesign"] {
+  --h-16: 16px;
+  --h-17: 17px;
+  --h-18: 18px;
+  --h-22: 22px;
+  --h-25: 25px;
+  --h-28: 28px;
+  --h-32: 32px;
+  --h-36: 36px;
+  --h-38: 38px;
+  --h-42: 42px;
+  --h-44: 44px;
+  --h-60: 60px;
+  --h-112: 112px;
+  --h-124: 124px;
+  --z-admin-topbar: 101;
+  --z-admin-backdrop: 999;
+}

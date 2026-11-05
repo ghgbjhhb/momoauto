@@ -1175,17 +1175,6 @@ body {
 /* Keep the new playground usable in narrow admin windows without changing
    the normal eight administrator pages or their sidebar sizing. */
 @media (max-width: 600px) {
-  body:has(#tab-assistant.active) .admin-sidebar {
-    width: 64px;
-    padding-inline: var(--sp-4);
-  }
-  body:has(#tab-assistant.active) .admin-sidebar .nav-item {
-    justify-content: center;
-    padding-inline: var(--sp-4);
-  }
-  body:has(#tab-assistant.active) .admin-sidebar .nav-item > span {
-    display: none;
-  }
   #tab-assistant { padding: var(--sp-12); }
   #tab-assistant .admin-ai-lab-chat,
   #tab-assistant .admin-ai-lab-prompt { padding: var(--sp-12); }

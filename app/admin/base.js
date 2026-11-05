@@ -25,15 +25,15 @@ let currentTab = 'cluster';
 
 // Tab Configuration & Subpage Routing
 const TAB_CONFIG = {
-  cluster: { title: '设备集群与控制台', path: '/admin/cluster' },
-  disk: { title: '资源云盘 (真参/头像)', path: '/admin/disk' },
-  users: { title: '用户管理', path: '/admin/users' },
-  cards: { title: '卡密生成与分发', path: '/admin/cards' },
-  pool: { title: '设备池调度映射', path: '/admin/pool' },
-  ai: { title: 'AI全局设置', path: '/admin/ai' },
-  assistant: { title: 'AI 回复调试', path: '/admin/assistant' },
-  logs: { title: '系统运行日志', path: '/admin/logs' },
-  sms: { title: '接码平台管理 (玄武API)', path: '/admin/sms' },
+  cluster: { title: '设备控制台', group: '设备与资源', desc: '集中查看与操作云机，统一管理设备任务。', path: '/admin/cluster' },
+  pool: { title: '设备池与分配', group: '设备与资源', desc: '管理设备库存、分配状态与用户租约。', path: '/admin/pool' },
+  disk: { title: '资源云盘', group: '设备与资源', desc: '管理真参、头像及业务所需资源文件。', path: '/admin/disk' },
+  users: { title: '用户管理', group: '用户与运营', desc: '查看账号、权限状态及关联权益。', path: '/admin/users' },
+  cards: { title: '卡密与权益', group: '用户与运营', desc: '生成、查询和管理兑换卡密及权益。', path: '/admin/cards' },
+  sms: { title: '接码平台', group: '用户与运营', desc: '统一维护接码配置和调用记录。', path: '/admin/sms' },
+  assistant: { title: 'AI 调试对话', group: 'AI 工作台', desc: '独立测试提示词、模型、思考强度与意图结果。', path: '/admin/assistant' },
+  ai: { title: '模型与供应商', group: 'AI 工作台', desc: '配置 AI 服务商、模型和全局回复参数。', path: '/admin/ai' },
+  logs: { title: '系统运行日志', group: '运行维护', desc: '排查请求、任务运行和异常记录。', path: '/admin/logs' },
 };
 
 // DOM Elements
@@ -304,6 +304,20 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   // Update Browser Address & Title
   const config = TAB_CONFIG[targetTab];
   document.title = `${config.title} - momo全托管后台`;
+  const pageTitle = document.getElementById('adminPageTitle');
+  const pageDescription = document.getElementById('adminPageDescription');
+  const pageGroup = document.getElementById('adminPageGroup');
+  if (pageTitle) pageTitle.textContent = config.title;
+  if (pageDescription) pageDescription.textContent = config.desc;
+  if (pageGroup) pageGroup.textContent = config.group;
+  const activeLink = document.querySelector('.admin-sidebar .nav-item.active');
+  const activeGroup = activeLink?.closest('.admin-nav-group');
+  document.querySelectorAll('.admin-nav-group').forEach(group => {
+    group.open = group === activeGroup;
+  });
+  const shell = document.getElementById('adminShell');
+  shell?.classList.remove('is-nav-open');
+  document.getElementById('adminMenuToggle')?.setAttribute('aria-expanded', 'false');
   if (updateHistory && window.location.pathname !== config.path) {
     history.pushState({ tab: targetTab }, '', config.path);
   }
@@ -386,6 +400,31 @@ navItems.forEach(item => {
     event.preventDefault();
     const targetTab = item.getAttribute('data-tab');
     if (adminAuthorized) switchTab(targetTab, { updateHistory: true });
+  });
+});
+
+// Responsive navigation uses the same nine existing routes, without a
+// second mobile menu or duplicate sidebar handlers.
+const adminShell = document.getElementById('adminShell');
+const adminMenuToggle = document.getElementById('adminMenuToggle');
+const closeAdminMobileNav = () => {
+  adminShell?.classList.remove('is-nav-open');
+  adminMenuToggle?.setAttribute('aria-expanded', 'false');
+};
+adminMenuToggle?.addEventListener('click', () => {
+  const next = !adminShell?.classList.contains('is-nav-open');
+  adminShell?.classList.toggle('is-nav-open', next);
+  adminMenuToggle.setAttribute('aria-expanded', String(next));
+});
+document.getElementById('adminNavBackdrop')?.addEventListener('click', closeAdminMobileNav);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeAdminMobileNav();
+});
+document.querySelectorAll('[data-admin-link]').forEach(item => {
+  item.addEventListener('click', event => {
+    if (!adminAuthorized) return;
+    event.preventDefault();
+    switchTab(item.getAttribute('data-admin-link'));
   });
 });
 

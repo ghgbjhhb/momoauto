@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-ui="v2">
+<html lang="zh-CN" data-ui="v2" data-admin-theme="tdesign">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,86 +10,118 @@
   <link rel="stylesheet" href="/ui.css">
   <link rel="stylesheet" href="/console.css">
   <link rel="stylesheet" href="/admin.css">
+  <link rel="stylesheet" href="/admin-tdesign.css">
   
 </head>
 <body>
   <!-- Topbar -->
   <header class="admin-topbar">
-    <div class="admin-brand">
-      <div class="admin-brand-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-          <rect x="5" y="2" width="14" height="20" rx="3"></rect>
-          <path d="M12 18h.01"></path>
-        </svg>
-      </div>
-      <div class="admin-brand-title">
-        <span>momo全托管</span>
-        <span class="admin-tag">后台管理系统</span>
-      </div>
-    </div>
-
-    <div class="admin-topbar-right">
-      <div class="admin-user-pill" id="adminUserEmail">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>正在验证…</span>
-      </div>
-      <a class="admin-top-btn" href="/" target="_blank" title="打开普通用户端控制台页面">
-        <span>用户控制台 ↗</span>
+    <div class="admin-topbar-start">
+      <button type="button" class="admin-menu-toggle" id="adminMenuToggle" aria-label="打开管理导航" aria-controls="adminSidebar" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <a class="admin-brand" href="/admin/cluster" aria-label="MOMO 全托管管理平台">
+        <span class="admin-brand-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 23V9l9 9 9-9v14" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="25" cy="7" r="2.2" fill="currentColor"/></svg></span>
+        <span class="admin-brand-copy"><strong>MOMO</strong><small>全托管管理平台</small></span>
       </a>
-      <button class="admin-top-btn" id="adminPasswordBtn" type="button" title="修改当前管理员账号的登录密码">
-        <span>修改密码</span>
-      </button>
-      <button class="admin-top-btn danger" id="adminLogoutBtn" type="button">
-        <span>退出登录</span>
-      </button>
+      <span class="admin-topbar-divider" aria-hidden="true"></span>
+      <span class="admin-workspace-name">运营管理中心</span>
+    </div>
+    <div class="admin-topbar-right">
+      <a class="admin-top-btn admin-top-console" href="/" target="_blank" rel="noopener noreferrer" title="打开用户控制台">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="15" rx="2"/><path d="M8 22h8M12 19v3"/></svg><span>用户控制台</span>
+      </a>
+      <details class="admin-account-menu">
+        <summary class="admin-account-trigger">
+          <span class="admin-account-avatar" aria-hidden="true">管</span>
+          <span class="admin-user-pill" id="adminUserEmail"><span>正在验证…</span></span>
+          <svg class="admin-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="admin-account-panel">
+          <div class="admin-account-panel-title">账户操作</div>
+          <button class="admin-top-btn" id="adminPasswordBtn" type="button">修改密码</button>
+          <button class="admin-top-btn danger" id="adminLogoutBtn" type="button">退出登录</button>
+        </div>
+      </details>
     </div>
   </header>
 
   <!-- Shell -->
-  <div class="admin-shell">
+  <div class="admin-shell" id="adminShell">
     <!-- Sidebar Navigation -->
-    <nav class="admin-sidebar" id="adminSidebar">
-      <a class="nav-item active" data-tab="cluster" href="/admin/cluster">
+    <nav class="admin-sidebar" id="adminSidebar" aria-label="管理后台主导航">
+      <div class="admin-sidebar-intro"><span class="admin-sidebar-eyebrow">WORKSPACE</span><strong>工作空间</strong><p>按业务领域查找管理功能</p></div>
+      <div class="admin-nav-scroll"><div class="admin-nav-section-label">主导航</div>
+        <details class="admin-nav-group" data-nav-group="devices" open>
+          <summary class="admin-nav-group-trigger"><svg class="admin-group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v6H4zM13 14h7v6h-7z"/></svg><span>设备与资源</span><svg class="admin-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="admin-nav-children">
+            <a class="nav-item active" data-tab="cluster" href="/admin/cluster">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         <span>设备控制台</span>
       </a>
-      <a class="nav-item" data-tab="users" href="/admin/users">
+            <a class="nav-item" data-tab="pool" href="/admin/pool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+        <span>设备池与分配</span>
+      </a>
+            <a class="nav-item" data-tab="disk" href="/admin/disk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <span>资源云盘</span>
+      </a>
+          </div></details>
+        <details class="admin-nav-group" data-nav-group="ops">
+          <summary class="admin-nav-group-trigger"><svg class="admin-group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>用户与运营</span><svg class="admin-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="admin-nav-children">
+            <a class="nav-item" data-tab="users" href="/admin/users">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span>用户管理</span>
       </a>
-      <a class="nav-item admin-nav-secondary" data-tab="cards" href="/admin/cards">
+            <a class="nav-item" data-tab="cards" href="/admin/cards">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-        <span>卡密生成与分发</span>
+        <span>卡密与权益</span>
       </a>
-      <a class="nav-item admin-nav-secondary" data-tab="pool" href="/admin/pool">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-        <span>设备池调度映射</span>
+            <a class="nav-item" data-tab="sms" href="/admin/sms">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
+        <span>接码平台</span>
       </a>
-      <a class="nav-item admin-nav-secondary" data-tab="disk" href="/admin/disk">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-        <span>资源云盘 (真参/头像)</span>
-      </a>
-      <a class="nav-item" data-tab="ai" href="/admin/ai">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7zm5 4v2m6-2v2"/></svg>
-        <span>AI 服务设置</span>
-      </a>
-      <a class="nav-item" data-tab="assistant" href="/admin/assistant" title="AI 调试对话">
+          </div></details>
+        <details class="admin-nav-group" data-nav-group="ai">
+          <summary class="admin-nav-group-trigger"><svg class="admin-group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3ZM8 10h8M8 14h5"/></svg><span>AI 工作台</span><svg class="admin-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="admin-nav-children">
+            <a class="nav-item" data-tab="assistant" href="/admin/assistant" title="AI 调试对话">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a3 3 0 0 1-3 3H9l-6 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3z"/><path d="M8 10h8M8 14h5"/></svg>
         <span>AI 调试对话</span>
       </a>
-      <a class="nav-item" data-tab="logs" href="/admin/logs">
+            <a class="nav-item" data-tab="ai" href="/admin/ai">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7zm5 4v2m6-2v2"/></svg>
+        <span>模型与供应商</span>
+      </a>
+          </div></details>
+        <details class="admin-nav-group" data-nav-group="monitor">
+          <summary class="admin-nav-group-trigger"><svg class="admin-group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l3-6 4 12 3-6h4M3 4v16"/></svg><span>运行维护</span><svg class="admin-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="admin-nav-children">
+            <a class="nav-item" data-tab="logs" href="/admin/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         <span>系统运行日志</span>
         <span class="nav-badge" id="navErrorBadge" style="display: none">0</span>
       </a>
-      <a class="nav-item admin-nav-secondary" data-tab="sms" href="/admin/sms">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
-        <span>接码平台管理</span>
-      </a>
+          </div></details>
+      </div><div class="admin-sidebar-footer"><span class="admin-sidebar-footer-icon" aria-hidden="true">i</span><span>管理操作受权限保护<small>后台工作空间</small></span></div>
     </nav>
+    <button type="button" class="admin-nav-backdrop" id="adminNavBackdrop" aria-label="关闭管理导航" tabindex="-1"></button>
 
     <!-- Main Content -->
-    <main class="admin-main">
+    <main class="admin-main" id="adminMain">
+      <div class="admin-pagebar">
+        <div class="admin-pagebar-copy">
+          <div class="admin-breadcrumb"><span>工作空间</span><span class="admin-breadcrumb-divider">/</span><span id="adminPageGroup">设备与资源</span></div>
+          <h1 id="adminPageTitle">设备控制台</h1>
+          <p id="adminPageDescription">集中查看与操作云机，统一管理设备任务。</p>
+        </div>
+        <div class="admin-pagebar-actions">
+          <a class="admin-quicklink" href="/admin/assistant" data-admin-link="assistant" title="进入 AI 调试"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11.5a8.5 8.5 0 0 1-8.5 8.5H5l-2 2v-6.5A8.5 8.5 0 1 1 20 11.5Z"/><path d="M8 11h7M8 15h5"/></svg><span>AI 调试</span></a>
+          <a class="admin-quicklink" href="/admin/logs" data-admin-link="logs" title="查看运行日志"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 7 4 5-4 5M11 17h9"/></svg><span>运行日志</span></a>
+        </div>
+      </div>
       <!-- Tab 1: 设备集群运维与控制台 (收编原控制台完整功能) -->
       <section class="tab-content tab-full active" id="tab-cluster">
         <iframe class="cluster-iframe" id="clusterIframe" src="about:blank" data-admin-src="/index.html?view=admin-embed" title="云机控制台"></iframe>
