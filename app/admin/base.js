@@ -304,12 +304,6 @@ function switchTab(targetTab, { updateHistory = true } = {}) {
   // Update Browser Address & Title
   const config = TAB_CONFIG[targetTab];
   document.title = `${config.title} - momo全托管后台`;
-  const pageTitle = document.getElementById('adminPageTitle');
-  const pageDescription = document.getElementById('adminPageDescription');
-  const pageGroup = document.getElementById('adminPageGroup');
-  if (pageTitle) pageTitle.textContent = config.title;
-  if (pageDescription) pageDescription.textContent = config.desc;
-  if (pageGroup) pageGroup.textContent = config.group;
   const activeLink = document.querySelector('.admin-sidebar .nav-item.active');
   const activeGroup = activeLink?.closest('.admin-nav-group');
   document.querySelectorAll('.admin-nav-group').forEach(group => {
