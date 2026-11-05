@@ -7,7 +7,7 @@ const { handleMomoBrainRoutes } = require('../momo-brain-routes');
 const { handleAiReplyRoutes, activeRuns } = require('../ai-reply-routes');
 const { defaultArbiter } = require('../device-arbiter');
 const { executeScript, stopActiveScript, launchWebScript, getWebScriptState } = require('../script-runner');
-const { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, stopWorkflowByDevice } = require('../workflow-runner');
+const { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, stopWorkflowByDevice, dismissWorkflow } = require('../workflow-runner');
 const {
   busyDevices,
   busyAccountScripts,
@@ -191,6 +191,16 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     const body = await readJsonBody(request);
     try {
       json(response, 202, await resumeWorkflow(body?.workflowRunId, user));
+    } catch (err) {
+      json(response, err.status || 500, { ok: false, error: err.message });
+    }
+    return true;
+  }
+  if (request.method === 'POST' && url.pathname === '/api/workflows/dismiss') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    const body = await readJsonBody(request);
+    try {
+      json(response, 200, await dismissWorkflow(body?.workflowRunId, user));
     } catch (err) {
       json(response, err.status || 500, { ok: false, error: err.message });
     }

@@ -65,6 +65,14 @@ function persistWorkflow(run) {
     fs.mkdirSync(WORKFLOWS_DIR, { recursive: true });
     const targetFile = path.join(WORKFLOWS_DIR, `${run.id}.json`);
     const tempFile = path.join(WORKFLOWS_DIR, `${run.id}.${process.pid}.tmp`);
+    const deviceOutputsObj = {};
+    if (run.deviceOutputs instanceof Map) {
+      for (const [devId, out] of run.deviceOutputs) {
+        if (out) deviceOutputsObj[devId] = typeof out === 'string' ? out.slice(-8000) : '';
+      }
+    } else if (run.deviceOutputs && typeof run.deviceOutputs === 'object') {
+      Object.assign(deviceOutputsObj, run.deviceOutputs);
+    }
     const payload = {
       id: run.id,
       ownerUserId: run.ownerUserId,
@@ -78,6 +86,7 @@ function persistWorkflow(run) {
       results: run.results,
       message: run.message,
       lastOutput: run.lastOutput,
+      deviceOutputs: deviceOutputsObj,
       createdAt: run.createdAt || Date.now(),
       updatedAt: Date.now(),
       finishedAt: run.finishedAt,
@@ -94,10 +103,16 @@ function loadWorkflowFromDisk(id) {
   try {
     const raw = fs.readFileSync(filePath, 'utf8');
     const data = JSON.parse(raw);
+    const deviceOutputsMap = new Map();
+    if (data.deviceOutputs && typeof data.deviceOutputs === 'object') {
+      for (const [devId, out] of Object.entries(data.deviceOutputs)) {
+        if (out) deviceOutputsMap.set(devId, out);
+      }
+    }
     const run = {
       ...data,
       activeDeviceRuns: new Map(),
-      deviceOutputs: new Map(),
+      deviceOutputs: deviceOutputsMap,
       done: null
     };
     // 调和 (Reconciliation): 若任务在磁盘上是 running，但主服务重启导致内存丢失
@@ -123,6 +138,22 @@ function loadWorkflowFromDisk(id) {
     return null;
   }
 }
+
+function reconcileAllDiskWorkflows() {
+  if (!fs.existsSync(WORKFLOWS_DIR)) return;
+  try {
+    const files = fs.readdirSync(WORKFLOWS_DIR);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const id = file.replace(/\.json$/, '');
+      const run = loadWorkflowFromDisk(id);
+      if (run && (run.state === 'running' || run.state === 'interrupted')) {
+        workflows.set(id, run);
+      }
+    }
+  } catch {}
+}
+reconcileAllDiskWorkflows();
 
 function bad(message, status = 400) {
   return Object.assign(new Error(message), { status });
@@ -558,20 +589,40 @@ function getWorkflowStatus(id, user) {
 function getActiveWorkflowsSummary(user) {
   const active = [];
   for (const [id, run] of workflows) {
-    if (run.finishedAt) continue;
+    if (run.finishedAt && run.state !== 'interrupted') continue;
     if (user && user.role !== 'admin' && run.ownerUserId !== user.id) continue;
     active.push({
       workflowRunId: run.id,
       kind: run.kind,
       title: run.title,
       state: run.state,
+      interrupted: run.state === 'interrupted',
       currentStep: run.currentStep,
       totalSteps: run.totalSteps,
-      results: (run.results || []).map(r => ({ deviceId: r.deviceId, status: r.status })),
-      rawSpec: run.rawSpec
+      results: (run.results || []).map(r => ({
+        deviceId: r.deviceId,
+        status: r.status,
+        completedSteps: r.completedSteps || 0,
+        totalSteps: r.totalSteps || 0,
+        message: r.message
+      })),
+      rawSpec: run.rawSpec,
+      message: run.message
     });
   }
   return active;
+}
+
+async function dismissWorkflow(id, user) {
+  const run = getWorkflow(id, user);
+  run.state = 'cancelled';
+  run.finishedAt = Date.now();
+  run.message = '已放弃断点并清除记录';
+  persistWorkflow(run);
+  workflows.delete(id);
+  const ownerPath = path.join(PROJECT_ROOT, 'logs', 'runs', 'workflow-' + id + '.owner');
+  try { fs.unlinkSync(ownerPath); } catch {}
+  return statusSnapshot(run);
 }
 
 async function resumeWorkflow(id, user) {
@@ -657,4 +708,4 @@ async function stopWorkflowByDevice(deviceId, user) {
   return { ok: true, stopped: true, workflowRunId: matchedRun.id, deviceId, message: '已停止设备上的工作流步骤' };
 }
 
-module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice };
+module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice, dismissWorkflow };

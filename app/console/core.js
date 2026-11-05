@@ -280,11 +280,15 @@ function writeOutput(title, lines, meta = {}) {
   }
   const text = header + '\n' + cleanLines.join('\n');
 
-  // 1. 设备独立日志隔离存储
-  const deviceId = meta.deviceId || state.activeRun?.deviceId || (typeof currentDevice === 'function' ? currentDevice()?.deviceId : '') || '';
-  if (deviceId && state.deviceLogs) {
-    state.deviceLogs.set(deviceId, text);
-    if (runId && state.deviceActiveRunIds) state.deviceActiveRunIds.set(deviceId, runId);
+  // 1. 设备独立日志隔离存储（兼容单设备及逗号连接的多设备列表）
+  const rawDeviceId = meta.deviceId || state.activeRun?.deviceId || (typeof currentDevice === 'function' ? currentDevice()?.deviceId : '') || '';
+  const targetDeviceIds = String(rawDeviceId).split(',').map(s => s.trim()).filter(Boolean);
+
+  if (targetDeviceIds.length > 0 && state.deviceLogs) {
+    for (const devId of targetDeviceIds) {
+      state.deviceLogs.set(devId, text);
+      if (runId && state.deviceActiveRunIds) state.deviceActiveRunIds.set(devId, runId);
+    }
   }
 
   // 2. 独立全屏运行日志页始终同步最新
@@ -294,9 +298,9 @@ function writeOutput(title, lines, meta = {}) {
     box.scrollTop = box.scrollHeight;
   }
 
-  // 3. 总览页 Dock：仅在写入的设备正是当前查看的设备时才更新视口，杜绝多机串台
+  // 3. 总览页 Dock：当前查看的设备命中目标设备列表（或无特定设备）时实时刷新视口
   const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
-  const isCurrentDev = !deviceId || (currentDev && currentDev.deviceId === deviceId);
+  const isCurrentDev = targetDeviceIds.length === 0 || (currentDev && targetDeviceIds.includes(currentDev.deviceId));
 
   const dockBox = elements.dockOutputBox;
   if (dockBox && isCurrentDev) {

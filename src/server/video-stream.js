@@ -183,16 +183,35 @@ function createVideoStreams({ client }) {
         return;
       }
       try {
-        entry.decoder = spawn(process.env.YUNMOMO_FFMPEG_PATH || 'ffmpeg', [
+        const decoder = spawn(process.env.YUNMOMO_FFMPEG_PATH || 'ffmpeg', [
           '-hide_banner', '-loglevel', 'error', '-probesize', '32', '-analyzeduration', '0',
           '-flags', 'low_delay', '-f', 'h264', '-i', 'pipe:0', '-an',
           '-fps_mode', 'vfr', '-threads', '1', '-c:v', 'png', '-compression_level', '1',
           '-f', 'image2pipe', 'pipe:1'
         ], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
 
-        entry.decoder.stdout.on('data', data => entry.consumePngData(data));
-        entry.decoder.on('error', () => entry.closeDecoder());
-        entry.decoder.on('exit', () => { entry.decoder = null; });
+        entry.decoder = decoder;
+
+        // 必须监听子进程各个 stdio stream 的 error 事件，防止写入 EOF/EPIPE 时作为未捕获异常导致主进程崩溃
+        if (decoder.stdin) {
+          decoder.stdin.on('error', () => {
+            if (entry.decoder === decoder) entry.closeDecoder();
+          });
+        }
+        if (decoder.stdout) {
+          decoder.stdout.on('data', data => entry.consumePngData(data));
+          decoder.stdout.on('error', () => {});
+        }
+        if (decoder.stderr) {
+          decoder.stderr.on('data', () => {});
+          decoder.stderr.on('error', () => {});
+        }
+        decoder.on('error', () => {
+          if (entry.decoder === decoder) entry.closeDecoder();
+        });
+        decoder.on('exit', () => {
+          if (entry.decoder === decoder) entry.decoder = null;
+        });
 
         clearTimeout(entry.decoderIdleTimer);
         entry.decoderIdleTimer = setTimeout(() => entry.closeDecoder(), 15000);
@@ -203,12 +222,17 @@ function createVideoStreams({ client }) {
     };
 
     entry.closeDecoder = () => {
+      clearTimeout(entry.decoderIdleTimer);
+      entry.decoderIdleTimer = null;
       if (!entry.decoder) return;
-      try {
-        entry.decoder.stdin.end();
-        entry.decoder.kill('SIGTERM');
-      } catch {}
+      const dec = entry.decoder;
       entry.decoder = null;
+      try {
+        if (dec.stdin && !dec.stdin.destroyed) {
+          dec.stdin.destroy();
+        }
+        dec.kill('SIGTERM');
+      } catch {}
       entry.pngBuffer = Buffer.alloc(0);
       entry.pngOffset = 8;
     };
@@ -309,8 +333,10 @@ function createVideoStreams({ client }) {
       entry.lastPacketAt = Date.now();
 
       // 若内部挂载了解码器，喂给本地解码器产出无损截图
-      if (entry.decoder && !entry.decoder.stdin.destroyed) {
-        try { entry.decoder.stdin.write(frame); } catch {}
+      if (entry.decoder && entry.decoder.stdin && !entry.decoder.stdin.destroyed && entry.decoder.stdin.writable) {
+        if ((entry.decoder.stdin.writableLength || 0) + frame.length <= 2 * 1024 * 1024) {
+          try { entry.decoder.stdin.write(frame); } catch {}
+        }
       }
 
       const isKey = containsKeyframe(frame);

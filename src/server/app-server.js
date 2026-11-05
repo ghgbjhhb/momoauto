@@ -122,6 +122,10 @@ function createServer() {
   const server = http.createServer((request, response) =>
     require('../automation/timing').detached(() => handler(request, response))
   );
+  server.on('clientError', (err, socket) => {
+    if (err.code === 'ECONNRESET' || !socket.writable) return;
+    try { socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); } catch {}
+  });
   const bridge = attachManualControl(server, {
     allowedRequest,
     selectedDevice,
