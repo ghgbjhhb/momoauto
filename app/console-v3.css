@@ -2431,3 +2431,60 @@ body:has(#page-overview:not([hidden])) .page {
   justify-content: space-between;
   flex-wrap: nowrap;
 }
+
+
+/* 分类导航纯粹大字样式（无小字） */
+.task-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-12);
+  padding: var(--sp-14) var(--sp-14);
+  border-radius: var(--r-8);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: background-color var(--dur-2), border-color var(--dur-2);
+}
+.task-nav-item:hover {
+  background: var(--soft);
+}
+.task-nav-item.active {
+  background: var(--blue-light);
+  border-color: var(--blue-chip);
+}
+.task-nav-title {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-600);
+  color: var(--text);
+  line-height: 1.2;
+}
+.task-nav-item.active .task-nav-title {
+  color: var(--blue);
+  font-weight: var(--fw-700);
+}
+.task-nav-sub { display: none !important; }
+
+/* 中间列顶栏分类开关 */
+.task-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-10);
+}
+.task-list-head-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+}
+.group-switch-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+}
+.group-switch-text {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  font-weight: var(--fw-500);
+}

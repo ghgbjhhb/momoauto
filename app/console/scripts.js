@@ -26,10 +26,10 @@ const STATUS_LABELS = {
 window.STATUS_LABELS = STATUS_LABELS;
 
 const GROUPS = [
-  { key: 'momo', title: 'MOMO 业务', subtitle: '11~18 养号与日常', icon: 'message' },
-  { key: 'v2', title: 'V2 流程架构', subtitle: '01~09 初始化基建', icon: 'settings' },
-  { key: 'v3', title: 'V3 极速架构', subtitle: '01~09 敏捷基建', icon: 'zap' },
-  { key: 'custom', title: '组合脚本', subtitle: '自定义流水线', icon: 'grid' }
+  { key: 'momo', title: 'MOMO 业务', icon: 'message' },
+  { key: 'v2', title: 'V2 流程架构', icon: 'settings' },
+  { key: 'v3', title: 'V3 极速架构', icon: 'zap' },
+  { key: 'custom', title: '组合脚本', icon: 'grid' }
 ];
 
 const RUN_STATE_TEXT = { ok: '已完成', failed: '执行失败', cancelled: '已停止', skipped: '已跳过', pending: '排队中', running: '执行中', unknown: '状态未知' };
@@ -196,7 +196,7 @@ function renderTasksPage() {
   `;
 
   byId('taskNavList')?.addEventListener('click', onTaskNavClick);
-  byId('taskItemsContainer')?.addEventListener('click', onTaskItemsClick);
+  byId('taskListCol')?.addEventListener('click', onTaskItemsClick);
   byId('taskDetailPanel')?.addEventListener('input', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('change', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('click', onDetailClick);
@@ -244,7 +244,6 @@ function renderTaskNav() {
         <span class="task-nav-icon">${ic(g.icon || 'tasks', 16)}</span>
         <span class="task-nav-main">
           <div class="task-nav-title">${escapeHtml(g.title)}</div>
-          <div class="task-nav-sub">${escapeHtml(g.subtitle || '')}</div>
         </span>
         <span class="task-nav-badge">${count}</span>
       </div>
@@ -264,32 +263,56 @@ function renderTaskList() {
   const curKey = activeTaskNavKey();
   const grp = GROUPS.find(g => g.key === curKey) || GROUPS[0];
   const manage = isScriptManageMode();
-  const editVis = Boolean(state.taskManageMode && manage);
+  const grpVis = groupVisible(curKey);
+
+  // 更新顶栏：分类大标题 + 分类总开关
+  const head = byId('taskListHead') || host.closest('.panel')?.querySelector('.panel-head');
+  if (head) {
+    head.className = 'panel-head task-list-head';
+    head.innerHTML = `
+      <div class="task-list-head-title">
+        <h2 id="taskListTitle">${escapeHtml(grp.title)}</h2>
+        <span class="hint" id="taskCountHint"></span>
+      </div>
+      ${manage ? `
+        <label class="group-switch-wrapper" title="控制「${escapeHtml(grp.title)}」整个分类在用户端是否启用">
+          <span class="group-switch-text">分类总开关</span>
+          <button class="switch ${grpVis ? 'on' : ''}" data-vis-group="${escapeHtml(curKey)}" type="button" role="switch"></button>
+        </label>
+      ` : ''}
+    `;
+  }
 
   let itemsHtml = '';
   let count = 0;
 
   if (curKey === 'custom') {
     const bundles = Array.isArray(state.bundles) ? state.bundles : [];
-    const display = editVis ? bundles : bundles.filter(bundleEffectivelyVisible);
+    // 管理员永远列出全部组合以便配置，普通用户才过滤隐藏项
+    const display = manage ? bundles : bundles.filter(bundleEffectivelyVisible);
     count = display.length;
     itemsHtml = display.length ? display.map(bundleCardHtml).join('') : '<div class="empty">暂无组合脚本，可点击右上角新建</div>';
   } else {
     const list = groupScripts(curKey);
-    const display = editVis ? list : list.filter(scriptEffectivelyVisible);
+    // 管理员永远列出全部任务以便开启/关闭，普通用户才过滤隐藏项
+    const display = manage ? list : list.filter(scriptEffectivelyVisible);
     count = display.length;
     itemsHtml = display.length ? display.map(taskCardHtml).join('') : '<div class="empty">当前分类下暂无可用任务</div>';
   }
 
   host.innerHTML = itemsHtml;
 
-  const titleEl = byId('taskListTitle');
-  if (titleEl) titleEl.textContent = grp.title;
   const countEl = byId('taskCountHint');
   if (countEl) countEl.textContent = `${count} 项`;
 }
 
 function onTaskItemsClick(event) {
+  const visGroup = event.target.closest('[data-vis-group]');
+  if (visGroup) {
+    const key = visGroup.dataset.visGroup;
+    saveVisibilityConfig({ type: 'group', id: key, visible: !groupVisible(key) });
+    return;
+  }
   const visBundle = event.target.closest('[data-vis-bundle]');
   if (visBundle) {
     const bundle = state.bundles.find(item => item.id === visBundle.dataset.visBundle);
@@ -391,11 +414,10 @@ function groupScripts(key) {
 
 function taskCardHtml(script) {
   const manage = isScriptManageMode();
-  const editVis = Boolean(state.taskManageMode && manage);
   const configuredVisible = scriptConfiguredVisible(script);
   const grpVisible = groupVisible(scriptGroupKey(script));
   const effectiveVisible = grpVisible && configuredVisible;
-  if (!editVis && !effectiveVisible) return '';
+  if (!manage && !effectiveVisible) return '';
   const active = state.taskScriptId === script.id ? 'active' : '';
   const danger = script.destructive ? '<span class="danger-tag">清数据</span>' : '';
   const hero = script.batch ? '<span class="hero-tag">全流程</span>' : '';
@@ -405,39 +427,37 @@ function taskCardHtml(script) {
   let switchMutedClass = '';
   let switchTitle = '';
 
-  if (editVis) {
+  if (manage) {
     if (!configuredVisible) {
-      hiddenBadge = '<span class="badge warn" title="此脚本个体开关已关闭，在用户侧隐藏">已隐藏</span>';
-      switchTitle = '控制此脚本在用户侧是否显示（当前已关闭）';
+      hiddenBadge = '<span class="badge warn" title="此脚本已单独关闭">已隐藏</span>';
+      switchTitle = '控制此脚本是否在用户端显示（当前已关闭）';
     } else if (!grpVisible) {
-      hiddenBadge = '<span class="badge warn" title="所属分组总开关已关闭，该脚本在用户侧实际处于隐藏状态">随组隐藏</span>';
+      hiddenBadge = '<span class="badge warn" title="所属分类总开关已关闭，该脚本随分类隐藏">随组隐藏</span>';
       cardMutedClass = 'inherited-hidden';
       switchMutedClass = 'group-disabled';
-      switchTitle = '所属分组总开关已关闭，该脚本在用户侧处于随组隐藏状态';
+      switchTitle = '所属分类总开关已关闭，点击顶部分类总开关可恢复';
     } else {
-      switchTitle = '控制此脚本在用户侧是否显示（当前已开启）';
+      switchTitle = '控制此脚本是否在用户端显示（当前已开启）';
     }
   }
 
-  const visSwitch = editVis ? `<button class="switch ${configuredVisible ? 'on' : ''} ${switchMutedClass}" data-vis-script="${escapeHtml(script.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>` : '';
-  const rightIcon = editVis ? visSwitch : `<span class="task-chevron">${ic('chevron', 14)}</span>`;
+  const visSwitch = manage ? `<button class="switch ${configuredVisible ? 'on' : ''} ${switchMutedClass}" data-vis-script="${escapeHtml(script.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>` : `<span class="task-chevron">${ic('chevron', 14)}</span>`;
 
   return `<div class="task-card ${active} ${cardMutedClass}" data-task-select="${escapeHtml(script.id)}" role="button" tabindex="0">
     ${script.order ? `<span class="num">${formatStepOrder(script.order)}</span>` : '<span class="num">00</span>'}
     <span class="task-card-main">
       <span class="task-name">${escapeHtml(scriptTitle(script))}${danger}${hero}${hiddenBadge}</span>
     </span>
-    ${rightIcon}
+    ${visSwitch}
   </div>`;
 }
 
 function bundleCardHtml(bundle) {
   const manage = isScriptManageMode();
-  const editVis = Boolean(state.taskManageMode && manage);
   const enabled = bundle.enabled !== false;
   const grpVisible = groupVisible('custom');
   const effectiveVisible = grpVisible && enabled;
-  if (!editVis && !effectiveVisible) return '';
+  if (!manage && !effectiveVisible) return '';
   const steps = (bundle.stepIds || []).map((id, i) => {
     const script = state.scripts.find(s => s.id === id);
     return script ? { script, options: bundle.stepOptions?.[i] || {} } : null;
@@ -453,21 +473,21 @@ function bundleCardHtml(bundle) {
   let switchMutedClass = '';
   let switchTitle = '';
 
-  if (editVis) {
+  if (manage) {
     if (!enabled) {
-      hiddenBadge = '<span class="badge warn" title="此组合自身已关闭，在用户侧隐藏">已隐藏</span>';
-      switchTitle = '控制此组合在用户侧是否显示（当前已关闭）';
+      hiddenBadge = '<span class="badge warn" title="此组合已关闭">已隐藏</span>';
+      switchTitle = '控制此组合是否显示（当前已关闭）';
     } else if (!grpVisible) {
-      hiddenBadge = '<span class="badge warn" title="自定义组合分组总开关已关闭，该组合在用户侧实际处于隐藏状态">随组隐藏</span>';
+      hiddenBadge = '<span class="badge warn" title="组合分类总开关已关闭">随组隐藏</span>';
       cardMutedClass = 'inherited-hidden';
       switchMutedClass = 'group-disabled';
-      switchTitle = '自定义组合分组总开关已关闭，该组合在用户侧处于随组隐藏状态';
+      switchTitle = '组合脚本分类总开关已关闭';
     } else {
-      switchTitle = '控制此组合在用户侧是否显示（当前已开启）';
+      switchTitle = '控制此组合是否显示（当前已开启）';
     }
   }
 
-  const manageActions = editVis ? `
+  const manageActions = manage ? `
     <span class="task-group-extra">
       <button class="switch ${enabled ? 'on' : ''} ${switchMutedClass}" data-vis-bundle="${escapeHtml(bundle.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>
       <button class="btn sm" data-bundle-edit="${escapeHtml(bundle.id)}" type="button">编辑</button>
