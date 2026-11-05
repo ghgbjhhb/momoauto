@@ -266,18 +266,33 @@ window.loadSharedRuntimeState = loadSharedRuntimeState;
 function updateStopButton() {
   const btn = elements.stopScriptBtn;
   const dockBtn = elements.dockStopScriptBtn;
-  const busy = Boolean(state.activeRun || state.activeBundleRun || state.batchRunning);
-  const text = state.batchRunning ? '停止批量任务' : '停止脚本';
+  const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+  const devState = currentDev ? (state.deviceStates?.[currentDev.deviceId] || { status: 'idle' }) : { status: 'idle' };
+  const anyBusy = Object.values(state.deviceStates || {}).some(st => ['running', 'stopping'].includes(st.status)) ||
+    Boolean(state.activeRun || state.activeBundleRun || state.batchRunning);
+
   if (btn) {
-    btn.hidden = !busy;
-    btn.textContent = text;
+    btn.hidden = !anyBusy;
+    btn.textContent = state.batchRunning ? '停止批量任务' : '停止脚本';
   }
   if (dockBtn) {
-    dockBtn.hidden = !busy;
-    dockBtn.textContent = text;
+    dockBtn.hidden = !anyBusy;
+    dockBtn.textContent = '停止全部任务';
   }
   const pulse = elements.dockPulse;
-  if (pulse) pulse.classList.toggle('running', busy);
+  if (pulse) pulse.classList.toggle('running', anyBusy);
+
+  // 日志栏小字标题提示与当前查看设备对齐
+  const miniHint = byId('dockMiniHint');
+  if (miniHint && currentDev) {
+    if (devState.status === 'running') {
+      miniHint.textContent = `[${typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId}] 正在执行: ${devState.taskTitle || '任务'}`;
+    } else if (devState.status === 'manual') {
+      miniHint.textContent = `[${typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId}] 手动控制中`;
+    } else {
+      miniHint.textContent = `[${typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId}] 暂无执行记录`;
+    }
+  }
 }
 
 function updateSystemLogView() {

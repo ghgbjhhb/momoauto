@@ -783,10 +783,12 @@ function renderDevicePicker() {
   // 平台在线状态可能滞后（离线设备仍可能可操作），与旧版一致不按在线状态禁选
   if (!state.batchDevices.length && state.selectedDeviceId) state.batchDevices = [state.selectedDeviceId];
   const picker = state.devices.map(device => {
-    const active = deviceRunning(device.deviceId);
+    const devState = getDeviceState(device.deviceId);
+    const isBusy = ['running', 'stopping'].includes(devState.status);
+    const isManual = devState.status === 'manual';
     const checked = state.batchDevices.includes(device.deviceId);
-    const note = active ? '正在执行' : isOnline(device) ? '可执行' : '离线';
-    return `<label class="device-choice ${checked ? 'checked' : ''}">
+    const note = isManual ? '手动控制' : isBusy ? `运行中 (${escapeHtml(devState.taskTitle || '任务')})` : isOnline(device) ? '可执行' : '离线';
+    return `<label class="device-choice ${checked ? 'checked' : ''} ${isBusy ? 'is-busy' : ''}">
       <input type="checkbox" data-batch-device="${escapeHtml(device.deviceId)}" ${checked ? 'checked' : ''}>
       <span class="choice-text"><b>${deviceIndexLabel(device)}</b><small>${note}</small></span>
     </label>`;
@@ -850,14 +852,20 @@ function collectTaskOptions(script) {
     ? byId('ovTaskConfig') : null;
   const panel = overview || byId('taskDetailPanel');
   const options = {};
+  const validParams = new Set((script.parameters || []).map(p => p.name));
   if (panel) {
     for (const input of panel.querySelectorAll(overview ? '[data-ov-param]' : '[data-task-param]')) {
+      const paramName = overview ? input.dataset.ovParam : input.dataset.taskParam;
+      if (!paramName) continue;
       const value = String(input.value ?? '').trim();
       if (input.required && !value) {
         input.focus?.();
         throw new Error((input.closest('.ov-wb-field, .field')?.querySelector('label')?.textContent || '该参数') + '为必填项');
       }
-      if (value) options[overview ? input.dataset.ovParam : input.dataset.taskParam] = value;
+      // 严格白名单校验：仅收集脚本声明的有效参数，杜绝“未知脚本参数”导致子进程崩溃
+      if (value && validParams.has(paramName)) {
+        options[paramName] = value;
+      }
     }
   }
   if (script && script.id && script.id.startsWith('flow-06')) {
@@ -1223,6 +1231,15 @@ async function startTaskBatch() {
   catch (error) { showToast(error.message); return; }
   const ids = resolveBatchDevices(script);
   if (!ids.length) { showToast('请先勾选至少一台可执行设备'); return; }
+  const busyList = ids.map(id => ({ id, state: getDeviceState(id) })).filter(d => ['running', 'stopping', 'manual'].includes(d.state.status));
+  if (busyList.length > 0) {
+    const devNames = busyList.map(d => {
+      const dev = state.devices.find(item => item.deviceId === d.id);
+      return deviceIndexLabel(dev);
+    }).join(', ');
+    showToast(`设备 ${devNames} 正在执行任务中，单机严格互斥，请等待完成或取消勾选该设备后再执行`);
+    return;
+  }
   if (isVpcProxyScript(script) && options.action !== 'show' && options.action !== 'close') {
     const vpcData = await promptVpcProxyDialog();
     if (!vpcData) return;
@@ -2237,60 +2254,63 @@ function updateOverviewRunSummary() {
   const summary = byId('ovRunSummary');
   if (!summary) return;
   const currentDev = currentDevice();
-  const localRun = state.activeRun;
-  const bundleRun = state.activeBundleRun;
-  const sharedRun = !localRun && currentDev
-    ? (state.runtimeState?.runs || []).find(run =>
-        run.deviceId === currentDev.deviceId && ['starting', 'running', 'stopping'].includes(run.status))
-    : null;
+  const isGrid = state.view === 'grid';
+  const targets = getOverviewTargetDevices();
 
   let title = '任务待命';
   let hint = '选择任务，配置参数后即可执行';
-  let deviceId = currentDev?.deviceId || '';
   let status = 'idle';
+  let targetText = '未选择设备';
 
-  if (localRun) {
-    deviceId = localRun.deviceId;
-    const script = state.scripts.find(item => item.id === localRun.scriptId);
-    title = localRun.unknown ? '任务状态待核实' : localRun.stopping ? '正在停止任务' : '任务运行中';
-    hint = script ? scriptTitle(script) : '正在执行脚本';
-    if (state.lastOutput?.runId === localRun.id) hint = state.lastOutput.title || hint;
-    status = localRun.unknown ? 'warning' : 'running';
-  } else if (bundleRun) {
-    const bundle = (state.bundles || []).find(item => item.id === bundleRun.bundleId);
-    title = bundleRun.stopped ? '正在停止组合任务' : '组合任务运行中';
-    hint = bundle?.name || '正在依次执行组合步骤';
-    status = 'running';
-  } else if (state.batchRunning) {
-    title = state.batchStopRequested ? '正在停止任务' : '任务运行中';
-    hint = '正在等待或执行当前任务';
-    status = 'running';
-  } else if (sharedRun) {
-    title = sharedRun.status === 'stopping' ? '设备任务正在停止' : '设备已有任务运行';
-    hint = sharedRun.title || '任务在服务端执行中';
-    status = 'running';
+  if (!isGrid && currentDev) {
+    targetText = `目标：${deviceIndexLabel(currentDev)}`;
+    const devState = getDeviceState(currentDev.deviceId);
+    if (devState.status === 'running') {
+      title = '设备任务运行中';
+      hint = devState.taskTitle || '正在执行脚本';
+      status = 'running';
+    } else if (devState.status === 'stopping') {
+      title = '正在停止设备任务';
+      hint = '等待动作完成并安全释放云机…';
+      status = 'warning';
+    } else if (devState.status === 'manual') {
+      title = '设备手动控制中';
+      hint = '人工操作正在接管控制通道';
+      status = 'running';
+    } else {
+      const otherRunning = Object.values(state.deviceStates || {}).find(s => s.deviceId !== currentDev.deviceId && s.status === 'running');
+      if (otherRunning) {
+        title = '设备待命';
+        hint = `当前设备空闲 (后台 ${escapeHtml(otherRunning.taskTitle || '其他任务')} 运行中)`;
+        status = 'idle';
+      } else {
+        title = '任务待命';
+        hint = '选择任务，配置参数后即可执行';
+        status = 'idle';
+      }
+    }
+  } else if (isGrid) {
+    const count = targets.length;
+    targetText = count ? `已选 ${count} 台设备` : '未选择设备';
+    const busyTargets = targets.map(d => getDeviceState(d.deviceId)).filter(s => ['running', 'stopping'].includes(s.status));
+    if (busyTargets.length > 0) {
+      title = `批量任务运行中 (${busyTargets.length}/${count})`;
+      hint = busyTargets.map(s => s.taskTitle).filter(Boolean).slice(0, 2).join(', ') || '多设备并行执行中';
+      status = 'running';
+    } else {
+      title = '批量待命';
+      hint = count ? `已选 ${count} 台设备，就绪后可批量启动` : '请在画面上方勾选要批量操作的设备';
+      status = 'idle';
+    }
   }
 
   summary.dataset.status = status;
-  byId('ovRunStatusTitle').textContent = title;
-  byId('ovRunStatusHint').textContent = hint;
-  const targets = getOverviewTargetDevices();
-  let targetText = '未选择设备';
-  if (state.batchRunning) {
-    const batchTargets = (state.batchResults || []).map(r => state.devices.find(d => d.deviceId === r.deviceId)).filter(Boolean);
-    if (batchTargets.length) {
-      targetText = `目标：${batchTargets.length}台 (${batchTargets.map(d => deviceIndexLabel(d)).join(', ')})`;
-    } else if (targets.length) {
-      targetText = `目标：${targets.length}台 (${targets.map(d => deviceIndexLabel(d)).join(', ')})`;
-    }
-  } else if (targets.length === 1) {
-    targetText = `目标：${deviceIndexLabel(targets[0])}`;
-  } else if (targets.length > 1) {
-    targetText = `目标：${targets.length}台 (${targets.map(d => deviceIndexLabel(d)).join(', ')})`;
-  } else {
-    targetText = '未选择设备';
-  }
-  byId('ovRunStatusTarget').textContent = targetText;
+  const titleEl = byId('ovRunStatusTitle');
+  if (titleEl) titleEl.textContent = title;
+  const hintEl = byId('ovRunStatusHint');
+  if (hintEl) hintEl.textContent = hint;
+  const targetEl = byId('ovRunStatusTarget');
+  if (targetEl) targetEl.textContent = targetText;
 }
 
 function updateOverviewRuntime() {
