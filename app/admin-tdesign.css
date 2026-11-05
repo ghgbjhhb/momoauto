@@ -43,9 +43,9 @@ html[data-admin-theme="tdesign"] .admin-topbar {
 /* Four information domains, each expandable without JavaScript. */
 html[data-admin-theme="tdesign"] .admin-shell { flex: 1 1 0; height: auto; min-height: 0; overflow: hidden; }
 html[data-admin-theme="tdesign"] .admin-sidebar { width: var(--td-nav-width); padding: 0; gap: 0; background: var(--bg-surface); border-right: 1px solid var(--border); overflow: hidden; }
-.admin-sidebar-intro { padding: var(--sp-24) var(--sp-20) var(--sp-16); }
+.admin-sidebar-intro { padding: var(--sp-16) var(--sp-20) var(--sp-10); }
 .admin-sidebar-eyebrow { display: block; margin-bottom: var(--sp-8); color: var(--text-3); font-size: var(--fs-11); letter-spacing: 1.1px; }
-.admin-sidebar-intro strong { display: block; color: var(--text-1); font-size: var(--fs-18); font-weight: var(--fw-600); }
+.admin-sidebar-intro strong { display: block; color: var(--text-1); font-size: var(--fs-16); font-weight: var(--fw-600); }
 .admin-sidebar-intro p { margin: var(--sp-6) 0 0; font-size: var(--fs-12); color: var(--text-3); }
 .admin-nav-scroll { flex: 1 1 0; overflow-y: auto; min-height: 0; padding: var(--sp-8) var(--sp-12) var(--sp-16); }
 .admin-nav-section-label { margin: var(--sp-8) var(--sp-12) var(--sp-12); font-size: var(--fs-12); color: var(--text-3); }
@@ -71,12 +71,12 @@ html[data-admin-theme="tdesign"] .admin-sidebar .nav-item.active::before { conte
 
 /* Persistent page context, spacious surfaces and consistent data density. */
 html[data-admin-theme="tdesign"] .admin-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-page); }
-.admin-pagebar { flex: none; min-height: var(--h-112); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-20); padding: var(--sp-16) var(--sp-28); background: var(--bg-page); border-bottom: 1px solid var(--border); }
+.admin-pagebar { flex: none; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-20); padding: var(--sp-12) var(--sp-28); background: var(--bg-page); border-bottom: 1px solid var(--border); }
 .admin-pagebar-copy { min-width: 0; }
 .admin-breadcrumb { display: flex; align-items: center; gap: var(--sp-8); font-size: var(--fs-12); color: var(--text-3); }
 .admin-breadcrumb-divider { color: var(--border-strong); }
-.admin-pagebar h1 { margin: var(--sp-6) 0 var(--sp-4); font-size: var(--fs-22); line-height: var(--lh-tight); font-weight: var(--fw-600); letter-spacing: -.4px; color: var(--text-1); }
-.admin-pagebar p { margin: 0; font-size: var(--fs-12); color: var(--text-3); }
+.admin-pagebar h1 { margin: var(--sp-4) 0 0; font-size: var(--fs-20); line-height: var(--lh-tight); font-weight: var(--fw-600); letter-spacing: -.4px; color: var(--text-1); }
+.admin-pagebar p { display: none; margin: 0; }
 .admin-pagebar-actions { display: flex; align-items: center; flex: none; gap: var(--sp-8); }
 .admin-quicklink { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-8); min-height: var(--h-36); padding: var(--sp-8) var(--sp-12); border: 1px solid var(--border); border-radius: var(--r-6); background: var(--bg-surface); color: var(--text-2); text-decoration: none; font-size: var(--fs-12); white-space: nowrap; }
 .admin-quicklink svg { width: 16px; height: var(--h-16); }

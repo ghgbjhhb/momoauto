@@ -361,15 +361,16 @@ async function handleConsoleRoutes(ctx, request, response, url) {
       return true;
     }
     const result = await previewImage(deviceId, user);
-    response.writeHead(200, {
+    const headers = {
       'Content-Type': result.contentType || 'image/jpeg',
       'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-      'X-Screenshot-Source': result.source,
-      'X-Image-Width': String(result.width),
-      'X-Image-Height': String(result.height),
-      'X-Frame-Decoded-At': result.decodedAt
-    });
+      'X-Content-Type-Options': 'nosniff'
+    };
+    if (result.source) headers['X-Screenshot-Source'] = String(result.source);
+    if (result.width) headers['X-Image-Width'] = String(result.width);
+    if (result.height) headers['X-Image-Height'] = String(result.height);
+    if (result.decodedAt) headers['X-Frame-Decoded-At'] = String(result.decodedAt);
+    response.writeHead(200, headers);
     response.end(result.data);
     return true;
   }
