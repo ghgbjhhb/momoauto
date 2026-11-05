@@ -60,9 +60,33 @@ function updateViewerControls() {
   if (countBadge) {
     const onlineCount = state.devices.filter(d => isOnline(d)).length;
     countBadge.textContent = onlineCount + '台在线';
-    countBadge.hidden = !state.devices.length;
+    countBadge.hidden = isGrid || !state.devices.length;
+  }
+  updateGridBatchTools();
+}
+
+function updateGridBatchTools() {
+  const isGrid = state.view === 'grid';
+  const tools = byId('ovGridBatchTools');
+  if (tools) tools.hidden = !isGrid;
+  const badge = byId('ovBatchCountBadge');
+  if (badge) {
+    const count = (state.batchDevices || []).length;
+    badge.textContent = `已选 ${count} 台`;
   }
 }
+window.updateGridBatchTools = updateGridBatchTools;
+
+function notifyBatchSelectionChanged() {
+  eventBus.dispatchEvent(new CustomEvent('device:batch-changed'));
+  if (typeof window.updateOverviewWorkbenchFooter === 'function') {
+    window.updateOverviewWorkbenchFooter();
+  }
+  if (typeof window.updateOverviewRunSummary === 'function') {
+    window.updateOverviewRunSummary();
+  }
+}
+window.notifyBatchSelectionChanged = notifyBatchSelectionChanged;
 
 function renderDeviceQuickSelect() {
   const select = byId('ovDevQuickSelect');
@@ -70,7 +94,7 @@ function renderDeviceQuickSelect() {
   const currentId = state.selectedDeviceId;
   const optionsHtml = state.devices.map(d => {
     const key = deviceStatusKey(d);
-    return '<option value="' + escapeHtml(d.deviceId) + '">' + deviceIndexLabel(d) + ' ' + escapeHtml(d.name) + ' (' + STATUS_TEXT[key] + ')</option>';
+    return '<option value="' + escapeHtml(d.deviceId) + '">' + deviceIndexLabel(d) + ' (' + STATUS_TEXT[key] + ')</option>';
   }).join('');
   if (select.innerHTML !== optionsHtml) {
     select.innerHTML = optionsHtml;
@@ -780,6 +804,7 @@ byId('deviceRefreshBtn')?.addEventListener('click', async () => {
 
 // 双击卡片直达单台模式
 elements.viewerStage?.addEventListener?.('dblclick', event => {
+  if (event.target.closest('[data-tile-check], .tile-check-label, [data-tile-action]')) return;
   const tile = event.target.closest('[data-tile-device]');
   if (tile) {
     event.preventDefault();

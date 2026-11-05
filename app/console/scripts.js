@@ -1858,15 +1858,16 @@ function renderOverviewTasks() {
 
 function getOverviewTargetDevices() {
   if (state.view === 'grid') {
-    const selected = (state.batchDevices || [])
+    return (state.batchDevices || [])
       .map(id => state.devices.find(d => d.deviceId === id))
       .filter(Boolean);
-    if (selected.length) return selected;
   }
   const current = currentDevice();
   return current ? [current] : [];
 }
 window.getOverviewTargetDevices = getOverviewTargetDevices;
+window.updateOverviewWorkbenchFooter = updateOverviewWorkbenchFooter;
+window.updateOverviewRunSummary = updateOverviewRunSummary;
 
 function formatOverviewTargetLabel(targets) {
   if (!targets.length) return '未选择设备';
@@ -2068,10 +2069,23 @@ function updateOverviewRunSummary() {
   summary.dataset.status = status;
   byId('ovRunStatusTitle').textContent = title;
   byId('ovRunStatusHint').textContent = hint;
-  const device = state.devices.find(item => item.deviceId === deviceId);
-  byId('ovRunStatusTarget').textContent = device
-    ? `目标：${deviceIndexLabel(device)} ${device.name || ''}`
-    : deviceId ? `目标：${deviceId}` : '未选择设备';
+  const targets = getOverviewTargetDevices();
+  let targetText = '未选择设备';
+  if (state.batchRunning) {
+    const batchTargets = (state.batchResults || []).map(r => state.devices.find(d => d.deviceId === r.deviceId)).filter(Boolean);
+    if (batchTargets.length) {
+      targetText = `目标：${batchTargets.length}台 (${batchTargets.map(d => deviceIndexLabel(d)).join(', ')})`;
+    } else if (targets.length) {
+      targetText = `目标：${targets.length}台 (${targets.map(d => deviceIndexLabel(d)).join(', ')})`;
+    }
+  } else if (targets.length === 1) {
+    targetText = `目标：${deviceIndexLabel(targets[0])}`;
+  } else if (targets.length > 1) {
+    targetText = `目标：${targets.length}台 (${targets.map(d => deviceIndexLabel(d)).join(', ')})`;
+  } else {
+    targetText = '未选择设备';
+  }
+  byId('ovRunStatusTarget').textContent = targetText;
 }
 
 function updateOverviewRuntime() {

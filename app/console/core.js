@@ -328,7 +328,9 @@ function shortDeviceId(device) {
 }
 
 function deviceLabel(device) {
-  return device.name + ' · ' + shortDeviceId(device);
+  if (!device) return '';
+  const idx = typeof window.deviceIndexLabel === 'function' ? window.deviceIndexLabel(device) : '';
+  return idx ? `${idx} · ${shortDeviceId(device)}` : shortDeviceId(device);
 }
 
 function currentDevice() {
