@@ -367,11 +367,15 @@ class CloudPhoneControl extends EventEmitter {
   }
 
   touch(action, x, y, options = {}) {
-    if (this._streamSend(stream => stream.sendTouch(action, x, y, options))) return this;
-    return this.send(p.encodeTouch({ ...options, action, x, y,
-      screenWidth: options.screenWidth ?? this.screenWidth, screenHeight: options.screenHeight ?? this.screenHeight,
-      pressure: options.pressure ?? (action === p.ACTION.UP ? 0 : 1),
-      buttons: options.buttons ?? (action === p.ACTION.UP ? 0 : 1) }));
+    const touchOptions = {
+      ...options,
+      screenWidth: options.screenWidth ?? this.screenWidth,
+      screenHeight: options.screenHeight ?? this.screenHeight,
+    };
+    if (this._streamSend(stream => stream.sendTouch(action, x, y, touchOptions))) return this;
+    return this.send(p.encodeTouch({ ...touchOptions, action, x, y,
+      pressure: touchOptions.pressure ?? (action === p.ACTION.UP ? 0 : 1),
+      buttons: touchOptions.buttons ?? (action === p.ACTION.UP ? 0 : 1) }));
   }
 
   keyDown(keycode, options = {}) {

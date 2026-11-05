@@ -131,7 +131,7 @@ async function openKeyAuth(phone, control, worker, directory, state, found, opti
     targetBox: shared.appTargetBox,
     isTarget: observation => successState(observation.items).ok || failureState(observation.items).failed,
     launchEvidence: observation => keyAuthEvidence(observation.items),
-    offsets: [{ y: -35 }, { y: -50 }, { y: 0 }],
+    offsets: [{ y: -45 }, { y: -65 }, { y: -25 }],
     prepare: async observation => {
       const isTarget = successState(observation.items).ok || failureState(observation.items).failed;
       const isLauncher = homeAnchorMatches(observation.items).length >= 2;

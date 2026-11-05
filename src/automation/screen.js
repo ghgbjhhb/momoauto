@@ -169,7 +169,7 @@ function clipboardToastVisible(items) {
 function appTargetBox(items) {
   const exact = findPhrase(items, '密钥认证');
   if (exact) return exact;
-  const key = findPhrase(items, '密钥');
+  const key = findPhrase(items, '密钥') || findPhrase(items, '钥认证');
   const auth = findPhrase(items, '认证');
   if (key && auth && Math.abs(key.top - auth.top) <= 35) return mergedBox([
     { ...key, right: key.right, bottom: key.bottom },

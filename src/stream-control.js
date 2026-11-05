@@ -18,7 +18,8 @@ const { EventEmitter } = require('node:events');
 const WebSocket = require('ws');
 const { ACTION } = require('./protocol');
 
-const FATAL_CLOSE_CODES = new Set([4003, 4004, 4005]);
+const PERMANENT_CLOSE_CODES = new Set([4003, 4004]);
+const CONFLICT_CLOSE_CODES = new Set([4005]);
 const POINTER_ID_MOUSE = -1;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -62,33 +63,74 @@ class StreamInput extends EventEmitter {
     return !!this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 
-  connect(timeoutMs = 12000) {
+  async connect(timeoutMs = 12000) {
     if (this._connecting) return this._connecting;
     if (this.open && this.videoWidth) return Promise.resolve(this);
+    const deadline = Date.now() + Math.max(2000, Number(timeoutMs) || 12000);
+    this._connecting = this._connectWithRetry(deadline);
+    try {
+      return await this._connecting;
+    } finally {
+      this._connecting = null;
+    }
+  }
+
+  async _connectWithRetry(deadline) {
+    let attempt = 0;
+    while (Date.now() < deadline) {
+      attempt += 1;
+      try {
+        const remaining = Math.max(1000, deadline - Date.now());
+        return await this._connectOnce(remaining);
+      } catch (error) {
+        if (error?.code === 'STREAM_INPUT_REJECTED_PERMANENT') {
+          throw error;
+        }
+        const remaining = deadline - Date.now();
+        // 4005 为短暂 master 会话冲突或前序连接释放窗口，在预算充足时执行有限退避重试
+        if (error?.code === 'STREAM_INPUT_CONFLICT' && remaining > 1200 && attempt < 3) {
+          await sleep(800);
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw inputError('STREAM_INPUT_TIMEOUT', '输入通道连接超时');
+  }
+
+  _connectOnce(timeoutMs) {
     const ws = this.ws = new WebSocket(this.buildUrl(), { origin: this.origin });
     ws.on('message', (data, isBinary) => this._handleMessage(data, isBinary));
-    this._connecting = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       let settled = false;
       const settle = (error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        this._connecting = null;
-        if (error) reject(error); else resolve(this);
+        if (error) {
+          if (this.ws === ws) {
+            this.ws = null;
+            this.videoWidth = this.videoHeight = null;
+          }
+          try { ws.terminate(); } catch {}
+          reject(error);
+        } else {
+          resolve(this);
+        }
       };
       const timer = setTimeout(() => settle(inputError('STREAM_INPUT_TIMEOUT', '输入通道连接超时')), timeoutMs);
       ws.once('error', () => settle(inputError('STREAM_INPUT_CONNECT_FAILED', '输入通道连接失败')));
       ws.once('close', code => {
-        this.ws = null;
-        this.videoWidth = this.videoHeight = null;
-        // 上游关闭原因可能包含凭据，不拼接进用户可见错误。
-        settle(FATAL_CLOSE_CODES.has(code)
-          ? inputError('STREAM_INPUT_REJECTED', '输入通道被服务端拒绝 (' + code + ')')
-          : inputError('STREAM_INPUT_CONNECT_FAILED', '输入通道在就绪前断开 (' + code + ')'));
+        if (PERMANENT_CLOSE_CODES.has(code)) {
+          settle(inputError('STREAM_INPUT_REJECTED_PERMANENT', '输入通道被服务端永久拒绝 (' + code + ')'));
+        } else if (CONFLICT_CLOSE_CODES.has(code)) {
+          settle(inputError('STREAM_INPUT_CONFLICT', '输入通道被服务端拒绝 (4005)'));
+        } else {
+          settle(inputError('STREAM_INPUT_CONNECT_FAILED', '输入通道在就绪前断开 (' + code + ')'));
+        }
       });
       this._settleConnect = settle;
     });
-    return this._connecting;
   }
 
   _handleMessage(data, isBinary) {
@@ -146,8 +188,8 @@ class StreamInput extends EventEmitter {
   }
 
   sendTouch(action, x, y, options = {}) {
-    const sourceWidth = Number(options.screenWidth ?? 720);
-    const sourceHeight = Number(options.screenHeight ?? 1280);
+    const sourceWidth = Number(options.screenWidth ?? (this.videoWidth || 720));
+    const sourceHeight = Number(options.screenHeight ?? (this.videoHeight || 1280));
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > sourceWidth - 1 || y > sourceHeight - 1) {
       throw inputError('COORDINATE_OUT_OF_BOUNDS', '坐标超出源空间');
     }
@@ -272,4 +314,6 @@ function closeAllStreamInputs() {
 module.exports = { StreamInput, sharedStreamInput, closeStreamInput, closeAllStreamInputs, INPUT_ERROR_CODES: Object.freeze({
   NOT_READY: 'INPUT_STREAM_NOT_READY',
   REJECTED: 'STREAM_INPUT_REJECTED',
+  REJECTED_PERMANENT: 'STREAM_INPUT_REJECTED_PERMANENT',
+  CONFLICT: 'STREAM_INPUT_CONFLICT',
 }) };
