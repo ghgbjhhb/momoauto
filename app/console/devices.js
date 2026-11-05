@@ -637,9 +637,76 @@ elements.deviceChips?.addEventListener?.('click', event => {
   if (chip) selectDevice(chip.dataset.chipDevice);
 });
 
+let lastTileClick = { deviceId: null, at: 0 };
+
 elements.viewerStage?.addEventListener?.('click', event => {
+  // 1. 重试快照
+  const retryBtn = event.target.closest('[data-retry-shot]');
+  if (retryBtn) {
+    const dev = state.devices.find(d => d.deviceId === retryBtn.dataset.retryShot);
+    if (dev) fetchTileShot(dev);
+    return;
+  }
+
+  // 2. 卡片内的直达按钮（进入单台大屏 / 打开手动控制）
+  const actionBtn = event.target.closest('[data-tile-action]');
+  if (actionBtn) {
+    event.stopPropagation();
+    const tile = actionBtn.closest('[data-tile-device]');
+    if (!tile) return;
+    const deviceId = tile.dataset.tileDevice;
+    const device = state.devices.find(d => d.deviceId === deviceId);
+    if (!device) return;
+    const action = actionBtn.dataset.tileAction;
+    if (action === 'single') {
+      selectDevice(deviceId);
+      switchToView('single');
+    } else if (action === 'manual') {
+      if (typeof window.openManualControl === 'function') window.openManualControl(device);
+      else showToast('控制台组件加载中，请稍候');
+    }
+    return;
+  }
+
+  // 3. 悬停提示层点击（直接点“双击进入单台”的浮层，支持单击或双击均切入单台）
+  const hoverOverlay = event.target.closest('.tile-hover-overlay');
+  if (hoverOverlay) {
+    const tile = hoverOverlay.closest('[data-tile-device]');
+    if (tile) {
+      const deviceId = tile.dataset.tileDevice;
+      const now = Date.now();
+      if (lastTileClick.deviceId === deviceId && (now - lastTileClick.at) < 500) {
+        lastTileClick.at = 0;
+        selectDevice(deviceId);
+        switchToView('single');
+        return;
+      }
+      lastTileClick.deviceId = deviceId;
+      lastTileClick.at = now;
+      selectDevice(deviceId);
+      return;
+    }
+  }
+
+  // 4. 卡片点击与双击检测
   const tile = event.target.closest('[data-tile-device]');
-  if (tile) { selectDevice(tile.dataset.tileDevice); return; }
+  if (tile) {
+    const deviceId = tile.dataset.tileDevice;
+    const now = Date.now();
+    // 软件级连击判定：500ms 内连续两次点击同一卡片，视同双击，直接平滑切入单台！
+    if (lastTileClick.deviceId === deviceId && (now - lastTileClick.at) < 500) {
+      lastTileClick.at = 0;
+      selectDevice(deviceId);
+      switchToView('single');
+      return;
+    }
+    lastTileClick.deviceId = deviceId;
+    lastTileClick.at = now;
+    selectDevice(deviceId);
+    return;
+  }
+
+  // 5. 兼容旧导航按钮
   const nav = event.target.closest('[data-viewer-nav]');
   if (nav && state.devices.length) {
     const index = state.devices.findIndex(d => d.deviceId === state.selectedDeviceId);
@@ -650,9 +717,9 @@ elements.viewerStage?.addEventListener?.('click', event => {
   const switchBtn = event.target.closest('[data-switch-device]');
   if (switchBtn) { selectDevice(switchBtn.dataset.switchDevice); return; }
 
-  const actionBtn = event.target.closest('[data-vd-action]');
-  if (actionBtn) {
-    const action = actionBtn.dataset.vdAction;
+  const oldActionBtn = event.target.closest('[data-vd-action]');
+  if (oldActionBtn) {
+    const action = oldActionBtn.dataset.vdAction;
     const device = currentDevice();
     if (action === 'manual' && device) {
       if (typeof window.openManualControl === 'function') window.openManualControl(device);
@@ -679,6 +746,8 @@ byId('deviceRefreshBtn')?.addEventListener('click', async () => {
 elements.viewerStage?.addEventListener?.('dblclick', event => {
   const tile = event.target.closest('[data-tile-device]');
   if (tile) {
+    event.preventDefault();
+    event.stopPropagation();
     selectDevice(tile.dataset.tileDevice);
     switchToView('single');
   }
