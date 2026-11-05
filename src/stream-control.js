@@ -181,24 +181,42 @@ class StreamInput extends EventEmitter {
     return this;
   }
 
-  flush() {
-    if (!this.open) return Promise.reject(inputError('INPUT_STREAM_NOT_READY', '输入通道未就绪'));
-    if (!this._pendingRequests.length) {
-      return new Promise((resolve, reject) => this.ws.ping(Buffer.alloc(0), undefined,
-        error => error ? reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道写入失败')) : resolve(this)));
-    }
-    // 排队帧尚未落地：等通道就绪并排空后再确认，超时则响亮失败。
-    const deadline = Date.now() + 5000;
-    const attempt = () => {
-      if (!this.open) return Promise.reject(inputError('INPUT_STREAM_NOT_READY', '输入通道未就绪，排队动作未下发'));
-      if (!this._pendingRequests.length) {
-        return new Promise((resolve, reject) => this.ws.ping(Buffer.alloc(0), undefined,
-          error => error ? reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道写入失败')) : resolve(this)));
+  async flush(timeoutMs = 5000) {
+    const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 5000);
+    // 1. 若通道未完全就绪（未连接、握手中或未收到 meta 帧），等待通道就绪
+    while ((!this.open || !this.videoWidth) && Date.now() < deadline) {
+      try {
+        const remaining = Math.max(200, deadline - Date.now());
+        await Promise.race([
+          this.ensureConnected(remaining),
+          sleep(100)
+        ]);
+      } catch (error) {
+        if (!this._connecting && !this.open) throw error;
       }
-      if (Date.now() >= deadline) return Promise.reject(inputError('INPUT_STREAM_NOT_READY', '输入通道排队超时，动作未下发'));
-      return sleep(100).then(attempt);
-    };
-    return attempt();
+    }
+    if (!this.open || !this.videoWidth) {
+      throw inputError('INPUT_STREAM_NOT_READY', '输入通道未就绪，动作未下发');
+    }
+    // 2. 排空排队请求
+    this._drainRequests();
+    while (this._pendingRequests.length && Date.now() < deadline) {
+      await sleep(50);
+      this._drainRequests();
+    }
+    if (this._pendingRequests.length) {
+      throw inputError('INPUT_STREAM_NOT_READY', '输入通道排队超时，动作未下发');
+    }
+    // 3. 队列已空，下发 ping 确认底层物理写入完成
+    return new Promise((resolve, reject) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道连接已断开'));
+      }
+      this.ws.ping(Buffer.alloc(0), undefined, error => {
+        if (error) reject(inputError('STREAM_INPUT_WRITE_FAILED', '输入通道写入失败'));
+        else resolve(this);
+      });
+    });
   }
 
   close() {

@@ -10,6 +10,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
   numberOr,
   deviceIdOf,
@@ -386,64 +387,52 @@ function extractLocationTarget(items) {
 }
 
 async function tapAppAndWaitMap(phone, control, worker, directory, state, found, options) {
-  const iconPoint = tapBox(control, found.box, found.observation, -40);
-  console.log(`[启动] 点击“虚拟定位”应用图标 (${iconPoint.x}, ${iconPoint.y})...`);
-  await control.tap(iconPoint.x, iconPoint.y);
-  await control.flush();
-
-  const deadline = Date.now() + options.appTimeoutMs;
-  let mapReady = false;
-  let last = null;
-
-  while (Date.now() <= deadline) {
-    state.counter += 1;
-    last = await screenshotAndOcr(phone, worker, directory, state.counter);
-
-    // 检查是否出现权限授予页（“请选择要向虚拟定位授予哪些权限”）
-    if (permissionScreenEvidence(last.items)) {
-      const continueBtn = continueButtonBox(last.items);
-      if (continueBtn) {
-        const pt = tapBox(control, continueBtn, last);
-        console.log(`[权限] 检测到权限授予页，点击“继续” (${pt.x}, ${pt.y})...`);
-        await control.tap(pt.x, pt.y);
+  const result = await openAppWithRecovery(phone, control, worker, directory, state, found, options, {
+    appName: '虚拟定位',
+    targetName: '虚拟定位地图主界面',
+    label: 'virtual-location',
+    targetBox: virtualLocationBox,
+    isTarget: observation => mapPageEvidence(observation.items),
+    launchEvidence: observation => permissionScreenEvidence(observation.items) || traverseDialogEvidence(observation.items, observation),
+    offsets: [{ y: -55 }, { y: -75 }, { y: 0 }],
+    prepare: async observation => {
+      let current = observation;
+      // 检查是否出现权限授予页（“请选择要向虚拟定位授予哪些权限”）
+      if (permissionScreenEvidence(current.items)) {
+        const continueBtn = continueButtonBox(current.items);
+        if (continueBtn) {
+          const pt = tapBox(control, continueBtn, current);
+          console.log(`[权限] 检测到权限授予页，点击“继续” (${pt.x}, ${pt.y})...`);
+          await control.tap(pt.x, pt.y);
+          await control.flush();
+          await new Promise(r => setTimeout(r, 1000));
+          state.counter += 1;
+          current = await screenshotAndOcr(phone, worker, directory, state.counter);
+        }
+      }
+      // 检查是否存在历史残留的提示弹窗，若有则先行清理关闭，避免干扰后续流程
+      if (traverseDialogEvidence(current.items, current)) {
+        const cancelBtn = current.items.find(it => normalizeText(it.text) === '取消');
+        if (cancelBtn) {
+          const pt = tapBox(control, cancelBtn, current);
+          console.log(`[清理] 检测到残留提示弹窗，点击“取消”关闭 (${pt.x}, ${pt.y})...`);
+          await control.tap(pt.x, pt.y);
+        } else {
+          const outsideX = Math.round(control.screenWidth * 0.5);
+          const outsideY = Math.round(control.screenHeight * 0.1);
+          console.log(`[清理] 检测到残留提示弹窗，点击空白处关闭 (${outsideX}, ${outsideY})...`);
+          await control.tap(outsideX, outsideY);
+        }
         await control.flush();
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
+        await new Promise(r => setTimeout(r, 800));
+        state.counter += 1;
+        current = await screenshotAndOcr(phone, worker, directory, state.counter);
       }
-    }
+      return current;
+    },
+  });
 
-    // 检查是否存在历史残留的提示弹窗，若有则先行清理关闭，避免干扰后续流程
-    if (traverseDialogEvidence(last.items, last)) {
-      const cancelBtn = last.items.find(it => normalizeText(it.text) === '取消');
-      if (cancelBtn) {
-        const pt = tapBox(control, cancelBtn, last);
-        console.log(`[清理] 检测到残留提示弹窗，点击“取消”关闭 (${pt.x}, ${pt.y})...`);
-        await control.tap(pt.x, pt.y);
-      } else {
-        const outsideX = Math.round(control.screenWidth * 0.5);
-        const outsideY = Math.round(control.screenHeight * 0.1);
-        console.log(`[清理] 检测到残留提示弹窗，点击空白处关闭 (${outsideX}, ${outsideY})...`);
-        await control.tap(outsideX, outsideY);
-      }
-      await control.flush();
-      await new Promise(r => setTimeout(r, 800));
-      continue;
-    }
-
-    // 检查地图主界面是否已加载
-    if (mapPageEvidence(last.items)) {
-      mapReady = true;
-      break;
-    }
-
-    await new Promise(r => setTimeout(r, options.pollMs));
-  }
-
-  if (!mapReady || !last) {
-    throw new Error('打开“虚拟定位”应用超时，未检测到地图主界面');
-  }
-
-  return last;
+  return result.opened;
 }
 
 // 模式 1：定位到ip所在地（状态机与重试支持）

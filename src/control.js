@@ -202,10 +202,21 @@ class CloudPhoneControl extends EventEmitter {
         this._scheduleReconnect();
       });
     });
-    this._connecting = pending;
-    const clear = () => { if (this._connecting === pending) this._connecting = null; };
-    pending.then(clear, clear);
-    return pending;
+    const readyPromise = this.inputOverStream
+      ? pending.then(async control => {
+          try {
+            const stream = control._ensureStreamInput();
+            if (stream) await stream.ensureConnected(timeoutMs);
+          } catch (streamErr) {
+            control._streamError = streamErr;
+          }
+          return control;
+        })
+      : pending;
+    this._connecting = readyPromise;
+    const clear = () => { if (this._connecting === readyPromise) this._connecting = null; };
+    readyPromise.then(clear, clear);
+    return readyPromise;
   }
 
   handleMessage(data) {
