@@ -115,6 +115,18 @@ async function main() {
     const startStepIndex = Number.parseInt(process.env.YUNMOMO_START_STEP_INDEX || '0', 10) || 0;
     if (startStepIndex > 0) {
       console.log(`⏩ 从第 ${startStepIndex + 1} 步继续执行 (前 ${startStepIndex} 步已跳过)`);
+      console.log(`🧭 执行物理现场自愈与桌面复位 (Home Alignment)...`);
+      await ensureControl();
+      const { sendHome, confirmHome } = require('../automation/screen');
+      await sendHome(control);
+      await new Promise(r => setTimeout(r, 600));
+      try {
+        await confirmHome(phone, control, ensureWorker(), sessionDirectory, state);
+        console.log(`🏠 桌面现场已对齐确认，安全进入接力步骤`);
+      } catch (e) {
+        console.warn(`⚠️ 桌面快速核验跳过: ${e.message}，已发送 HOME 键继续`);
+        await sendHome(control);
+      }
     }
 
     for (let index = 0; index < steps.length; index++) {
