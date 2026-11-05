@@ -608,7 +608,7 @@ body:has(#page-overview:not([hidden])) .page {
 .device-chip.running small { color: var(--green); }
 
 .viewer {
-  background: var(--video-black);
+  background: var(--soft);
   flex: 1;
   min-height: 0;
   height: auto;
@@ -622,9 +622,8 @@ body:has(#page-overview:not([hidden])) .page {
   transition: background-color 0.25s ease;
 }
 
-/* 宫格模式下：彻底告别死黑，切换为清爽现代的工作台底色 */
+/* 宫格模式下：自适应对齐 */
 .ov-device-panel[data-view="grid"] .viewer {
-  background: var(--soft);
   align-items: stretch;
 }
 
@@ -639,16 +638,16 @@ body:has(#page-overview:not([hidden])) .page {
   box-sizing: border-box;
 }
 
-/* 单台拟物旗舰手机外框 */
+/* 单台拟物旗舰手机外框：告别死黑，精致圆角与环境光微阴影 */
 .device-frame {
   height: 100%;
   width: auto;
   max-width: 100%;
   aspect-ratio: 720 / 1280;
   border-radius: var(--r-16);
-  border: 3px solid rgba(255, 255, 255, 0.12);
-  background: var(--video-black);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  border: 2px solid var(--line-strong, #cbd5e1);
+  background: #000;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -661,7 +660,8 @@ body:has(#page-overview:not([hidden])) .page {
 .device-frame canvas, .device-frame img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: fill;
+  border-radius: inherit;
   display: block;
 }
 
@@ -791,18 +791,22 @@ body:has(#page-overview:not([hidden])) .page {
   box-shadow: var(--elev-mini);
 }
 
-.device-tile.selected {
-  border-color: var(--blue);
-  background: var(--card);
-  box-shadow: 0 0 0 2px var(--blue-light), var(--elev-mini);
-}
-
+/* 宫格模式卡片选中态：只要勾选，整张卡片必须拥有强烈的选中高亮 */
 .device-tile.is-batch-checked {
-  border-color: var(--blue-chip);
+  border-color: var(--blue) !important;
+  box-shadow: 0 0 0 2px var(--blue-light), var(--elev-mini) !important;
 }
-.device-tile.is-batch-checked.selected {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 2px var(--blue-light), var(--elev-mini);
+.device-tile.is-batch-checked .tile-header {
+  background: rgba(37, 99, 235, 0.05);
+}
+.device-tile:not(.is-batch-checked) {
+  border-color: var(--border) !important;
+  box-shadow: var(--elev-soft) !important;
+}
+.device-tile:not(.is-batch-checked):hover {
+  transform: translateY(-2px);
+  border-color: var(--blue-chip) !important;
+  box-shadow: var(--elev-mini) !important;
 }
 
 .tile-check-label {
@@ -814,8 +818,8 @@ body:has(#page-overview:not([hidden])) .page {
   flex: none;
 }
 .tile-checkbox {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   margin: 0;
   accent-color: var(--blue);
   cursor: pointer;
@@ -920,7 +924,7 @@ body:has(#page-overview:not([hidden])) .page {
 .tile-canvas {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: fill;
   display: block;
 }
 
@@ -1696,7 +1700,7 @@ body:has(#page-overview:not([hidden])) .page {
 
 #controlImage,
 #visionOverlayCanvas,
-.control-stage canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+.control-stage canvas { width: 100%; height: 100%; object-fit: fill; display: block; }
 
 .vision-overlay-canvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: var(--z-sticky); }
 #visionOverlayCanvas[hidden] { display: none; }

@@ -8,9 +8,9 @@ const { YunmomoClient } = require('../index');
 // H.264 stream and relays compressed packets without CPU-heavy transcoding.
 // Independent local script screenshots and OCR are unaffected.
 const SETTINGS = Object.freeze({ bitrate: 400000, maxFps: 8, iFrameInterval: 1,
-  bounds: Object.freeze({ width: 320, height: 576 }), sendFrameMeta: false });
-const MAX_VIDEO_SHORT = 320;
-const MAX_VIDEO_LONG = 576;
+  bounds: Object.freeze({ width: 360, height: 640 }), sendFrameMeta: false });
+const MAX_VIDEO_SHORT = 360;
+const MAX_VIDEO_LONG = 640;
 const MAX_BUFFER = 4 * 1024 * 1024;
 const UPSTREAM_PING_MS = 15000;
 const UPSTREAM_PONG_MS = 10000;
