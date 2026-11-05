@@ -22,3 +22,6 @@ sdk-xuanwu/
 # 4318 内网穿透：frpc 二进制与本机私钥不入库，见 scripts/frp-4318/README.md
 scripts/frp-4318/frpc.exe
 scripts/frp-4318/pki/*.key
+
+# 运行时工作流断点存储
+storage/workflows/
