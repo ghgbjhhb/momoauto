@@ -654,6 +654,13 @@ function renderTaskDetail() {
     <div class="details-footer">
       <span class="footer-note" id="detailNote"></span>
       ${(() => {
+        const interruptedWf = (state.activeWorkflowRun?.interrupted && state.activeWorkflowRun?.scriptId === script?.id) ? state.activeWorkflowRun : null;
+        if (interruptedWf) {
+          const comp = (interruptedWf.results || []).reduce((s, r) => s + (r.completedSteps || 0), 0);
+          const tot = (interruptedWf.results || []).reduce((s, r) => s + (r.totalSteps || 0), 0);
+          return `<button class="btn primary" id="batchResumeBtn" type="button" style="background:#0052d9;color:#fff;">${ic('play', 15)} 断点恢复执行 (${comp}/${tot} 步已完成)</button>
+            <button class="btn secondary" id="batchDismissBtn" type="button" style="margin-left:8px;">重新开始 (放弃断点)</button>`;
+        }
         const runningTask = getCurrentlyRunningTaskInfo();
         const thisScriptRunning = Boolean(runningTask && runningTask.type === 'script' && runningTask.id === script?.id);
         if (thisScriptRunning) {
@@ -724,6 +731,13 @@ function renderBundleDetail(panel, bundle) {
     <div class="details-footer">
       <span class="footer-note" id="detailNote"></span>
       ${(() => {
+        const interruptedWf = (state.activeWorkflowRun?.interrupted && (state.activeWorkflowRun?.bundleId === bundle?.id || state.activeWorkflowRun?.kind === 'bundle')) ? state.activeWorkflowRun : null;
+        if (interruptedWf) {
+          const comp = (interruptedWf.results || []).reduce((s, r) => s + (r.completedSteps || 0), 0);
+          const tot = (interruptedWf.results || []).reduce((s, r) => s + (r.totalSteps || 0), 0);
+          return `<button class="btn primary" id="batchResumeBtn" type="button" style="background:#0052d9;color:#fff;">${ic('play', 15)} 断点恢复执行 (${comp}/${tot} 步已完成)</button>
+            <button class="btn secondary" id="batchDismissBtn" type="button" style="margin-left:8px;">重新开始 (放弃断点)</button>`;
+        }
         const runningTask = getCurrentlyRunningTaskInfo();
         const thisBundleRunning = Boolean(runningTask && runningTask.type === 'bundle' && runningTask.id === bundle?.id);
         if (thisBundleRunning) {
@@ -902,6 +916,14 @@ async function onDetailClick(event) {
     return;
   }
 
+  if (event.target.closest('#batchResumeBtn')) {
+    await resumeWorkflowRun(state.activeWorkflowRun?.id);
+    return;
+  }
+  if (event.target.closest('#batchDismissBtn')) {
+    await dismissWorkflowRun(state.activeWorkflowRun?.id);
+    return;
+  }
   if (event.target.closest('#bundleRunBtn')) {
     await startBundleBatch();
     return;
@@ -1005,8 +1027,17 @@ async function followManagedWorkflow(runId) {
 
       // 将服务端返回的每台设备独立日志缓存至前端设备切片
       if (snapshot.deviceOutputs && typeof snapshot.deviceOutputs === 'object') {
+        const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
         for (const [devId, out] of Object.entries(snapshot.deviceOutputs)) {
           if (state.deviceLogs) state.deviceLogs.set(devId, out);
+        }
+        if (curDev && snapshot.deviceOutputs[curDev.deviceId]) {
+          const curLog = snapshot.deviceOutputs[curDev.deviceId].trim();
+          const dockBox = elements.dockOutputBox;
+          if (dockBox && curLog) {
+            dockBox.textContent = curLog;
+            if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+          }
         }
       }
 
@@ -1015,10 +1046,23 @@ async function followManagedWorkflow(runId) {
       });
     }
     if (snapshot.state === 'interrupted') {
-      state.activeWorkflowRun = { ...state.activeWorkflowRun, interrupted: true, runId };
+      state.activeWorkflowRun = {
+        id: runId,
+        interrupted: true,
+        kind: snapshot.kind,
+        title: snapshot.title,
+        results: snapshot.results || [],
+        totalSteps: snapshot.totalSteps,
+        currentStep: snapshot.currentStep
+      };
+      state.activeBundleRun = null;
       state.batchRunning = false;
       state.batchStopRequested = false;
       updateStopButton();
+      if (state.page === 'tasks') renderTaskDetail();
+      if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+      eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+
       writeOutput('任务中断已安全存盘', [
         '任务执行意外中断（服务重启或断开），各设备进度已落盘保留：',
         ...snapshot.results.map(item => item.deviceId + '：已完成 ' + item.completedSteps + '/' + item.totalSteps + ' 步'),
@@ -1143,24 +1187,69 @@ function syncManagedWorkflowsFromServer() {
     return;
   }
   const currentWf = activeList[0];
-  if (currentWf && (!state.activeWorkflowRun || state.activeWorkflowRun.id !== currentWf.workflowRunId)) {
-    const raw = currentWf.rawSpec || {};
-    state.activeWorkflowRun = {
-      id: currentWf.workflowRunId,
-      kind: currentWf.kind,
-      bundleId: raw.bundleId || null,
-      scriptId: raw.scriptId || null,
-      title: currentWf.title || '工作流任务',
-      startedAt: Date.now()
-    };
-    state.activeBundleRun = currentWf.kind === 'bundle' ? { bundleId: raw.bundleId, stopped: false } : null;
-    state.batchRunning = true;
-    updateStopButton();
-    state.batchResults = (currentWf.results || []).map(r => ({ deviceId: r.deviceId, status: r.status }));
-    if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
-    followManagedWorkflow(currentWf.workflowRunId);
+  if (currentWf) {
+    if (currentWf.state === 'interrupted' || currentWf.interrupted) {
+      const raw = currentWf.rawSpec || {};
+      state.activeWorkflowRun = {
+        id: currentWf.workflowRunId,
+        interrupted: true,
+        kind: currentWf.kind,
+        bundleId: raw.bundleId || null,
+        scriptId: raw.scriptId || null,
+        title: currentWf.title || '工作流任务',
+        results: currentWf.results || [],
+        rawSpec: raw
+      };
+      state.activeBundleRun = null;
+      state.batchRunning = false;
+      state.batchStopRequested = false;
+      updateStopButton();
+      if (state.page === 'tasks') renderTaskDetail();
+      if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+      return;
+    }
+    if (!state.activeWorkflowRun || state.activeWorkflowRun.id !== currentWf.workflowRunId) {
+      const raw = currentWf.rawSpec || {};
+      state.activeWorkflowRun = {
+        id: currentWf.workflowRunId,
+        kind: currentWf.kind,
+        bundleId: raw.bundleId || null,
+        scriptId: raw.scriptId || null,
+        title: currentWf.title || '工作流任务',
+        startedAt: Date.now()
+      };
+      state.activeBundleRun = currentWf.kind === 'bundle' ? { bundleId: raw.bundleId, stopped: false } : null;
+      state.batchRunning = true;
+      updateStopButton();
+      state.batchResults = (currentWf.results || []).map(r => ({ deviceId: r.deviceId, status: r.status }));
+      if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+      followManagedWorkflow(currentWf.workflowRunId);
+    }
   }
 }
+
+async function dismissWorkflowRun(runId) {
+  const id = runId || state.activeWorkflowRun?.id;
+  if (!id) return;
+  try {
+    await requestJson('/api/workflows/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflowRunId: id })
+    });
+  } catch {}
+  state.activeWorkflowRun = null;
+  state.activeBundleRun = null;
+  state.batchRunning = false;
+  state.batchStopRequested = false;
+  try { sessionStorage.removeItem('yunmomo.workflowRun'); } catch {}
+  updateStopButton();
+  if (state.page === 'tasks') renderTaskDetail();
+  if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+  eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+  showToast('已清除断点，可重新执行');
+}
+window.dismissWorkflowRun = dismissWorkflowRun;
 window.syncManagedWorkflowsFromServer = syncManagedWorkflowsFromServer;
 window.resumeManagedWorkflow = syncManagedWorkflowsFromServer;
 

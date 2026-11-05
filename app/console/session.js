@@ -224,7 +224,7 @@ async function loadSharedRuntimeState() {
     };
     state.deviceStates = (data.deviceStates && typeof data.deviceStates === 'object') ? data.deviceStates : {};
     // 自动调和：若前端本地持有活跃任务记录，但后端已确认无该任务活跃（排除刚启动5秒内缓冲），则清理僵尸态
-    if (state.activeWorkflowRun && !state.activeWorkflowRun.interrupted) {
+    if (state.activeWorkflowRun) {
       const activeList = state.runtimeState.activeWorkflows || [];
       const serverHasIt = activeList.some(w => w.workflowRunId === state.activeWorkflowRun.id);
       const ageMs = Date.now() - (state.activeWorkflowRun.startedAt || 0);
