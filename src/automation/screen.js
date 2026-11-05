@@ -425,16 +425,15 @@ async function confirmHome(phone, control, worker, directory, state, options) {
 async function swipeHomePage(control, direction) {
   const width = control.screenWidth || 400;
   const height = control.screenHeight || 720;
-  // 核心优化：滑动 Y 坐标锁定在无图标与小部件的【绝对净空安全带】(52% 屏幕高度，约 374px)
-  // 在 Page 1 处于第一排与第二排图标间隙，在 Page 2 处于图标下方纯净空白区
+  // 核心优化：滑动 Y 坐标锁定在无图标与小部件的【绝对净空安全带】(60% 屏幕高度，约 432px)
   // 彻底避开所有应用图标与小部件，100% 触发系统翻页惯性，双向翻页均零阻尼
-  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.52)));
+  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.60)));
   const fromX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.85) : Math.round(width * 0.15)));
   const toX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.15) : Math.round(width * 0.85)));
   await control.swipe(
     { x: fromX, y },
     { x: toX, y },
-    { durationMs: 200, steps: 10 },
+    { durationMs: 300, steps: 12 },
   );
   await control.flush();
 }
@@ -478,16 +477,26 @@ async function findApp(phone, control, worker, directory, state, home, options,
 
       // 下发净空带快速翻页手势
       await swipeHomePage(control, direction);
-      // 等待 350ms 翻页动画完全沉降
-      await sleep(350);
+      // 等待翻页动画完全沉降（Android 物理滑动惯性与云机视频流综合耗时约 550ms）
+      await sleep(550);
 
       // 流式单帧取样：立即截取 1 帧并 OCR
       state.counter += 1;
       const nextObservation = await screenshotAndOcr(phone, worker, directory, state.counter);
 
-      // 核心流式瞬时命中：若翻页后这一帧已出现目标，立即提取坐标返回，绝不在命中后再死等！
+      // 翻页后命中检测与静止沉降二次校验
       const targetInNext = targetBoxFinder(nextObservation.items);
       if (targetInNext && !clipboardToastVisible(nextObservation.items)) {
+        // 静止沉降二次确认：
+        // 翻页刚结束时若目标出现，由于惯性减速可能尚有微小滑行，
+        // 稍作等待 250ms 取沉降稳态帧，若检出稳态坐标则优先采用，杜绝过渡态坐标偏入相邻列应用
+        await sleep(250);
+        state.counter += 1;
+        const settledObservation = await screenshotAndOcr(phone, worker, directory, state.counter);
+        const settledBox = targetBoxFinder(settledObservation.items);
+        if (settledBox && !clipboardToastVisible(settledObservation.items)) {
+          return { observation: settledObservation, box: settledBox, direction, page: page + 1 };
+        }
         return { observation: nextObservation, box: targetInNext, direction, page: page + 1 };
       }
 
@@ -507,8 +516,23 @@ async function findApp(phone, control, worker, directory, state, home, options,
 function tapBox(control, box, observation, yOffset = 0) {
   const scaleX = control.screenWidth / Math.max(1, observation.width);
   const scaleY = control.screenHeight / Math.max(1, observation.height);
-  const rawX = Math.round(((box.left + box.right) / 2) * scaleX);
+  let rawX = Math.round(((box.left + box.right) / 2) * scaleX);
   const rawY = Math.round(((box.top + box.bottom) / 2) * scaleY + yOffset * scaleY);
+
+  // 桌面 4 列栅格吸附保护（仅当 yOffset < 0 即图标探测模式时启用）：
+  // 在 720 宽桌面，4 列中心分别为 90, 270, 450, 630，列间距 180px，分界线为 180, 360, 540。
+  // 若计算出的 X 坐标距列分界线 < 15px，说明处于两列边缘危险区，强制吸附至当前列中心，杜绝误触相邻应用。
+  if (yOffset < 0 && control.screenWidth > 0) {
+    const colWidth = control.screenWidth / 4;
+    const colIndex = Math.floor(rawX / colWidth);
+    const boundary = (colIndex + 1) * colWidth;
+    const prevBoundary = colIndex * colWidth;
+    if (Math.abs(rawX - boundary) < 15 || Math.abs(rawX - prevBoundary) < 15) {
+      const colCenter = Math.round(colIndex * colWidth + colWidth / 2);
+      rawX = colCenter;
+    }
+  }
+
   const x = Math.min(control.screenWidth - 1, Math.max(0, rawX));
   const y = Math.min(control.screenHeight - 1, Math.max(0, rawY));
   return { x, y };

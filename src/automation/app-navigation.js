@@ -78,6 +78,25 @@ async function recoverAppPage(phone, control, worker, directory, state, initial,
       report.outcome = 'launcher';
       return { observation: current, reachedTarget: false, report };
     }
+    if (unchanged >= 2 && config.allowHomeOnStuck !== false) {
+      // 弹窗死锁解救（Modal Trap Escape）：
+      // 当应用非取消型弹窗（如用户隐私协议、强更提示、死锁页面）拦截 BACK 物理按键时，
+      // 派发系统级 HOME 键打破死锁，安全回退至桌面重新寻找入口。
+      try {
+        console.log(`[恢复] 检测到连续 2 次返回键未产生页面变化，可能遭遇非取消型弹窗拦截，发送 HOME 键解救回桌面...`);
+        const { sendHome } = require('./screen');
+        await sendHome(control);
+        await sleep(500);
+        state.counter += 1;
+        current = await screenshotAndOcr(phone, worker, directory, state.counter);
+        if (isLauncher(current)) {
+          report.outcome = 'launcher';
+          return { observation: current, reachedTarget: false, report };
+        }
+      } catch (err) {
+        console.warn(`[恢复] 发送 HOME 键解救失败：${err.message}`);
+      }
+    }
     if (unchanged >= 3) stop('APP_RECOVERY_NO_PROGRESS', '连续三次返回后页面未变化');
     budget.deadline ??= Date.now() + settings.timeoutMs;
     if (Date.now() >= budget.deadline) stop('APP_RECOVERY_TIMEOUT', '逐级返回目标界面超时');
@@ -135,7 +154,7 @@ async function openAppWithRecovery(phone, control, worker, directory, state, fou
       config.launchTimeoutMs ?? options.appTimeoutMs, options.pollMs, `${config.label ?? 'app-entry'}-open-${index + 1}`,
     );
     const recovered = await recoverAppPage(phone, control, worker, directory, state, initial, options, {
-      ...config, budget, isLauncher: observation => launcherMatches(observation, located.observation) || Boolean(config.isLauncher?.(observation)),
+      ...config, budget, allowHomeOnStuck: true, isLauncher: observation => launcherMatches(observation, located.observation) || Boolean(config.isLauncher?.(observation)),
     });
     if (recovered.reachedTarget) return { opened: recovered.observation, point, retried: index > 0 };
     // Only a freshly confirmed launcher permits another icon click. App exits
