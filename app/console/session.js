@@ -219,8 +219,24 @@ async function loadSharedRuntimeState() {
     const data = await requestJson('/api/runtime-state?pageId=' + encodeURIComponent(state.pageId));
     state.runtimeState = {
       runs: Array.isArray(data.runs) ? data.runs : [],
+      activeWorkflows: Array.isArray(data.activeWorkflows) ? data.activeWorkflows : [],
       manualDevices: Array.isArray(data.manualDevices) ? data.manualDevices : []
     };
+    // 自动调和：若前端本地持有活跃任务记录，但后端已确认无该任务活跃（排除刚启动5秒内缓冲），则清理僵尸态
+    if (state.activeWorkflowRun && !state.activeWorkflowRun.interrupted) {
+      const activeList = state.runtimeState.activeWorkflows || [];
+      const serverHasIt = activeList.some(w => w.workflowRunId === state.activeWorkflowRun.id);
+      const ageMs = Date.now() - (state.activeWorkflowRun.startedAt || 0);
+      if (!serverHasIt && ageMs > 5000 && !state.batchStopRequested) {
+        sessionStorage.removeItem('yunmomo.workflowRun');
+        state.activeWorkflowRun = null;
+        state.activeBundleRun = null;
+        state.batchRunning = false;
+        state.batchStopRequested = false;
+        if (typeof renderTaskDetail === 'function' && state.page === 'tasks') renderTaskDetail();
+        if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+      }
+    }
     state.runtimeStateStale = false;
   } catch (error) {
     if (error.status === 401 || error.status === 403) {

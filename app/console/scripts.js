@@ -653,9 +653,17 @@ function renderTaskDetail() {
     </div>
     <div class="details-footer">
       <span class="footer-note" id="detailNote"></span>
-      ${state.batchRunning
-        ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-        : `<button class="btn primary" id="batchRunBtn" type="button">${ic('play', 15)} 立即执行 (<span id="batchCount">0</span> 台)</button>`}
+      ${(() => {
+        const runningTask = getCurrentlyRunningTaskInfo();
+        const thisScriptRunning = Boolean(runningTask && runningTask.type === 'script' && runningTask.id === script?.id);
+        if (thisScriptRunning) {
+          return `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+        }
+        if (runningTask) {
+          return `<button class="btn primary" id="batchRunBtn" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+        }
+        return `<button class="btn primary" id="batchRunBtn" type="button">${ic('play', 15)} 立即执行 (<span id="batchCount">0</span> 台)</button>`;
+      })()}
     </div>
   `;
   updateBatchCount();
@@ -715,9 +723,17 @@ function renderBundleDetail(panel, bundle) {
     </div>
     <div class="details-footer">
       <span class="footer-note" id="detailNote"></span>
-      ${state.batchRunning
-        ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-        : `<button class="btn primary" id="bundleRunBtn" type="button">${ic('play', 15)} 立即执行组合 (<span id="batchCount">0</span> 台)</button>`}
+      ${(() => {
+        const runningTask = getCurrentlyRunningTaskInfo();
+        const thisBundleRunning = Boolean(runningTask && runningTask.type === 'bundle' && runningTask.id === bundle?.id);
+        if (thisBundleRunning) {
+          return `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+        }
+        if (runningTask) {
+          return `<button class="btn primary" id="bundleRunBtn" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+        }
+        return `<button class="btn primary" id="bundleRunBtn" type="button">${ic('play', 15)} 立即执行组合 (<span id="batchCount">0</span> 台)</button>`;
+      })()}
     </div>
   `;
   updateBatchCount();
@@ -940,6 +956,19 @@ async function followManagedWorkflow(runId) {
       snapshot = await requestJson('/api/workflows/status?workflowRunId=' + encodeURIComponent(runId));
       retryCount = 0;
     } catch (error) {
+      if (error.status === 404 || error.message.includes('不存在') || error.message.includes('已过期')) {
+        sessionStorage.removeItem('yunmomo.workflowRun');
+        state.activeWorkflowRun = null;
+        state.activeBundleRun = null;
+        state.batchRunning = false;
+        state.batchStopRequested = false;
+        updateStopButton();
+        if (state.page === 'tasks') renderTaskDetail();
+        if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+        eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+        showToast('任务已在后台结束或已过期，已恢复待命');
+        return { ok: true, finished: true };
+      }
       retryCount++;
       if (error.status === 401 || error.status === 403 || retryCount > 30) {
         state.activeWorkflowRun.unknown = true;
@@ -1019,20 +1048,39 @@ async function runManagedWorkflow(payload, deviceIds) {
     return { ok: false };
   }
   const runId = createScriptRunId();
-  state.activeWorkflowRun = { id: runId, kind: payload.kind, bundleId: payload.bundleId };
+  const taskTitle = payload.title || (payload.kind === 'bundle'
+    ? state.bundles.find(b => b.id === payload.bundleId)?.name
+    : state.scripts.find(s => s.id === payload.scriptId)?.title) || '任务';
+  state.activeWorkflowRun = {
+    id: runId,
+    kind: payload.kind,
+    bundleId: payload.bundleId || null,
+    scriptId: payload.scriptId || null,
+    title: taskTitle,
+    startedAt: Date.now()
+  };
   state.activeBundleRun = payload.kind === 'bundle'
     ? { bundleId: payload.bundleId, stopped: false } : null;
   state.batchRunning = true;
   state.batchStopRequested = false;
   state.batchResults = deviceIds.map(deviceId => ({ deviceId, status: 'pending' }));
   if (state.page === 'tasks') renderTaskDetail();
+  if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
   eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
   updateStopButton();
   // 先记录编号再提交：浏览器恰好在请求过程中刷新，也只会恢复查询而不重下发。
   try {
     sessionStorage.setItem('yunmomo.workflowRun',
-      JSON.stringify({ id: runId, userId: state.currentUser?.id, kind: payload.kind,
-        bundleId: payload.bundleId, deviceIds }));
+      JSON.stringify({
+        id: runId,
+        userId: state.currentUser?.id,
+        kind: payload.kind,
+        bundleId: payload.bundleId || null,
+        scriptId: payload.scriptId || null,
+        title: taskTitle,
+        startedAt: Date.now(),
+        deviceIds
+      }));
   } catch {}
   try {
     try {
@@ -1066,12 +1114,20 @@ function resumeManagedWorkflow() {
   try { saved = JSON.parse(sessionStorage.getItem('yunmomo.workflowRun') || 'null'); } catch { return; }
   if (!saved?.id || saved.userId !== state.currentUser?.id) return;
   if (state.activeWorkflowRun) return;
-  state.activeWorkflowRun = { id: saved.id, kind: saved.kind, bundleId: saved.bundleId };
+  state.activeWorkflowRun = {
+    id: saved.id,
+    kind: saved.kind,
+    bundleId: saved.bundleId || null,
+    scriptId: saved.scriptId || null,
+    title: saved.title || (saved.kind === 'bundle' ? '组合任务' : '业务脚本'),
+    startedAt: saved.startedAt || Date.now()
+  };
   state.activeBundleRun = saved.kind === 'bundle'
     ? { bundleId: saved.bundleId, stopped: false } : null;
   state.batchRunning = true;
   updateStopButton();
   state.batchResults = (saved.deviceIds || []).map(deviceId => ({ deviceId, status: 'pending' }));
+  if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
   followManagedWorkflow(saved.id);
 }
 window.resumeManagedWorkflow = resumeManagedWorkflow;
@@ -1104,19 +1160,39 @@ window.resumeWorkflowRun = resumeWorkflowRun;
 
 async function requestStopManagedWorkflow() {
   const current = state.activeWorkflowRun;
-  if (!current || current.unknown) {
-    showToast('无法确认任务状态，请先检查实际云机');
-    return;
-  }
+  if (!current) return;
   state.batchStopRequested = true;
-  showToast('已请求停止 Windows 后台任务，等待当前步骤释放设备');
+  showToast('正在停止任务…');
   try {
-    await requestJson('/api/workflows/stop', {
+    const res = await requestJson('/api/workflows/stop', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workflowRunId: current.id })
     });
+    sessionStorage.removeItem('yunmomo.workflowRun');
+    state.activeWorkflowRun = null;
+    state.activeBundleRun = null;
+    state.batchRunning = false;
+    state.batchStopRequested = false;
+    updateStopButton();
+    if (state.page === 'tasks') renderTaskDetail();
+    if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+    eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+    showToast(res?.message || '任务已停止');
   } catch (error) {
-    showToast('停止请求未确认：' + error.message + '；请核查任务状态');
+    if (error.status === 404 || error.message.includes('不存在') || error.message.includes('已过期')) {
+      sessionStorage.removeItem('yunmomo.workflowRun');
+      state.activeWorkflowRun = null;
+      state.activeBundleRun = null;
+      state.batchRunning = false;
+      state.batchStopRequested = false;
+      updateStopButton();
+      if (state.page === 'tasks') renderTaskDetail();
+      if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+      eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
+      showToast('任务已在后台结束或已过期，已恢复待命');
+    } else {
+      showToast('停止请求未确认：' + error.message + '；请核查任务状态');
+    }
   }
 }
 
@@ -1973,10 +2049,18 @@ function updateOverviewWorkbenchFooter(currentDev, isRunning) {
   if (!footer) return;
 
   const isBundle = Boolean(state.taskBundleId);
-  const canStop = Boolean(state.batchRunning || state.activeRun || state.activeBundleRun);
-  if (canStop) {
+  const viewType = isBundle ? 'bundle' : 'script';
+  const viewId = isBundle ? state.taskBundleId : state.taskScriptId;
+  const runningTask = getCurrentlyRunningTaskInfo();
+
+  if (runningTask && runningTask.type === viewType && runningTask.id === viewId) {
     if (!footer.querySelector('#ovCfgStopBtn')) {
       footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止${isBundle ? '组合' : ''}执行</button>`;
+    }
+  } else if (runningTask) {
+    const conflictHtml = `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+    if (footer.innerHTML !== conflictHtml) {
+      footer.innerHTML = conflictHtml;
     }
   } else {
     const expectedHtml = formatOverviewRunButtonHtml(targets, isRunning, isBundle);
@@ -2051,10 +2135,16 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
         `}
       </div>
       <div class="ov-wb-footer">
-        ${canStop
-          ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-          : formatOverviewRunButtonHtml(targets, isRunning, false)
-        }
+        ${(() => {
+          const runningTask = getCurrentlyRunningTaskInfo();
+          if (runningTask && runningTask.type === 'script' && runningTask.id === script.id) {
+            return `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+          }
+          if (runningTask) {
+            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+          }
+          return formatOverviewRunButtonHtml(targets, isRunning, false);
+        })()}
       </div>
     `;
     return;
@@ -2088,10 +2178,16 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
         </div>
       </div>
       <div class="ov-wb-footer">
-        ${canStop
-          ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`
-          : formatOverviewRunButtonHtml(targets, isRunning, true)
-        }
+        ${(() => {
+          const runningTask = getCurrentlyRunningTaskInfo();
+          if (runningTask && runningTask.type === 'bundle' && runningTask.id === bundle.id) {
+            return `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`;
+          }
+          if (runningTask) {
+            return `<button class="btn primary ov-wb-btn-run" disabled type="button">${ic('play', 15)} 任务运行中 (${escapeHtml(runningTask.title)})</button>`;
+          }
+          return formatOverviewRunButtonHtml(targets, isRunning, true);
+        })()}
       </div>
     `;
     return;

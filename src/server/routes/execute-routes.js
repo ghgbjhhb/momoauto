@@ -160,24 +160,40 @@ async function handleExecuteRoutes(ctx, request, response, url) {
   // 组合/批量任务由 Windows 服务器继续派发后续步骤，不依赖浏览器保持连接。
   if (request.method === 'POST' && url.pathname === '/api/workflows/start') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
-    json(response, 202, launchWorkflow(await readJsonBody(request), user));
+    try {
+      json(response, 202, launchWorkflow(await readJsonBody(request), user));
+    } catch (err) {
+      json(response, err.status || 500, { ok: false, error: err.message });
+    }
     return true;
   }
   if (request.method === 'GET' && url.pathname === '/api/workflows/status') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
-    json(response, 200, getWorkflowStatus(url.searchParams.get('workflowRunId'), user));
+    try {
+      json(response, 200, getWorkflowStatus(url.searchParams.get('workflowRunId'), user));
+    } catch (err) {
+      json(response, err.status || 500, { ok: false, error: err.message });
+    }
     return true;
   }
   if (request.method === 'POST' && url.pathname === '/api/workflows/stop') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
     const body = await readJsonBody(request);
-    json(response, 200, await stopWorkflow(body?.workflowRunId, user));
+    try {
+      json(response, 200, await stopWorkflow(body?.workflowRunId, user));
+    } catch (err) {
+      json(response, err.status || 500, { ok: false, error: err.message });
+    }
     return true;
   }
   if (request.method === 'POST' && url.pathname === '/api/workflows/resume') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
     const body = await readJsonBody(request);
-    json(response, 202, await resumeWorkflow(body?.workflowRunId, user));
+    try {
+      json(response, 202, await resumeWorkflow(body?.workflowRunId, user));
+    } catch (err) {
+      json(response, err.status || 500, { ok: false, error: err.message });
+    }
     return true;
   }
 
