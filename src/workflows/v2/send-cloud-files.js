@@ -10,7 +10,6 @@ const DEFAULT_POLL_MS = 3000;
 const DEFAULT_WAIT_MS = 15 * 60 * 1000;
 
 const DEFAULT_PUBLIC_FILE_TARGETS = Object.freeze([
-  { id: '2113105536031281154', label: '抖音', appName: '抖音', packageName: 'com.ss.android.ugc.aweme' },
   { id: '2063926414024982529', label: '美团外卖', appName: '美团外卖', packageName: 'com.sankuai.meituan.takeoutnew' },
   { id: '2063926297389776898', label: '铁路 12306', appName: 'Railway 12306', packageName: 'com.MobileTicket' },
   { id: '2063991577545621505', label: '高德地图', appName: 'Amap', packageName: 'com.autonavi.minimap' },
