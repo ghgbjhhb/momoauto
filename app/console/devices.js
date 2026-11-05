@@ -398,9 +398,29 @@ function renderViewerCaption() {
 
 /* ---------- 宫格视图（截图快照） ---------- */
 
-function renderGridViewer() {
+
+function updateGridSelection() {
+  const stage = elements.viewerStage;
+  if (!stage) return false;
+  const grid = stage.querySelector('.device-grid');
+  if (!grid) return false;
+  const tiles = grid.querySelectorAll('.device-tile');
+  if (tiles.length !== state.devices.length) return false;
+  for (const tile of tiles) {
+    const isSelected = tile.dataset.tileDevice === state.selectedDeviceId;
+    tile.classList.toggle('selected', isSelected);
+    tile.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+  }
+  return true;
+}
+
+function renderGridViewer(forceRebuild = false) {
   const stage = elements.viewerStage;
   stage.dataset.viewerDevice = '';
+  // 若网格已在 DOM 中且设备结构未变，仅更新选中类，绝对不要销毁重建 DOM（保护 dblclick 事件与 canvas 缓存）
+  if (!forceRebuild && updateGridSelection()) {
+    return;
+  }
   closeAllPlayers();
 
   if (!state.devices.length) {
