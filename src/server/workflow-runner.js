@@ -292,26 +292,15 @@ async function executeWorkflow(run, steps, user) {
     }
   }
 
-  // 并行派发所有设备，支持并发上限控制（默认最多 8 台同时执行）
-  const MAX_CONCURRENT_DEVICES = 8;
-  const queue = [...run.results];
-  const workers = [];
-
-  for (const entry of queue) {
+  // 串行有序排队执行：逐台设备端到端闭环，彻底杜绝云端接口锁冲突(HTTP 400)及本地 OCR/推流并发资源雪崩
+  for (let i = 0; i < run.results.length; i++) {
+    const entry = run.results[i];
     if (run.stopRequested) {
       entry.status = 'skipped';
       continue;
     }
-    const workerPromise = executeOneDevice(entry).finally(() => {
-      const idx = workers.indexOf(workerPromise);
-      if (idx !== -1) workers.splice(idx, 1);
-    });
-    workers.push(workerPromise);
-    if (workers.length >= MAX_CONCURRENT_DEVICES) {
-      await Promise.race(workers);
-    }
+    await executeOneDevice(entry);
   }
-  await Promise.allSettled(workers);
 
   const hasUnknown = run.results.some(r => r.status === 'unknown');
   run.state = hasUnknown ? 'unknown' : run.stopRequested ? 'cancelled' : 'finished';
