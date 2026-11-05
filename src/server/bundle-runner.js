@@ -17,6 +17,7 @@ const { spawn } = require('node:child_process');
 const { YunmomoClient } = require('../index');
 const { RapidOcrWorker } = require('../automation/screen');
 const { PROJECT_ROOT } = require('../automation/runtime');
+const { acquireExclusiveLock } = require('../automation/concurrency');
 const { scriptById } = require('./script-catalog');
 const { STEPS: STEPS_V2 } = require('../../flows/v2/_common');
 const { STEPS: STEPS_V3 } = require('../../flows/v3/_common');
@@ -130,7 +131,24 @@ async function main() {
       const sourceFile = resolveScriptSource(script);
       let stepResult = null;
 
+      const isExclusive = Boolean(script.exclusive);
+      let exclusiveLock = null;
+
       try {
+        if (isExclusive) {
+          const lockKey = script.exclusiveKey || script.id;
+          console.log(`[步骤调度] 步骤 [${title}] 声明为全局独占排他属性 (exclusive)，正在申请排他执行锁...`);
+          exclusiveLock = await acquireExclusiveLock(lockKey, {
+            deviceId: targetDeviceId,
+            onWaiting: (sec) => {
+              if (sec % 9 === 0) {
+                console.log(`[步骤调度] 正在排队等待前序设备释放云端全局通道 (${sec}s)...`);
+              }
+            }
+          });
+          console.log(`[步骤调度] ✅ 成功获取全局排他锁，独占执行步骤 [${title}]`);
+        }
+
         let mod = null;
         if (sourceFile) {
           try {
@@ -165,6 +183,11 @@ async function main() {
         console.error(`::step-end:${index}:${stepDef.scriptId}:fail::`);
         console.error(`[步骤 ${index + 1}/${steps.length}] ❌ ${title} 执行失败:`, stepErr.message);
         throw stepErr;
+      } finally {
+        if (exclusiveLock) {
+          await exclusiveLock.release();
+          console.log(`[步骤调度] 独占步骤 [${title}] 执行结束，已安全释放全局排他锁。`);
+        }
       }
     }
 

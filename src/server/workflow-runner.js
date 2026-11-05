@@ -292,15 +292,30 @@ async function executeWorkflow(run, steps, user) {
     }
   }
 
-  // 串行有序排队执行：逐台设备端到端闭环，彻底杜绝云端接口锁冲突(HTTP 400)及本地 OCR/推流并发资源雪崩
-  for (let i = 0; i < run.results.length; i++) {
-    const entry = run.results[i];
+  // 多设备调度策略：
+  // 1. 若为单脚本且脚本属性标记为 exclusive（如单独执行 flow-01 导入云盘文件）：严格有序排队下发；
+  // 2. 其余场景（组合流水线任务、可并发普通脚本）：全力并发执行（并发上限 4 台）；
+  //    组合流水线内部的排他步骤（如步骤 1）由 bundle-runner 依据脚本属性自动互斥排队，实现流水线重叠并发！
+  const isExclusiveSingleScript = (steps.length === 1 && Boolean(steps[0]?.script?.exclusive));
+  const MAX_CONCURRENT_DEVICES = isExclusiveSingleScript ? 1 : 4;
+  const queue = [...run.results];
+  const workers = [];
+
+  for (const entry of queue) {
     if (run.stopRequested) {
       entry.status = 'skipped';
       continue;
     }
-    await executeOneDevice(entry);
+    const workerPromise = executeOneDevice(entry).finally(() => {
+      const idx = workers.indexOf(workerPromise);
+      if (idx !== -1) workers.splice(idx, 1);
+    });
+    workers.push(workerPromise);
+    if (workers.length >= MAX_CONCURRENT_DEVICES) {
+      await Promise.race(workers);
+    }
   }
+  await Promise.allSettled(workers);
 
   const hasUnknown = run.results.some(r => r.status === 'unknown');
   run.state = hasUnknown ? 'unknown' : run.stopRequested ? 'cancelled' : 'finished';

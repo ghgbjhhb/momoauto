@@ -151,41 +151,12 @@ async function runStep(context = {}) {
     return { ok: true };
   }
 
-  async function safeSendToDevices(files, stageLabel) {
-    // 1. 前置探测：检查云端账号当前是否有未完成的传输任务
-    try {
-      const prior = summarizeStatus(await disk.transferStatus());
-      if (prior && !prior.finished && !prior.expired && prior.pendingCount > 0) {
-        console.log(`[${stageLabel}] 云端有前序任务进行中，自动排队等待完成...`);
-        await waitForTransfer(disk, prior.totalCount, '前序等待', { waitMs: 5 * 60 * 1000 });
-      }
-    } catch {}
-
-    // 2. 带有 HTTP 400 频控与时差重试的健壮下发
-    let lastErr = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        return await disk.sendToDevices([actualDeviceId], files, {
-          fileType,
-          timeoutMs: 60 * 60 * 1000,
-        });
-      } catch (err) {
-        lastErr = err;
-        const msg = String(err?.message || '');
-        if (msg.includes('400') && attempt < 3) {
-          console.log(`[${stageLabel}] 云端接口繁忙排队中 (HTTP 400)，等待 3 秒后重试 (${attempt}/3)...`);
-          await sleep(3000);
-          continue;
-        }
-        throw err;
-      }
-    }
-    throw lastErr;
-  }
-
   // 第一阶段：向云机传输私有云盘所有文件
   console.log(`\n[Phase 1/2] 开始向云机传输私有云盘文件（共 ${privateFiles.records.length} 个）...`);
-  await safeSendToDevices(privateFiles.records, '私有云盘');
+  await disk.sendToDevices([actualDeviceId], privateFiles.records, {
+    fileType,
+    timeoutMs: 60 * 60 * 1000,
+  });
   const privateStatus = await waitForTransfer(disk, privateFiles.records.length, '私有云盘');
   if (!privateStatus.finished || privateStatus.expired || privateStatus.failCount !== 0 ||
     privateStatus.successCount !== privateFiles.records.length) {
@@ -195,7 +166,10 @@ async function runStep(context = {}) {
 
   // 第二阶段：等待私有传输完成后，向云机传输指定的公共文件
   console.log(`[Phase 2/2] 开始向云机传输公共云盘指定应用（共 ${publicFiles.length} 个）...`);
-  await safeSendToDevices(publicFiles, '公共文件');
+  await disk.sendToDevices([actualDeviceId], publicFiles, {
+    fileType,
+    timeoutMs: 60 * 60 * 1000,
+  });
   const publicStatus = await waitForTransfer(disk, publicFiles.length, '公共文件');
   if (!publicStatus.finished || publicStatus.expired || publicStatus.failCount !== 0 ||
     publicStatus.successCount !== publicFiles.length) {

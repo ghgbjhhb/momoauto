@@ -15,6 +15,8 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     args: ['--execute'],
     requiresDevice: true,
     requiresCertificate: step.order === 2,
+    exclusive: step.order === 1,
+    exclusiveKey: step.order === 1 ? 'cloud-disk-transfer' : '',
     ...(step.order === 2.1 ? {
       parameters: [
         { name: 'filePath', label: '云盘真参文件', defaultValue: '', placeholder: '留空默认自动获取云盘可用真参' }
@@ -52,6 +54,8 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     args: ['--execute'],
     requiresDevice: true,
     requiresCertificate: step.order === 2,
+    exclusive: step.order === 1,
+    exclusiveKey: step.order === 1 ? 'cloud-disk-transfer' : '',
     ...(step.order === 3 ? {
       parameters: [
         { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
