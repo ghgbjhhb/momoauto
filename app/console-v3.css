@@ -27,6 +27,7 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font: var(--fs-13)/var(--lh-15) var(--font-sans);
+  font-weight: var(--fw-400);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -381,6 +382,7 @@ select.select { min-width: 120px; }
 
 .switch.on { background: var(--blue); }
 .switch.on:after { transform: translateX(16px); }
+.switch.on.group-disabled { opacity: 0.5; }
 
 /* ---------- 总览页整屏防穿透与锁死（左固定/右独立滚动） ---------- */
 
@@ -812,6 +814,7 @@ body:has(#page-overview:not([hidden])) .page {
 .task-card:last-child { border-bottom: 0; }
 .task-card:hover { background: var(--soft); }
 .task-card.active { background: var(--blue-light); }
+.task-card.inherited-hidden { opacity: 0.82; }
 
 .num { background: var(--soft-2); color: var(--muted); font-weight: var(--fw-700); border-radius: var(--r-6); padding: var(--sp-6) var(--sp-8); font-size: var(--fs-12); flex: none; font-variant-numeric: tabular-nums; }
 

@@ -15,8 +15,8 @@
   /* ---------- 字体 ---------- */
   /* 说明：不引入 Geist。CSP 为 font-src 'self' data:，仓库内无 woff2，
      外部 CDN 字体一律被拦；中文渲染也需要系统 CJK 字体参与。详见 UI-SPEC 偏离项。 */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
+    "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
   /* ---------- 字号（11px 仅限拉丁字母与数字，中文最小 12px） ---------- */
@@ -29,9 +29,9 @@
   --fs-24: 24px;
 
   /* ---------- 字重（只有两档，深色底上 600+ 会光学加粗） ---------- */
-  --fw-400: 400;
-  --fw-500: 500;
-  --fw-600: 600;
+  --fw-400: 500;
+  --fw-500: 600;
+  --fw-600: 700;
 
   /* ---------- 行高 ---------- */
   --lh-none: 1;
@@ -172,8 +172,8 @@
   --fs-21: 21px;
   --fs-22: 22px;
 
-  --fw-700: 700;
-  --fw-800: 800;
+  --fw-700: 800;
+  --fw-800: 900;
 
   --lh-15: 1.5;
 

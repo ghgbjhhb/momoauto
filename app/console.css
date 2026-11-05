@@ -21,6 +21,7 @@ body {
   background-color: var(--bg-page);
   color: var(--text-1);
   font-family: var(--font-sans);
+  font-weight: var(--fw-400);
   font-size: var(--fs-14);
   line-height: var(--lh-normal);
   overflow: hidden;
@@ -3115,6 +3116,7 @@ body {
 
 :root[data-ui="v2"] body {
   font-size: var(--fs-13);
+  font-weight: var(--fw-400);
 }
 
 :root[data-ui="v2"] .topbar {

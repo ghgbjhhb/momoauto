@@ -1,6 +1,6 @@
 /* TDesign-inspired admin workspace. Uses app/tokens.css for color, spacing and elevation. */
 html[data-admin-theme="tdesign"] { color-scheme: light; }
-html[data-admin-theme="tdesign"] body { min-width: 0; background: var(--bg-page); color: var(--text-1); font-size: var(--fs-13); }
+html[data-admin-theme="tdesign"] body { min-width: 0; background: var(--bg-page); color: var(--text-1); font-size: var(--fs-13); font-weight: var(--fw-400); }
 html[data-admin-theme="tdesign"] .admin-topbar {
   height: var(--td-header-height); min-height: var(--td-header-height);
   padding: 0 var(--sp-24); gap: var(--sp-16);
@@ -106,11 +106,11 @@ html[data-admin-theme="tdesign"] .admin-main #tab-assistant.active { display: fl
 .admin-main .badge-status { border-radius: var(--r-4); padding: var(--sp-2) var(--sp-8); font-size: var(--fs-12); }
 
 /* TDesign-style inputs and actions: crisp borders, quiet surfaces, clear focus. */
-html[data-admin-theme="tdesign"] .form-input { color: var(--text-1); background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--r-6); }
+html[data-admin-theme="tdesign"] .form-input { color: var(--text-1); background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--r-6); font-weight: var(--fw-500); }
 html[data-admin-theme="tdesign"] .form-input:hover:not(:disabled) { border-color: var(--accent); }
 html[data-admin-theme="tdesign"] .form-input:focus { border-color: var(--accent); outline: none; box-shadow: var(--focus-ring); }
 html[data-admin-theme="tdesign"] .form-input:disabled { background: var(--bg-subtle); color: var(--text-3); cursor: not-allowed; }
-html[data-admin-theme="tdesign"] .btn-action-sm { min-height: var(--h-32); padding: var(--sp-6) var(--sp-12); border: 1px solid var(--border-strong); border-radius: var(--r-6); background: var(--bg-surface); color: var(--text-2); font-size: var(--fs-12); cursor: pointer; }
+html[data-admin-theme="tdesign"] .btn-action-sm { min-height: var(--h-32); padding: var(--sp-6) var(--sp-12); border: 1px solid var(--border-strong); border-radius: var(--r-6); background: var(--bg-surface); color: var(--text-2); font-size: var(--fs-12); font-weight: var(--fw-500); cursor: pointer; }
 html[data-admin-theme="tdesign"] .btn-action-sm:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 html[data-admin-theme="tdesign"] .btn-action-sm:disabled { opacity: .5; cursor: not-allowed; }
 html[data-admin-theme="tdesign"] :is(button, a, summary, input, textarea, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

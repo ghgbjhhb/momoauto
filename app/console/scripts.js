@@ -66,19 +66,47 @@ function isScriptManageMode() {
 }
 window.isScriptManageMode = isScriptManageMode;
 
-function scriptVisible(script) {
+function scriptGroupKey(script) {
+  if (!script) return '';
+  return script.category || (script.id?.endsWith('-v2') ? 'v2' : script.id?.endsWith('-v3') ? 'v3' : 'momo');
+}
+
+function scriptConfiguredVisible(script) {
+  if (!script) return false;
   return state.visibility?.scripts?.[script.id] !== false;
 }
 
 function groupVisible(key) {
+  if (!key) return true;
   return state.visibility?.groups?.[key] !== false;
+}
+
+function scriptEffectivelyVisible(script) {
+  if (!script) return false;
+  if (!scriptConfiguredVisible(script)) return false;
+  const groupKey = scriptGroupKey(script);
+  if (groupKey && !groupVisible(groupKey)) return false;
+  return true;
+}
+
+function bundleEffectivelyVisible(bundle) {
+  if (!bundle) return false;
+  if (!groupVisible('custom')) return false;
+  if (bundle.enabled === false) return false;
+  return true;
+}
+
+function scriptVisible(script) {
+  return scriptConfiguredVisible(script);
 }
 
 /* ---------- 页面骨架 ---------- */
 
 function currentTaskScript() {
-  const visible = state.scripts.filter(s => scriptVisible(s) && !s.batch);
-  return visible.find(s => s.id === state.taskScriptId) || null;
+  const scripts = isScriptManageMode()
+    ? state.scripts.filter(s => !s.batch)
+    : state.scripts.filter(s => scriptEffectivelyVisible(s) && !s.batch);
+  return scripts.find(s => s.id === state.taskScriptId) || null;
 }
 
 function currentTaskBundle() {
@@ -86,7 +114,7 @@ function currentTaskBundle() {
   const bundles = Array.isArray(state.bundles) ? state.bundles : [];
   const bundle = bundles.find(item => item.id === state.taskBundleId);
   if (!bundle) return null;
-  if (!isScriptManageMode() && (bundle.enabled === false || !groupVisible('custom'))) return null;
+  if (!isScriptManageMode() && !bundleEffectivelyVisible(bundle)) return null;
   return bundle;
 }
 
@@ -241,14 +269,35 @@ function groupScripts(key) {
 
 function taskCardHtml(script) {
   const manage = isScriptManageMode();
-  const visible = scriptVisible(script);
-  if (!manage && !visible) return '';
+  const configuredVisible = scriptConfiguredVisible(script);
+  const grpVisible = groupVisible(scriptGroupKey(script));
+  const effectiveVisible = grpVisible && configuredVisible;
+  if (!manage && !effectiveVisible) return '';
   const active = state.taskScriptId === script.id ? 'active' : '';
-  const hiddenBadge = manage && !visible ? '<span class="badge warn">用户侧隐藏</span>' : '';
   const danger = script.destructive ? '<span class="danger-tag">清数据</span>' : '';
   const hero = script.batch ? '<span class="hero-tag">全流程</span>' : '';
-  const visSwitch = manage ? `<button class="switch ${visible ? 'on' : ''}" data-vis-script="${escapeHtml(script.id)}" type="button" title="控制此脚本在用户侧是否显示" role="switch"></button>` : '';
-  return `<div class="task-card ${active}" data-task-select="${escapeHtml(script.id)}" role="button" tabindex="0">
+
+  let hiddenBadge = '';
+  let cardMutedClass = '';
+  let switchMutedClass = '';
+  let switchTitle = '';
+
+  if (manage) {
+    if (!configuredVisible) {
+      hiddenBadge = '<span class="badge warn" title="此脚本个体开关已关闭，在用户侧隐藏">用户侧隐藏</span>';
+      switchTitle = '控制此脚本在用户侧是否显示（当前已关闭）';
+    } else if (!grpVisible) {
+      hiddenBadge = '<span class="badge warn" title="所属分组总开关已关闭，该脚本在用户侧实际处于隐藏状态">随组隐藏</span>';
+      cardMutedClass = 'inherited-hidden';
+      switchMutedClass = 'group-disabled';
+      switchTitle = '所属分组总开关已关闭，该脚本在用户侧处于随组隐藏状态（点击可单独关闭此脚本）';
+    } else {
+      switchTitle = '控制此脚本在用户侧是否显示（当前已开启）';
+    }
+  }
+
+  const visSwitch = manage ? `<button class="switch ${configuredVisible ? 'on' : ''} ${switchMutedClass}" data-vis-script="${escapeHtml(script.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>` : '';
+  return `<div class="task-card ${active} ${cardMutedClass}" data-task-select="${escapeHtml(script.id)}" role="button" tabindex="0">
     ${script.order ? `<span class="num">${formatStepOrder(script.order)}</span>` : '<span class="num">组</span>'}
     <span class="task-card-main">
       <span class="task-name">${escapeHtml(scriptTitle(script))}${danger}${hero}${hiddenBadge}</span>
@@ -260,7 +309,9 @@ function taskCardHtml(script) {
 function bundleCardHtml(bundle) {
   const manage = isScriptManageMode();
   const enabled = bundle.enabled !== false;
-  if (!manage && !enabled) return '';
+  const grpVisible = groupVisible('custom');
+  const effectiveVisible = grpVisible && enabled;
+  if (!manage && !effectiveVisible) return '';
   const steps = (bundle.stepIds || []).map((id, i) => {
     const script = state.scripts.find(s => s.id === id);
     return script ? { script, options: bundle.stepOptions?.[i] || {} } : null;
@@ -270,16 +321,36 @@ function bundleCardHtml(bundle) {
     ? `<span class="bundle-steps-flow">${steps.map((step, i) =>
         `${i ? '<span class="bundle-step-arrow">→</span>' : ''}<span class="bundle-step-item">${i + 1}. ${escapeHtml(scriptTitle(step.script))}${describeStepOptions(step) ? `<b class="bundle-step-opts">${escapeHtml(describeStepOptions(step))}</b>` : ''}</span>`).join('')}</span>`
     : '';
+
+  let hiddenBadge = '';
+  let cardMutedClass = '';
+  let switchMutedClass = '';
+  let switchTitle = '';
+
+  if (manage) {
+    if (!enabled) {
+      hiddenBadge = '<span class="badge warn" title="此组合自身已关闭，在用户侧隐藏">用户侧隐藏</span>';
+      switchTitle = '控制此组合在用户侧是否显示（当前已关闭）';
+    } else if (!grpVisible) {
+      hiddenBadge = '<span class="badge warn" title="自定义组合分组总开关已关闭，该组合在用户侧实际处于隐藏状态">随组隐藏</span>';
+      cardMutedClass = 'inherited-hidden';
+      switchMutedClass = 'group-disabled';
+      switchTitle = '自定义组合分组总开关已关闭，该组合在用户侧处于随组隐藏状态（点击可单独关闭）';
+    } else {
+      switchTitle = '控制此组合在用户侧是否显示（当前已开启）';
+    }
+  }
+
   const manageActions = manage ? `
     <span class="task-group-extra">
-      <button class="switch ${enabled ? 'on' : ''}" data-vis-bundle="${escapeHtml(bundle.id)}" type="button" title="控制此组合在用户侧是否显示" role="switch"></button>
+      <button class="switch ${enabled ? 'on' : ''} ${switchMutedClass}" data-vis-bundle="${escapeHtml(bundle.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>
       <button class="btn sm" data-bundle-edit="${escapeHtml(bundle.id)}" type="button">编辑</button>
       <button class="btn sm flat" data-bundle-delete="${escapeHtml(bundle.id)}" type="button">删除</button>
     </span>` : '';
-  return `<div class="task-card ${state.taskBundleId === bundle.id ? 'active' : ''}" data-bundle-select="${escapeHtml(bundle.id)}" role="button" tabindex="0">
+  return `<div class="task-card ${state.taskBundleId === bundle.id ? 'active' : ''} ${cardMutedClass}" data-bundle-select="${escapeHtml(bundle.id)}" role="button" tabindex="0">
     <span class="num">组</span>
     <span class="task-card-main">
-      <span class="task-name">${escapeHtml(bundle.name)}${manage && !enabled ? '<span class="badge warn">用户侧隐藏</span>' : ''}</span>
+      <span class="task-name">${escapeHtml(bundle.name)}${hiddenBadge}</span>
       ${bundle.description ? `<span class="task-sub">${escapeHtml(bundle.description)}</span>` : ''}
       ${stepsFlow}
     </span>
@@ -299,7 +370,7 @@ function renderTaskGroups() {
   for (const group of GROUPS) {
     if (group.key === 'custom') {
       const bundles = Array.isArray(state.bundles) ? state.bundles : [];
-      const displayBundles = manage ? bundles : bundles.filter(b => b.enabled !== false);
+      const displayBundles = manage ? bundles : bundles.filter(bundleEffectivelyVisible);
       if (!manage && (!groupVisible('custom') || !displayBundles.length)) continue;
       visibleCount += displayBundles.length;
       if (!manage) {
@@ -315,7 +386,7 @@ function renderTaskGroups() {
     }
 
     const scripts = groupScripts(group.key);
-    const visibleScripts = manage ? scripts : scripts.filter(scriptVisible);
+    const visibleScripts = manage ? scripts : scripts.filter(scriptEffectivelyVisible);
     if (!manage && (!groupVisible(group.key) || !visibleScripts.length)) continue;
     visibleCount += visibleScripts.length;
     if (!manage) {
@@ -1524,21 +1595,11 @@ function isScriptVisibleForOverview(script) {
   if (!script) return false;
   // 过滤内置批处理/全流程脚本（flow-all-v2 / flow-all），保持与任务列表完全一致
   if (script.batch || script.id.startsWith('flow-all')) return false;
-  // 单个脚本显隐开关：关了就不在总览显示
-  if (!scriptVisible(script)) return false;
-  // 所属分组显隐开关：所属组关了也不在总览显示
-  const groupKey = script.category || (script.id.endsWith('-v2') ? 'v2' : script.id.endsWith('-v3') ? 'v3' : 'momo');
-  if (groupKey && !groupVisible(groupKey)) return false;
-  return true;
+  return scriptEffectivelyVisible(script);
 }
 
 function isBundleVisibleForOverview(bundle) {
-  if (!bundle) return false;
-  // 组合脚本分组总开关
-  if (!groupVisible('custom')) return false;
-  // 组合自身的启用开关
-  if (bundle.enabled === false) return false;
-  return true;
+  return bundleEffectivelyVisible(bundle);
 }
 
 function getOverviewFilteredTasks() {
