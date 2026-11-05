@@ -772,7 +772,7 @@ function renderDevicePicker() {
     const note = active ? '正在执行' : isOnline(device) ? '可执行' : '离线';
     return `<label class="device-choice ${checked ? 'checked' : ''}">
       <input type="checkbox" data-batch-device="${escapeHtml(device.deviceId)}" ${checked ? 'checked' : ''}>
-      <span class="choice-text"><b>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</b><small>${note}</small></span>
+      <span class="choice-text"><b>${deviceIndexLabel(device)}</b><small>${note}</small></span>
     </label>`;
   }).join('');
   return `
@@ -798,7 +798,7 @@ function renderBatchResults() {
       : result.status === 'failed' || result.status === 'cancelled' ? 'err' : result.status === 'unknown' ? 'warn' : '';
     const note = result.message ? `<span class="hint">${escapeHtml(result.message)}</span>` : '';
     return `<div class="run-result-row">
-      <span class="result-name">${device ? `${deviceIndexLabel(device)} ${escapeHtml(device.name)}` : escapeHtml(result.deviceId)}</span>
+      <span class="result-name">${device ? deviceIndexLabel(device) : escapeHtml(result.deviceId)}</span>
       <span class="result-status">${result.durationMs ? `<span class="hint">${(result.durationMs / 1000).toFixed(1)}s</span>` : ''}${note}<span class="badge ${cls}">${RUN_STATE_TEXT[result.status] || result.status}</span></span>
     </div>`;
   }).join('');
@@ -1869,20 +1869,20 @@ function getOverviewTargetDevices() {
 window.getOverviewTargetDevices = getOverviewTargetDevices;
 
 function formatOverviewTargetLabel(targets) {
-  if (!targets.length) return '未选择云机';
-  if (targets.length === 1) return `${deviceIndexLabel(targets[0])} ${targets[0].name}`;
+  if (!targets.length) return '未选择设备';
+  if (targets.length === 1) return deviceIndexLabel(targets[0]);
   const names = targets.map(d => deviceIndexLabel(d)).join(', ');
   return `已选 ${targets.length} 台 (${names})`;
 }
 
 function formatOverviewRunButtonHtml(targets, isRunning, isBundle) {
   if (!targets.length) {
-    return `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" disabled>${ic('play', 15)} 请勾选目标云机</button>`;
+    return `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" disabled>${ic('play', 15)} 请选择设备</button>`;
   }
   if (targets.length === 1) {
-    return `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(deviceIndexLabel(targets[0]))} 执行${isBundle ? '组合' : ''}</button>`;
+    return `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 执行${isBundle ? '组合' : ''} (${escapeHtml(deviceIndexLabel(targets[0]))})</button>`;
   }
-  return `<button class="btn primary ov-wb-btn-run is-batch" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在选中的 ${targets.length} 台云机上批量执行${isBundle ? '组合' : ''}</button>`;
+  return `<button class="btn primary ov-wb-btn-run is-batch" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 批量执行${isBundle ? '组合' : ''} (${targets.length}台)</button>`;
 }
 
 function updateOverviewWorkbenchFooter(currentDev, isRunning) {

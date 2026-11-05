@@ -138,7 +138,7 @@ function renderDeviceChips() {
   if (!wrap) return;
   const html = state.devices.map(device => {
     const key = deviceStatusKey(device);
-    return `<button class="device-chip ${state.selectedDeviceId === device.deviceId ? 'selected' : ''} ${key === 'down' ? 'down' : key === 'busy' ? 'running' : ''}" data-chip-device="${escapeHtml(device.deviceId)}" title="${escapeHtml(deviceLabel(device))}"><b>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</b><small>${STATUS_TEXT[key]}</small></button>`;
+    return `<button class="device-chip ${state.selectedDeviceId === device.deviceId ? 'selected' : ''} ${key === 'down' ? 'down' : key === 'busy' ? 'running' : ''}" data-chip-device="${escapeHtml(device.deviceId)}" title="${escapeHtml(deviceLabel(device))}"><b>${deviceIndexLabel(device)}</b><small>${STATUS_TEXT[key]}</small></button>`;
   }).join('');
   renderMarkupIfChanged(wrap, html);
 }
@@ -269,7 +269,7 @@ function updateDeviceMeta(device, stats = null) {
   if (switchSingleBtn) switchSingleBtn.hidden = state.view !== 'grid';
   const nameEl = byId('metaDevName');
   if (nameEl) {
-    const label = `${deviceIndexLabel(device)} ${device.name}`;
+    const label = deviceIndexLabel(device);
     if (nameEl.textContent !== label) nameEl.textContent = label;
   }
 
@@ -283,13 +283,8 @@ function updateDeviceMeta(device, stats = null) {
 
   const resEl = byId('metaDevRes');
   if (resEl) {
-    const isStreamLow = stats?.width && stats?.height && (stats.width !== 720 || stats.height !== 1280);
-    const resolution = isStreamLow ? `720×1280 (节能流: ${stats.width}×${stats.height})` : '720×1280';
-    const resTitle = isStreamLow
-      ? `云机物理分辨率: 720×1280 (自动化脚本以原生无损高清执行)\n网页实时预览: ${stats.width}×${stats.height} (已开启低带宽轻量节能)`
-      : '云机物理分辨率: 720×1280 (原生高清画面)';
+    const resolution = '720×1280';
     if (resEl.textContent !== resolution) resEl.textContent = resolution;
-    if (resEl.title !== resTitle) resEl.title = resTitle;
   }
 
   // 直播帧可达 30fps；按钮只渲染一次，否则按下和释放鼠标期间重建 SVG
@@ -383,7 +378,7 @@ function renderViewerCaption() {
     caption.innerHTML = state.view === 'grid'
       ? `<strong>设备概览</strong><span class="badge">${state.devices.length} 台</span>`
       : device
-        ? `<strong>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</strong>${deviceStatusBadge(device)}<span class="cell-mono">${escapeHtml(device.deviceId)}</span>`
+        ? `<strong>${deviceIndexLabel(device)}</strong>${deviceStatusBadge(device)}<span class="cell-mono">${escapeHtml(device.deviceId)}</span>`
         : '<strong>未选择设备</strong>';
   }
   if (actions) {
@@ -413,10 +408,16 @@ function updateGridSelection() {
   const tiles = grid.querySelectorAll('.device-tile');
   if (tiles.length !== state.devices.length) return false;
   for (const tile of tiles) {
-    const isSelected = tile.dataset.tileDevice === state.selectedDeviceId;
+    const id = tile.dataset.tileDevice;
+    const isSelected = id === state.selectedDeviceId;
+    const isBatchChecked = (state.batchDevices || []).includes(id);
     tile.classList.toggle('selected', isSelected);
+    tile.classList.toggle('is-batch-checked', isBatchChecked);
     tile.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+    const chk = tile.querySelector('.tile-checkbox');
+    if (chk && chk.checked !== isBatchChecked) chk.checked = isBatchChecked;
   }
+  updateGridBatchTools();
   return true;
 }
 
@@ -434,15 +435,22 @@ function renderGridViewer(forceRebuild = false) {
     return;
   }
 
+  if (!state.batchDevices?.length && state.selectedDeviceId) {
+    state.batchDevices = [state.selectedDeviceId];
+  }
   stage.innerHTML = '<div class="device-grid" role="region" aria-label="设备监控矩阵">' + state.devices.map(device => {
     const key = deviceStatusKey(device);
     const online = isOnline(device);
     const isSelected = state.selectedDeviceId === device.deviceId;
-    return '<div class="device-tile ' + (isSelected ? 'selected ' : '') + (online ? '' : 'is-offline') + '" data-tile-device="' + escapeHtml(device.deviceId) + '" tabindex="0" role="button" aria-pressed="' + isSelected + '">' +
+    const isBatchChecked = (state.batchDevices || []).includes(device.deviceId);
+    return '<div class="device-tile ' + (isSelected ? 'selected ' : '') + (isBatchChecked ? 'is-batch-checked ' : '') + (online ? '' : 'is-offline') + '" data-tile-device="' + escapeHtml(device.deviceId) + '" tabindex="0" role="button" aria-pressed="' + isSelected + '">' +
       '<div class="tile-header">' +
         '<div class="tile-id-badge">' +
+          '<label class="tile-check-label" title="选择设备" onclick="event.stopPropagation()">' +
+            '<input type="checkbox" class="tile-checkbox" data-tile-check="' + escapeHtml(device.deviceId) + '" ' + (isBatchChecked ? 'checked' : '') + '>' +
+          '</label>' +
           '<i class="small-dot ' + (key === 'down' ? 'down' : key === 'busy' ? 'busy' : '') + '"></i>' +
-          '<span class="tile-name">' + deviceIndexLabel(device) + ' ' + escapeHtml(device.name) + '</span>' +
+          '<span class="tile-name" title="' + escapeHtml(device.name || '') + '">' + deviceIndexLabel(device) + '</span>' +
         '</div>' +
         '<div class="tile-actions">' +
           '<button class="tile-action-btn" type="button" data-tile-action="single" title="以单台全屏查看此设备" aria-label="进入单台大屏">' +
@@ -573,7 +581,7 @@ function renderDeviceTable() {
       ? `${new Date(device.expireAt).toLocaleDateString()}<span class="cell-sub">剩余 ${escapeHtml(device.remainingText || '…')}</span>`
       : '--';
     return `<tr data-row-device="${escapeHtml(device.deviceId)}" class="${state.selectedDeviceId === device.deviceId ? 'selected' : ''}">
-      <td><b>${deviceIndexLabel(device)} ${escapeHtml(device.name)}</b><span class="cell-sub cell-mono">${escapeHtml(device.deviceId)}</span></td>
+      <td><b>${deviceIndexLabel(device)}</b><span class="cell-sub cell-mono">${escapeHtml(device.deviceId)}</span></td>
       <td>${deviceStatusBadge(device)}</td>
       <td>${ip}</td>
       <td>${ver ? `<span class="badge">${ver}</span>` : '--'}</td>
@@ -646,6 +654,23 @@ elements.deviceChips?.addEventListener?.('click', event => {
 let lastTileClick = { deviceId: null, at: 0 };
 
 elements.viewerStage?.addEventListener?.('click', event => {
+  // 0. 复选框勾选 (多选设备)
+  const check = event.target.closest('[data-tile-check]');
+  if (check) {
+    event.stopPropagation();
+    const id = check.dataset.tileCheck;
+    if (check.checked) {
+      if (!state.batchDevices.includes(id)) state.batchDevices.push(id);
+    } else {
+      state.batchDevices = state.batchDevices.filter(item => item !== id);
+    }
+    const tile = check.closest('.device-tile');
+    if (tile) tile.classList.toggle('is-batch-checked', check.checked);
+    updateGridBatchTools();
+    notifyBatchSelectionChanged();
+    return;
+  }
+
   // 1. 重试快照
   const retryBtn = event.target.closest('[data-retry-shot]');
   if (retryBtn) {
@@ -709,6 +734,11 @@ elements.viewerStage?.addEventListener?.('click', event => {
     lastTileClick.deviceId = deviceId;
     lastTileClick.at = now;
     selectDevice(deviceId);
+    if (!state.batchDevices.includes(deviceId) && state.batchDevices.length <= 1) {
+      state.batchDevices = [deviceId];
+      updateGridSelection();
+      notifyBatchSelectionChanged();
+    }
     return;
   }
 
@@ -819,3 +849,17 @@ eventBus.addEventListener('runtime:changed', () => {
 
 setInterval(refreshTileShots, TILE_SHOT_TTL);
 
+
+
+// 宫格模式全选/清空
+byId('ovSelectAllBtn')?.addEventListener('click', () => {
+  state.batchDevices = state.devices.map(d => d.deviceId);
+  updateGridSelection();
+  notifyBatchSelectionChanged();
+});
+
+byId('ovClearBatchBtn')?.addEventListener('click', () => {
+  state.batchDevices = [];
+  updateGridSelection();
+  notifyBatchSelectionChanged();
+});

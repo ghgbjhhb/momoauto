@@ -453,7 +453,7 @@ function navDevicesGroupHtml() {
       <button class="nav-sub-item ${isSelected ? 'active' : ''}" data-nav-device="${escapeHtml(device.deviceId)}" type="button" title="${escapeHtml(device.name || device.deviceId)}">
         <div class="nav-sub-left">
           <span class="nav-sub-dot ${statusKey === 'busy' ? 'running' : statusKey === 'online' ? 'online' : 'offline'}"></span>
-          <span class="nav-sub-name">${indexLabel} ${escapeHtml(device.name)}</span>
+          <span class="nav-sub-name">${indexLabel}</span>
         </div>
         <span class="nav-sub-status">${statusText}</span>
       </button>
