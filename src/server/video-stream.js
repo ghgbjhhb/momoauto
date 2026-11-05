@@ -64,7 +64,7 @@ function createVideoStreams({ client }) {
     const key = device.deviceId + ':' + createHash('sha256').update(token || 'global').digest('hex');
     let entry = streams.get(key);
     if (!entry) {
-      if (streams.size >= 16) throw Object.assign(new Error('视频连接数量已达上限'), { code: 'VIDEO_LIMIT' });
+      if (streams.size >= 64) throw Object.assign(new Error('视频连接数量已达上限'), { code: 'VIDEO_LIMIT' });
       entry = create(device, token, key);
       streams.set(key, entry);
     }
@@ -86,6 +86,13 @@ function createVideoStreams({ client }) {
     ws.on('pong', viewer.onPong);
     entry.viewers.add(viewer);
     if (entry.control.ready) onSize(entry.control);
+    // GOP 关键帧缓存即时重放：新接入的客户端在第 0 毫秒立刻收到最新关键帧并出画，消除等待时差
+    if (entry.latestKeyframe && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(entry.latestKeyframe, { binary: true });
+        entry.refresh();
+      } catch {}
+    }
     return {
       control: entry.control,
       ready: entry.ready,
@@ -160,7 +167,7 @@ function createVideoStreams({ client }) {
       closed: false, lastPacketAt: 0, lastRefreshAt: 0,
       refreshBit: false, startedAt: 0, pingAt: 0, lastPingAt: 0,
       decoder: null, pngBuffer: Buffer.alloc(0), pngOffset: 8,
-      latestFrame: null, decoderIdleTimer: null
+      latestFrame: null, latestKeyframe: null, decoderIdleTimer: null
     };
 
     control.on('initial', () => {
@@ -307,6 +314,9 @@ function createVideoStreams({ client }) {
       }
 
       const isKey = containsKeyframe(frame);
+      if (isKey) {
+        entry.latestKeyframe = frame;
+      }
       for (const viewer of entry.viewers) {
         if (viewer.ws.readyState !== WebSocket.OPEN) continue;
         // 宫格模式仅分发关键帧包，平滑降帧率且省带宽；单台模式全量超清 24fps

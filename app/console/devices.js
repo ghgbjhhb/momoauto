@@ -241,15 +241,21 @@ function renderSingleViewer() {
   const id = device ? device.deviceId : '';
 
   let phoneStage = stage.querySelector('.phone-stage');
+  const grid = stage.querySelector('.device-grid');
+  if (grid) grid.hidden = true;
+  const emptyBox = stage.querySelector('.viewer-empty-box');
+  if (emptyBox) emptyBox.hidden = true;
+
   if (!phoneStage) {
-    stage.innerHTML = `
-      <div class="phone-stage">
-        <div class="viewer-hint" hidden>正在连接画面…</div>
-        <div class="offline-cover" hidden>设备离线</div>
-      </div>
+    phoneStage = document.createElement('div');
+    phoneStage.className = 'phone-stage';
+    phoneStage.innerHTML = `
+      <div class="viewer-hint" hidden>正在连接画面…</div>
+      <div class="offline-cover" hidden>设备离线</div>
     `;
-    phoneStage = stage.querySelector('.phone-stage');
+    stage.insertBefore(phoneStage, stage.firstChild);
   }
+  phoneStage.hidden = false;
 
   const hint = phoneStage.querySelector('.viewer-hint');
   const cover = phoneStage.querySelector('.offline-cover');
@@ -502,22 +508,50 @@ function updateGridSelection() {
 
 function renderGridViewer(forceRebuild = false) {
   const stage = elements.viewerStage;
+  if (!stage) return;
   stage.dataset.viewerDevice = '';
+
+  const phoneStage = stage.querySelector('.phone-stage');
+  if (phoneStage) phoneStage.hidden = true;
+
+  let grid = stage.querySelector('.device-grid');
+  if (grid) grid.hidden = false;
+
   // 若网格已在 DOM 中且设备结构未变，仅更新选中类，绝对不要销毁重建 DOM（保护 dblclick 事件与 canvas 缓存）
   if (!forceRebuild && updateGridSelection()) {
     return;
   }
   closeAllPlayers();
 
+  let emptyBox = stage.querySelector('.viewer-empty-box');
   if (!state.devices.length) {
-    stage.innerHTML = '<div class="viewer-empty-box"><div class="empty-icon">📱</div><div class="empty-title">' + (state.tokenConfigured ? '暂无可预览云机' : '尚未连接云机平台') + '</div><div class="empty-sub">请先在管理后台或设置中配置设备</div></div>';
+    if (grid) grid.hidden = true;
+    if (!emptyBox) {
+      emptyBox = document.createElement('div');
+      emptyBox.className = 'viewer-empty-box';
+      stage.appendChild(emptyBox);
+    }
+    emptyBox.innerHTML = '<div class="empty-icon">📱</div><div class="empty-title">' + (state.tokenConfigured ? '暂无可预览云机' : '尚未连接云机平台') + '</div><div class="empty-sub">请先在管理后台或设置中配置设备</div>';
+    emptyBox.hidden = false;
     return;
   }
+
+  if (emptyBox) emptyBox.hidden = true;
 
   if (!state.batchDevices?.length && state.selectedDeviceId) {
     state.batchDevices = [state.selectedDeviceId];
   }
-  stage.innerHTML = '<div class="device-grid" role="region" aria-label="设备监控矩阵">' + state.devices.map(device => {
+
+  if (!grid) {
+    grid = document.createElement('div');
+    grid.className = 'device-grid';
+    grid.setAttribute('role', 'region');
+    grid.setAttribute('aria-label', '设备监控矩阵');
+    stage.appendChild(grid);
+  }
+  grid.hidden = false;
+
+  grid.innerHTML = state.devices.map(device => {
     const key = deviceStatusKey(device);
     const online = isOnline(device);
     const isSelected = state.selectedDeviceId === device.deviceId;
