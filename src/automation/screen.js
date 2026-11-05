@@ -416,15 +416,16 @@ async function confirmHome(phone, control, worker, directory, state, options) {
 async function swipeHomePage(control, direction) {
   const width = control.screenWidth || 400;
   const height = control.screenHeight || 720;
-  // Swipe at 46% height (~330px) to touch the empty canvas gap between icon rows, avoiding icon drag gestures
-  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.46)));
-  const fromX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.82) : Math.round(width * 0.18)));
-  const toX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.18) : Math.round(width * 0.82)));
-  // 使用更干脆的滑动手势 (250ms, 12步)，确保触发 Launcher 翻页惯性，避免慢拖拽导致回弹
+  // 核心优化：滑动 Y 坐标锁定在无图标与小部件的【绝对净空安全带】(52% 屏幕高度，约 374px)
+  // 在 Page 1 处于第一排与第二排图标间隙，在 Page 2 处于图标下方纯净空白区
+  // 彻底避开所有应用图标与小部件，100% 触发系统翻页惯性，双向翻页均零阻尼
+  const y = Math.min(height - 1, Math.max(0, Math.round(height * 0.52)));
+  const fromX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.85) : Math.round(width * 0.15)));
+  const toX = Math.min(width - 1, Math.max(0, direction === 'left' ? Math.round(width * 0.15) : Math.round(width * 0.85)));
   await control.swipe(
     { x: fromX, y },
     { x: toX, y },
-    { durationMs: 250, steps: 12 },
+    { durationMs: 200, steps: 10 },
   );
   await control.flush();
 }
@@ -432,62 +433,57 @@ async function swipeHomePage(control, direction) {
 async function findApp(phone, control, worker, directory, state, home, options,
   targetBoxFinder = appTargetBox, targetName = '密钥认证') {
   let current = home;
+
+  // 1. 就近直检：若当前传入画面已包含目标应用，直接返回，耗时 0ms
+  const initialBox = targetBoxFinder(current.items);
+  if (initialBox && !clipboardToastVisible(current.items)) {
+    return { observation: current, box: initialBox, direction: 'none', page: 0 };
+  }
+
+  // 2. 启发式单向优先翻页：
+  // 安卓新装应用均从主页向后排列（即手势向左滑呼出右侧页）；优先单向排查，到达边界再反向兜底
   const directions = ['left', 'right'];
   const visited = new Set();
+  const maxPages = options?.maxPagesPerDirection ?? 5;
 
   for (const direction of directions) {
-    // 切换搜索方向前，若不是初始主屏，先发 HOME 键重置回桌面基准页，确保从主屏开始向该方向翻页
     if (direction !== directions[0]) {
+      // 切换方向前发 HOME 键重置回主屏
       await sendHome(control);
-      await sleep(600);
-      current = await confirmHome(phone, control, worker, directory, state, { ...options, homeTimeoutMs: 6000 }).catch(() => current);
+      await sleep(350);
+      state.counter += 1;
+      current = await screenshotAndOcr(phone, worker, directory, state.counter);
+      const resetBox = targetBoxFinder(current.items);
+      if (resetBox && !clipboardToastVisible(current.items)) {
+        return { observation: current, box: resetBox, direction: 'none', page: 0 };
+      }
     }
 
-    for (let page = 0; page <= options.maxPagesPerDirection; page += 1) {
+    for (let page = 0; page < maxPages; page += 1) {
       const box = targetBoxFinder(current.items);
       if (box && !clipboardToastVisible(current.items)) {
-        const settled = await ensureStableObservation(
-          phone, worker, directory, state, current,
-          obs => Boolean(targetBoxFinder(obs.items)),
-          1500, 200,
-        );
-        const settledBox = targetBoxFinder(settled.items) || box;
-        return { observation: settled, box: settledBox, direction, page };
+        return { observation: current, box, direction, page };
       }
 
       const signature = pageSignature(current.items);
-      if (page === options.maxPagesPerDirection) break;
 
-      // 翻页操作（最多支持 2 次手势尝试，防止偶发手势丢失或阻尼回弹被误判为“已触底”）
-      let nextObservation = null;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        await swipeHomePage(control, direction);
-        await sleep(500);
-        let previousObs = null;
-        nextObservation = await observeUntil(
-          phone,
-          worker,
-          directory,
-          state,
-          observation => {
-            if (clipboardToastVisible(observation.items)) return false;
-            const stable = previousObs && areObservationsStable(previousObs, observation);
-            previousObs = observation;
-            return Boolean(stable);
-          },
-          options.homeTimeoutMs,
-          options.pollMs,
-          `home-page-${direction}-${page + 1}-att${attempt + 1}`,
-        );
-        if (!nextObservation) continue;
-        const nextSig = pageSignature(nextObservation.items);
-        if (nextSig && nextSig !== signature) break;
-        await sleep(300);
+      // 下发净空带快速翻页手势
+      await swipeHomePage(control, direction);
+      // 等待 350ms 翻页动画完全沉降
+      await sleep(350);
+
+      // 流式单帧取样：立即截取 1 帧并 OCR
+      state.counter += 1;
+      const nextObservation = await screenshotAndOcr(phone, worker, directory, state.counter);
+
+      // 核心流式瞬时命中：若翻页后这一帧已出现目标，立即提取坐标返回，绝不在命中后再死等！
+      const targetInNext = targetBoxFinder(nextObservation.items);
+      if (targetInNext && !clipboardToastVisible(nextObservation.items)) {
+        return { observation: nextObservation, box: targetInNext, direction, page: page + 1 };
       }
 
-      if (!nextObservation) continue;
       const nextSignature = pageSignature(nextObservation.items);
-      // 若连续尝试后页面依然完全未变化，确认到达该方向尽头（触底）
+      // 若页面签名未变，说明到达该方向尽头（触底）
       if (nextSignature === signature) break;
       // 若出现环路循环页面，停止继续翻页
       if (visited.has(nextSignature)) break;
