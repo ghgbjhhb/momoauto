@@ -121,20 +121,20 @@ async function waitForTransfer(disk, totalCount, stageLabel, options = {}) {
   throw new Error(`[${stageLabel}] 传输超时: ` + JSON.stringify(last));
 }
 
-async function main() {
-  if (!process.env.YUNMOMO_TOKEN) {
-    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
-  }
+async function runStep(context = {}) {
+  const deviceId = String(context.deviceId || process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
+  const fileType = String(context.options?.fileType || process.env.YUNMOMO_FILE_TYPE || 'auto');
+  const verifyOnly = context.options?.verifyOnly === true || process.env.YUNMOMO_VERIFY_ONLY === '1';
 
-  const deviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
-  const fileType = String(process.env.YUNMOMO_FILE_TYPE || 'auto');
-  const verifyOnly = process.env.YUNMOMO_VERIFY_ONLY === '1';
-  const client = new YunmomoClient({ timeoutMs: 100000 });
+  let client = context.client || new YunmomoClient({ timeoutMs: 100000 });
   const disk = client.cloudDisk();
 
-  const listedDevices = await client.listDevices({ size: 50000 });
-  const target = listedDevices.records.find(record => matchesDevice(record, deviceId));
-  if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + deviceId);
+  let target = context.target;
+  if (!target) {
+    const listedDevices = await client.listDevices({ size: 50000 });
+    target = listedDevices.records.find(record => matchesDevice(record, deviceId));
+    if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + deviceId);
+  }
   const actualDeviceId = deviceIdOf(target);
 
   const privateFiles = await disk.list({ channel: '1', size: 10000 });
@@ -143,18 +143,13 @@ async function main() {
   const publicDiskFiles = await disk.list({ channel: '2', size: 10000 });
   const publicFiles = selectPublicFiles(publicDiskFiles.records);
 
-  console.log(`目标云机: ${target.deviceName ?? target.name ?? 'SF'} (${actualDeviceId})`);
+  console.log(`目标云机: ${context.deviceName ?? target.deviceName ?? target.name ?? 'SF'} (${actualDeviceId})`);
   console.log(`文件清单: 私有云盘 ${privateFiles.records.length} 个，公共应用 ${publicFiles.length} 个`);
   console.log(`公共应用: ${publicFiles.map(f => f.displayLabel || f.appName || f.name).join('、')}`);
 
   if (verifyOnly) {
     console.log(JSON.stringify({ transferStatus: summarizeStatus(await disk.transferStatus()) }));
-    return;
-  }
-
-  if (process.env.YUNMOMO_CONFIRM_SEND !== 'YES') {
-    console.log('预览完成；如确认向该设备传输全部文件，请设置 YUNMOMO_CONFIRM_SEND=YES 后重跑。');
-    return;
+    return { ok: true };
   }
 
   // 第一阶段：向云机传输私有云盘所有文件
@@ -183,6 +178,21 @@ async function main() {
   }
   console.log(`[Phase 2/2] 公共云盘指定应用全部传输完成！`);
   console.log('>>> 全部云盘与公共应用传输成功 OK');
+  return { ok: true, privateCount: privateFiles.records.length, publicCount: publicFiles.length };
+}
+
+async function main() {
+  if (!process.env.YUNMOMO_TOKEN) {
+    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
+  }
+
+  const deviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
+  if (process.env.YUNMOMO_CONFIRM_SEND !== 'YES') {
+    console.log('预览完成；如确认向该设备传输全部文件，请设置 YUNMOMO_CONFIRM_SEND=YES 后重跑。');
+    return;
+  }
+
+  return await runStep({ deviceId });
 }
 
 waitForTransfer = require('../../automation/timing').timed('workflow.send-cloud-files.waitForTransfer', waitForTransfer);
@@ -190,4 +200,4 @@ main = require('../../automation/timing').timedScript('script.src.workflows.v2.s
 
 if (require.main === module) require('../../automation/runtime').launchCli(main);
 
-module.exports = { main, summarizeStatus, waitForTransfer };
+module.exports = { main, runStep, summarizeStatus, waitForTransfer };

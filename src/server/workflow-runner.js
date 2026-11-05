@@ -3,6 +3,7 @@
 // 组合和批量任务的服务端调度。Windows 进程重启后的恢复不在本模块范围内。
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { getAuthService } = require('./auth/service');
 const { scriptById } = require('./script-catalog');
@@ -189,51 +190,57 @@ async function executeWorkflow(run, steps, user) {
     run.currentDeviceId = entry.deviceId;
     entry.status = 'running';
     try {
-      for (let index = 0; index < steps.length; index++) {
-        if (run.stopRequested) { entry.status = 'cancelled'; break; }
-        const current = authService.db.getUserById(user.id);
-        if (!current || current.status !== 'active' ||
-            (user.role !== 'admin' && !await authService.ensureDeviceAccess(user, entry.deviceId))) {
-          run.stopRequested = true;
-          entry.status = 'cancelled';
-          entry.message = '权限失效，已停止后续步骤';
-          break;
+      if (steps.length > 1) {
+        // 🚀 核心优化：多步骤组合任务接入流水线 Worker，单次握手复用控制通道
+        await executeDeviceBundle(run, entry, steps, user, lease);
+      } else {
+        // 单步骤任务沿用标准流程
+        for (let index = 0; index < steps.length; index++) {
+          if (run.stopRequested) { entry.status = 'cancelled'; break; }
+          const current = authService.db.getUserById(user.id);
+          if (!current || current.status !== 'active' ||
+              (user.role !== 'admin' && !await authService.ensureDeviceAccess(user, entry.deviceId))) {
+            run.stopRequested = true;
+            entry.status = 'cancelled';
+            entry.message = '权限失效，已停止后续步骤';
+            break;
+          }
+          if (run.stopRequested) { entry.status = 'cancelled'; break; }
+          const step = steps[index];
+          run.currentStep++;
+          run.currentScriptRunId = randomUUID();
+          let result;
+          try {
+            result = await executeScript({
+              scriptRunId: run.currentScriptRunId, scriptId: step.script.id,
+              deviceId: entry.deviceId, options: step.options,
+              resetConfirmed: Boolean(step.script.destructive)
+            }, user, lease);
+          } catch (error) {
+            entry.status = 'unknown';
+            entry.message = redact('步骤结果无法确认：' + error.message);
+            defaultArbiter.quarantineDevice(entry.deviceId, 'Workflow step result uncertain');
+            globalUnknown = true;
+            break;
+          } finally {
+            run.currentScriptRunId = '';
+          }
+          run.lastOutput = safeOutput(run.ownerUserId, (result.stdout || '') + (result.stderr || '')).slice(-4000);
+          if (run.stopRequested || result.cancelled) {
+            entry.status = 'cancelled';
+            entry.message = '已停止执行';
+            run.stopRequested = true;
+            break;
+          }
+          if (!result.ok) {
+            entry.status = 'failed';
+            entry.message = '第 ' + (index + 1) + ' 步失败，当前设备剩余步骤已取消';
+            break;
+          }
+          entry.completedSteps++;
         }
-        if (run.stopRequested) { entry.status = 'cancelled'; break; }
-        const step = steps[index];
-        run.currentStep++;
-        run.currentScriptRunId = randomUUID();
-        let result;
-        try {
-          result = await executeScript({
-            scriptRunId: run.currentScriptRunId, scriptId: step.script.id,
-            deviceId: entry.deviceId, options: step.options,
-            resetConfirmed: Boolean(step.script.destructive)
-          }, user, lease);
-        } catch (error) {
-          entry.status = 'unknown';
-          entry.message = redact('步骤结果无法确认：' + error.message);
-          defaultArbiter.quarantineDevice(entry.deviceId, 'Workflow step result uncertain');
-          globalUnknown = true;
-          break;
-        } finally {
-          run.currentScriptRunId = '';
-        }
-        run.lastOutput = safeOutput(run.ownerUserId, (result.stdout || '') + (result.stderr || '')).slice(-4000);
-        if (run.stopRequested || result.cancelled) {
-          entry.status = 'cancelled';
-          entry.message = '已停止执行';
-          run.stopRequested = true;
-          break;
-        }
-        if (!result.ok) {
-          entry.status = 'failed';
-          entry.message = '第 ' + (index + 1) + ' 步失败，当前设备剩余步骤已取消';
-          break;
-        }
-        entry.completedSteps++;
+        if (entry.status === 'running') entry.status = 'ok';
       }
-      if (entry.status === 'running') entry.status = 'ok';
     } finally {
       run.currentDeviceId = '';
       busyDevices.delete(entry.deviceId);
@@ -248,11 +255,88 @@ async function executeWorkflow(run, steps, user) {
       : run.stopRequested ? '任务已取消，未继续派发后续步骤' : '所有已派发设备的任务已经结束';
 }
 
+function executeDeviceBundle(run, entry, steps, user, lease) {
+  return new Promise((resolve) => {
+    const userToken = authService.getUserPlatformToken(user.id);
+    const workerScript = path.join(PROJECT_ROOT, 'src', 'server', 'bundle-runner.js');
+    const bundleSpec = JSON.stringify(steps.map(s => ({ scriptId: s.script.id, options: s.options })));
+
+    const env = {
+      ...process.env,
+      YUNMOMO_DEVICE_ID: entry.deviceId,
+      YUNMOMO_TOKEN: userToken,
+      YUNMOMO_BUNDLE_RUN_ID: run.id,
+      YUNMOMO_BUNDLE_SPEC: bundleSpec,
+    };
+
+    const child = spawn(process.execPath, [workerScript], {
+      cwd: PROJECT_ROOT,
+      env: require('../automation/timing').childEnv(env),
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    run.activeBundleChild = child;
+    let fullOutput = '';
+    const baseStep = run.currentStep;
+
+    const handleOutput = chunk => {
+      const text = chunk.toString('utf8');
+      fullOutput += text;
+      run.lastOutput = safeOutput(run.ownerUserId, fullOutput).slice(-4000);
+
+      const startMatch = text.match(/::step-start:(\d+):/);
+      if (startMatch) {
+        const stepIdx = parseInt(startMatch[1], 10);
+        run.currentStep = baseStep + stepIdx + 1;
+      }
+      const endMatch = text.match(/::step-end:(\d+):[^:]+:ok::/);
+      if (endMatch) {
+        const stepIdx = parseInt(endMatch[1], 10);
+        entry.completedSteps = stepIdx + 1;
+      }
+    };
+
+    child.stdout.on('data', handleOutput);
+    child.stderr.on('data', handleOutput);
+
+    child.on('error', err => {
+      run.activeBundleChild = null;
+      entry.status = 'failed';
+      entry.message = '流水线启动异常: ' + err.message;
+      resolve({ ok: false, error: err });
+    });
+
+    child.on('close', code => {
+      run.activeBundleChild = null;
+      if (code === 0) {
+        entry.status = 'ok';
+        entry.completedSteps = steps.length;
+        resolve({ ok: true });
+      } else {
+        if (run.stopRequested) {
+          entry.status = 'cancelled';
+          entry.message = '已停止执行';
+        } else {
+          entry.status = 'failed';
+          entry.message = `组合执行失败 (退出代码: ${code})`;
+        }
+        resolve({ ok: false, exitCode: code });
+      }
+    });
+  });
+}
+
 async function stopWorkflow(id, user) {
   const run = getWorkflow(id, user);
   if (run.finishedAt) return statusSnapshot(run);
   run.stopRequested = true;
   run.state = 'stopping';
+  if (run.activeBundleChild) {
+    try {
+      run.activeBundleChild.kill('SIGTERM');
+    } catch {}
+  }
   if (run.currentScriptRunId) {
     try {
       await stopActiveScript({ scriptRunId: run.currentScriptRunId }, { role: 'admin' });

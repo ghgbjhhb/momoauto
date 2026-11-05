@@ -153,37 +153,41 @@ async function openKeyAuth(phone, control, worker, directory, state, found, opti
   });
 }
 
-async function main() {
-  if (!process.env.YUNMOMO_TOKEN) {
-    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
-  }
-  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || '').trim();
-  if (!/^[A-Za-z0-9_-]+$/.test(targetDeviceId)) {
-    throw new Error('请用 YUNMOMO_DEVICE_ID 指定目标云机');
-  }
-  if (process.env.YUNMOMO_CONFIRM_ENV_CONFIG !== 'YES' && !process.argv.includes('--execute')) {
-    throw new Error('脚本4会发送 HOME、滑动和点击事件；确认执行请设置 YUNMOMO_CONFIRM_ENV_CONFIG=YES 或传入 --execute');
-  }
+async function runStep(context = {}) {
+  const isManagedSession = Boolean(context.control || context.ensureControl);
+  const targetDeviceId = String(context.deviceId || process.env.YUNMOMO_DEVICE_ID || '').trim();
+  if (!targetDeviceId) throw new Error('请用 context.deviceId 或 YUNMOMO_DEVICE_ID 指定目标云机');
 
   const options = {
-    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
-    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
-    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
-    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    pollMs: numberOr(context.options?.pollMs ?? process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(context.options?.homeTimeoutMs ?? process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(context.options?.appTimeoutMs ?? process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    maxPagesPerDirection: numberOr(context.options?.maxPagesPerDirection ?? process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
   };
-  const client = new YunmomoClient({ timeoutMs: 100000 });
-  const devices = await client.listDevices({ size: 50000 });
-  const target = devices.records.find(record => deviceIdOf(record) === targetDeviceId);
-  if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
-  const targetName = target.deviceName ?? target.name ?? 'SF';
+  let client = context.client;
+  let target = context.target;
+  if (!client || !target) {
+    client = client || new YunmomoClient({ timeoutMs: 100000 });
+    const devices = await client.listDevices({ size: 50000 });
+    target = devices.records.find(record => deviceIdOf(record) === targetDeviceId);
+    if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
+  }
+
+  const targetName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
   console.log(`[准备] 目标设备: ${targetName} (${targetDeviceId}) | 流程: 环境配置v2`);
 
-  const phone = client.device(targetDeviceId);
-  const control = await phone.openControl({ udid: target.udid });
+  const phone = context.phone || client.device(targetDeviceId);
+  let control = context.control;
+  if (!control && context.ensureControl) {
+    control = await context.ensureControl();
+  } else if (!control) {
+    control = await phone.openControl({ udid: target.udid });
+  }
+
   const directory = await shared.createOcrDirectory('yunmomo-script4-');
-  const worker = new RapidOcrWorker();
-  const state = { counter: 0 };
+  const worker = context.worker || new RapidOcrWorker();
+  const state = context.state || { counter: 0 };
   let success = false;
   let homeRestored = false;
   let opened = null;
@@ -193,10 +197,15 @@ async function main() {
   let executionError = null;
 
   try {
-    await control.connect();
+    if (!control.connected) await control.connect();
 
     console.log('[1/4] 正在检查并确认主屏幕...');
-    const home = await ensureHomeScreen(phone, control, worker, directory, state, options);
+    let home;
+    if (state.lastObservation && isDesktopScreen(state.lastObservation.items)) {
+      home = state.lastObservation;
+    } else {
+      home = await ensureHomeScreen(phone, control, worker, directory, state, options);
+    }
     initialAnchors = homeAnchorMatches(home.items);
     console.log(`      主屏幕已就绪（${initialAnchors.length >= 1 ? `锚点: ${initialAnchors.join('、')}` : '已识别到桌面'}）`);
 
@@ -231,6 +240,8 @@ async function main() {
     success = finalState.ok;
     console.log(`      主屏幕恢复${homeRestored ? '完成' : '失败'}`);
 
+    if (state) state.lastObservation = finalHome;
+
     if (!success) {
       const reasons = [];
       if (!finalState.certificate) reasons.push('未检测到谷歌硬件根证书');
@@ -242,6 +253,7 @@ async function main() {
     }
 
     console.log('[完成] 环境配置核验通过！');
+    return { ok: true, certificate: finalState.certificate, bootloader: finalState.bootloader };
   } catch (err) {
     executionError = err;
     throw err;
@@ -277,22 +289,34 @@ async function main() {
       console.log('      诊断数据已存入: .local-output/环境配置/latest.json');
     } catch {}
 
-    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+    if (!homeRestored && control && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
         await sendHome(control);
         homeRestored = true;
-      } catch {
-        // Preserve the original failure; cleanup below still runs.
-      }
+      } catch {}
     }
-    await worker.close();
-    await control.close();
+    if (!isManagedSession) {
+      if (worker && typeof worker.close === 'function') await worker.close();
+      if (control && typeof control.close === 'function') await control.close();
+    }
     if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
       await fs.rm(directory, { recursive: true, force: true });
-    } else {
-      console.log('OCR screenshots kept at ' + directory);
     }
   }
+}
+
+async function main() {
+  if (!process.env.YUNMOMO_TOKEN) {
+    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
+  }
+  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || '').trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(targetDeviceId)) {
+    throw new Error('请用 YUNMOMO_DEVICE_ID 指定目标云机');
+  }
+  if (process.env.YUNMOMO_CONFIRM_ENV_CONFIG !== 'YES' && !process.argv.includes('--execute')) {
+    throw new Error('脚本4会发送 HOME、滑动和点击事件；确认执行请设置 YUNMOMO_CONFIRM_ENV_CONFIG=YES 或传入 --execute');
+  }
+  return await runStep({ deviceId: targetDeviceId });
 }
 
 openKeyAuth = require('../../automation/timing').timed('workflow.configure-environment.openKeyAuth', openKeyAuth);
@@ -306,4 +330,4 @@ if (require.main === module) {
 }
 
 // Preserve the old helper exports for compatibility; new callers import automation/screen.
-module.exports = { ...shared, main };
+module.exports = { ...shared, main, runStep };

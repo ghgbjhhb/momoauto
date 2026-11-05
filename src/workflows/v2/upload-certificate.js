@@ -26,37 +26,27 @@ function matchesDevice(record, identifier) {
   return false;
 }
 
-async function main() {
-  if (!process.env.YUNMOMO_TOKEN) {
-    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
-  }
-
-  const deviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
-  const filePath = String(process.env.YUNMOMO_CERT_PATH || DEFAULT_CERT_PATH);
+async function runStep(context = {}) {
+  const deviceId = String(context.deviceId || process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
+  const filePath = String(context.options?.filePath || process.env.YUNMOMO_CERT_PATH || DEFAULT_CERT_PATH);
   const fileName = path.basename(filePath);
-  const client = new YunmomoClient({ timeoutMs: 100000 });
-  const reads = await Promise.allSettled([client.listDevices({ size: 50000 }), fs.readFile(filePath)]);
-  if (reads[0].status === 'rejected') throw reads[0].reason;
-  const listedDevices = reads[0].value;
-  const target = listedDevices.records.find(record => matchesDevice(record, deviceId));
-  if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + deviceId);
+  let client = context.client || new YunmomoClient({ timeoutMs: 100000 });
+  let target = context.target;
+  if (!target) {
+    const listedDevices = await client.listDevices({ size: 50000 });
+    target = listedDevices.records.find(record => matchesDevice(record, deviceId));
+    if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + deviceId);
+  }
   const actualDeviceId = deviceIdOf(target);
-
-  if (reads[1].status === 'rejected') throw reads[1].reason;
-  const data = reads[1].value;
+  const data = await fs.readFile(filePath);
   const sizeKb = (data.length / 1024).toFixed(2);
-  const deviceName = target.deviceName ?? target.name ?? 'SF';
+  const deviceName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
   const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
 
   console.log(`[准备] 目标云机: ${deviceName} (ID: ${actualDeviceId}, 系统: ${sdkVer})`);
   console.log(`[准备] 证书文件: ${fileName} (${sizeKb} KB)`);
-
-  if (process.env.YUNMOMO_CONFIRM_CERT_UPLOAD !== 'YES' && !process.argv.includes('--execute')) {
-    console.log('[提示] 当前为只读预览，未实际写入。确认上传请传入 --execute 或配置执行参数。');
-    return;
-  }
-
   console.log(`[执行] 正在上传证书到云机...`);
+
   const result = await client.device(actualDeviceId).uploadGoogleCertificate(data, {
     fileName,
     timeoutMs: 10 * 60 * 1000,
@@ -67,10 +57,30 @@ async function main() {
   }
   const replyText = typeof payload === 'string' ? payload : (payload?.message || '上传成功');
   console.log(`[完成] ✅ 证书上传成功！云端确认返回: ${replyText}`);
+  return { ok: true, message: replyText };
+}
+
+async function main() {
+  if (!process.env.YUNMOMO_TOKEN) {
+    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
+  }
+
+  const deviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID);
+  const filePath = String(process.env.YUNMOMO_CERT_PATH || DEFAULT_CERT_PATH);
+  const fileName = path.basename(filePath);
+
+  if (process.env.YUNMOMO_CONFIRM_CERT_UPLOAD !== 'YES' && !process.argv.includes('--execute')) {
+    console.log(`[准备] 目标云机: ${deviceId}`);
+    console.log(`[准备] 证书文件: ${fileName}`);
+    console.log('[提示] 当前为只读预览，未实际写入。确认上传请传入 --execute 或配置执行参数。');
+    return;
+  }
+
+  return await runStep({ deviceId, options: { filePath } });
 }
 
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.upload-certificate', main);
 
 if (require.main === module) require('../../automation/runtime').launchCli(main);
 
-module.exports = { main };
+module.exports = { main, runStep };

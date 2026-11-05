@@ -767,31 +767,25 @@ async function searchAddressAndTraverse(phone, control, worker, directory, state
   return { success: true, targetLocation, mode: 'search' };
 }
 
-async function main() {
-  if (!process.env.YUNMOMO_TOKEN) {
-    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
-  }
-
-  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID).trim();
+async function runStep(context = {}) {
+  const isManagedSession = Boolean(context.control || context.ensureControl);
+  const targetDeviceId = String(context.deviceId || process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID).trim();
   const options = {
-    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
-    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
-    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
-    actionTimeoutMs: numberOr(process.env.YUNMOMO_ACTION_TIMEOUT_MS, DEFAULT_ACTION_TIMEOUT_MS),
-    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    pollMs: numberOr(context.options?.pollMs ?? process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(context.options?.homeTimeoutMs ?? process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(context.options?.appTimeoutMs ?? process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    actionTimeoutMs: numberOr(context.options?.actionTimeoutMs ?? process.env.YUNMOMO_ACTION_TIMEOUT_MS, DEFAULT_ACTION_TIMEOUT_MS),
+    maxPagesPerDirection: numberOr(context.options?.maxPagesPerDirection ?? process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
   };
 
-  const rawMode = String(process.env.YUNMOMO_LOCATION_MODE || '').trim().toLowerCase();
-  const rawAddress = String(process.env.YUNMOMO_LOCATION_ADDRESS || '').trim();
-
-  // 支持 CLI 传参 --mode <ip|search> 以及 --address <地点>
+  const rawMode = String(context.options?.mode || process.env.YUNMOMO_LOCATION_MODE || '').trim().toLowerCase();
+  const rawAddress = String(context.options?.address || process.env.YUNMOMO_LOCATION_ADDRESS || '').trim();
   const cliModeIdx = process.argv.indexOf('--mode');
   const cliMode = cliModeIdx !== -1 && process.argv[cliModeIdx + 1] ? process.argv[cliModeIdx + 1].trim().toLowerCase() : '';
   const cliAddrIdx = process.argv.indexOf('--address');
   const cliAddr = cliAddrIdx !== -1 && process.argv[cliAddrIdx + 1] ? process.argv[cliAddrIdx + 1].trim() : '';
 
   const address = cliAddr || rawAddress;
-  // 如果填入了地址就默认是定位到地址的地方，如果没填入就默认是定位到ip地
   let mode;
   if (address) {
     mode = 'search';
@@ -803,21 +797,17 @@ async function main() {
     throw new Error('搜索模式下必须提供目标搜索地址（通过 YUNMOMO_LOCATION_ADDRESS 或 --address）');
   }
 
-  const client = new YunmomoClient({ timeoutMs: 100000 });
-  const devices = await client.listDevices({ size: 50000 });
-  const target = devices.records.find(record => matchesDevice(record, targetDeviceId));
-  if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
+  let client = context.client;
+  let target = context.target;
+  if (!client || !target) {
+    client = client || new YunmomoClient({ timeoutMs: 100000 });
+    const devices = await client.listDevices({ size: 50000 });
+    target = devices.records.find(record => matchesDevice(record, targetDeviceId));
+    if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
+  }
 
   const actualDeviceId = deviceIdOf(target);
-  const deviceName = target.deviceName ?? target.name ?? 'SF';
-
-  const confirmExecute = process.env.YUNMOMO_CONFIRM_VIRTUAL_LOCATION === 'YES' || process.argv.includes('--execute');
-  if (!confirmExecute) {
-    console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
-    console.log(`运行模式: ${mode} ${mode === 'search' ? `(目标地址: ${address})` : ''}`);
-    console.log('预览完成；如确认在该设备执行定位穿越，请设置 YUNMOMO_CONFIRM_VIRTUAL_LOCATION=YES 或传入 --execute 重跑。');
-    return;
-  }
+  const deviceName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
 
   console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
   console.log(`运行模式: ${mode === 'search' ? `搜索地点穿越 (目标: ${address})` : '定位到IP所在地'}`);
@@ -828,19 +818,27 @@ async function main() {
   await fs.mkdir(screenshotsDir, { recursive: true });
   const directory = screenshotsDir;
 
-  const phone = client.device(actualDeviceId);
-  const control = await phone.openControl({ udid: target.udid });
-  const worker = new RapidOcrWorker();
-  const state = { counter: 0 };
+  const phone = context.phone || client.device(actualDeviceId);
+  let control = context.control;
+  if (!control && context.ensureControl) {
+    control = await context.ensureControl();
+  } else if (!control) {
+    control = await phone.openControl({ udid: target.udid });
+  }
+
+  const worker = context.worker || new RapidOcrWorker();
+  const state = context.state || { counter: 0 };
   let success = false;
   let homeRestored = false;
 
   try {
-    await control.connect();
+    if (!control.connected) await control.connect();
 
     // 优先就近检测：若当前桌面视口已经包含“虚拟定位”，直接进入，避免无效翻页
     state.counter += 1;
-    const initialObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+    const initialObs = (state.lastObservation && virtualLocationBox(state.lastObservation.items))
+      ? state.lastObservation
+      : await screenshotAndOcr(phone, worker, directory, state.counter);
     const directBox = virtualLocationBox(initialObs.items);
     let found;
 
@@ -889,25 +887,47 @@ async function main() {
     homeRestored = finalAnchors.length >= 2;
     success = result.success && homeRestored;
 
+    if (state) state.lastObservation = finalHome;
+
     if (!success) {
       throw new Error('执行未完成：未能成功恢复主屏');
     }
 
     console.log(`[核验完成] 已成功恢复主屏幕 (桌面锚点: ${finalAnchors.length} 个)`);
     console.log(`>>> 定位到ip地执行成功 OK (模式: ${mode}, 目标位置: ${result.targetLocation})`);
+    return { ok: true, mode, targetLocation: result.targetLocation };
   } finally {
-    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+    if (!homeRestored && control && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
         await sendHome(control);
         homeRestored = true;
-      } catch {
-        // preserve original failure
-      }
+      } catch {}
     }
-    await worker.close();
-    await control.close();
+    if (!isManagedSession) {
+      if (worker && typeof worker.close === 'function') await worker.close();
+      if (control && typeof control.close === 'function') await control.close();
+    }
     console.log(`[过程截图] 过程截图已留存至 logs/screenshots/${runId}/ (共 ${state.counter} 张)`);
   }
+}
+
+async function main() {
+  if (!process.env.YUNMOMO_TOKEN) {
+    throw new Error('请先设置 YUNMOMO_TOKEN；令牌只通过环境变量传入，不要写入脚本');
+  }
+
+  const targetDeviceId = String(process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID).trim();
+  const confirmExecute = process.env.YUNMOMO_CONFIRM_VIRTUAL_LOCATION === 'YES' || process.argv.includes('--execute');
+  if (!confirmExecute) {
+    const rawMode = String(process.env.YUNMOMO_LOCATION_MODE || '').trim().toLowerCase();
+    const rawAddress = String(process.env.YUNMOMO_LOCATION_ADDRESS || '').trim();
+    const address = rawAddress;
+    const mode = address ? 'search' : ((rawMode === 'search') ? 'search' : 'ip');
+    console.log(`运行模式: ${mode} ${mode === 'search' ? `(目标地址: ${address})` : ''}`);
+    console.log('预览完成；如确认在该设备执行定位穿越，请设置 YUNMOMO_CONFIRM_VIRTUAL_LOCATION=YES 或传入 --execute 重跑。');
+    return;
+  }
+  return await runStep({ deviceId: targetDeviceId });
 }
 
 tapAppAndWaitMap = require('../../automation/timing').timed('workflow.locate-ip.tapAppAndWaitMap', tapAppAndWaitMap);
@@ -921,6 +941,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
   virtualLocationBox,
   permissionScreenEvidence,
   continueButtonBox,
