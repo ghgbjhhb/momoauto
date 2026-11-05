@@ -283,8 +283,13 @@ function updateDeviceMeta(device, stats = null) {
 
   const resEl = byId('metaDevRes');
   if (resEl) {
-    const resolution = stats?.width && stats?.height ? `${stats.width}×${stats.height}` : '720×1280';
+    const isStreamLow = stats?.width && stats?.height && (stats.width !== 720 || stats.height !== 1280);
+    const resolution = isStreamLow ? `720×1280 (节能流: ${stats.width}×${stats.height})` : '720×1280';
+    const resTitle = isStreamLow
+      ? `云机物理分辨率: 720×1280 (自动化脚本以原生无损高清执行)\n网页实时预览: ${stats.width}×${stats.height} (已开启低带宽轻量节能)`
+      : '云机物理分辨率: 720×1280 (原生高清画面)';
     if (resEl.textContent !== resolution) resEl.textContent = resolution;
+    if (resEl.title !== resTitle) resEl.title = resTitle;
   }
 
   // 直播帧可达 30fps；按钮只渲染一次，否则按下和释放鼠标期间重建 SVG

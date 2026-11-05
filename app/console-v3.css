@@ -797,6 +797,47 @@ body:has(#page-overview:not([hidden])) .page {
   box-shadow: 0 0 0 2px var(--blue-light), var(--elev-mini);
 }
 
+.device-tile.is-batch-checked {
+  border-color: var(--blue-chip);
+}
+.device-tile.is-batch-checked.selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--blue-light), var(--elev-mini);
+}
+
+.tile-check-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-right: 2px;
+  flex: none;
+}
+.tile-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+  border-radius: var(--r-4);
+  vertical-align: middle;
+}
+
+.ov-grid-batch-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-6);
+  margin-left: var(--sp-6);
+}
+.ov-grid-batch-tools[hidden] {
+  display: none !important;
+}
+
+.ov-wb-btn-run.is-batch {
+  background: var(--blue);
+  font-weight: var(--fw-600);
+}
+
 /* 卡片顶栏 */
 .tile-header {
   display: flex;

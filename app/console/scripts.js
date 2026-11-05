@@ -1856,11 +1856,41 @@ function renderOverviewTasks() {
   updateOverviewRunSummary();
 }
 
+function getOverviewTargetDevices() {
+  if (state.view === 'grid') {
+    const selected = (state.batchDevices || [])
+      .map(id => state.devices.find(d => d.deviceId === id))
+      .filter(Boolean);
+    if (selected.length) return selected;
+  }
+  const current = currentDevice();
+  return current ? [current] : [];
+}
+window.getOverviewTargetDevices = getOverviewTargetDevices;
+
+function formatOverviewTargetLabel(targets) {
+  if (!targets.length) return '未选择云机';
+  if (targets.length === 1) return `${deviceIndexLabel(targets[0])} ${targets[0].name}`;
+  const names = targets.map(d => deviceIndexLabel(d)).join(', ');
+  return `已选 ${targets.length} 台 (${names})`;
+}
+
+function formatOverviewRunButtonHtml(targets, isRunning, isBundle) {
+  if (!targets.length) {
+    return `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" disabled>${ic('play', 15)} 请勾选目标云机</button>`;
+  }
+  if (targets.length === 1) {
+    return `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(deviceIndexLabel(targets[0]))} 执行${isBundle ? '组合' : ''}</button>`;
+  }
+  return `<button class="btn primary ov-wb-btn-run is-batch" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在选中的 ${targets.length} 台云机上批量执行${isBundle ? '组合' : ''}</button>`;
+}
+
 function updateOverviewWorkbenchFooter(currentDev, isRunning) {
   const container = byId('ovTaskConfig');
   if (!container) return;
 
-  const devLabel = currentDev ? `${deviceIndexLabel(currentDev)} ${currentDev.name}` : '未选择云机';
+  const targets = getOverviewTargetDevices();
+  const devLabel = formatOverviewTargetLabel(targets);
   const targetStrong = container.querySelector('.ov-wb-target strong');
   if (targetStrong && targetStrong.textContent !== devLabel) {
     targetStrong.textContent = devLabel;
@@ -1873,18 +1903,13 @@ function updateOverviewWorkbenchFooter(currentDev, isRunning) {
   const canStop = Boolean(state.batchRunning || state.activeRun || state.activeBundleRun);
   if (canStop) {
     if (!footer.querySelector('#ovCfgStopBtn')) {
-      footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`;
+      footer.innerHTML = `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止${isBundle ? '组合' : ''}执行</button>`;
     }
   } else {
+    const expectedHtml = formatOverviewRunButtonHtml(targets, isRunning, isBundle);
     const runBtn = footer.querySelector('#ovCfgRunBtn');
-    if (!runBtn) {
-      footer.innerHTML = `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev || isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}</button>`;
-    } else {
-      runBtn.disabled = !currentDev || isRunning;
-      const expectedText = `${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行${isBundle ? '组合' : ''}`;
-      if (runBtn.innerHTML !== expectedText) {
-        runBtn.innerHTML = expectedText;
-      }
+    if (!runBtn || footer.innerHTML !== expectedHtml) {
+      footer.innerHTML = expectedHtml;
     }
   }
 }
@@ -1900,7 +1925,8 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
   }
 
   container.dataset.renderedTask = currentTaskId;
-  const devLabel = currentDev ? `${deviceIndexLabel(currentDev)} ${currentDev.name}` : '未选择云机';
+  const targets = getOverviewTargetDevices();
+  const devLabel = formatOverviewTargetLabel(targets);
   const devId = currentDev ? currentDev.deviceId : '';
   const canStop = Boolean(state.batchRunning || state.activeRun || state.activeBundleRun);
 
@@ -1954,7 +1980,7 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
       <div class="ov-wb-footer">
         ${canStop
           ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev || isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行</button>`
+          : formatOverviewRunButtonHtml(targets, isRunning, false)
         }
       </div>
     `;
@@ -1991,7 +2017,7 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
       <div class="ov-wb-footer">
         ${canStop
           ? `<button class="btn danger ov-wb-btn-run" id="ovCfgStopBtn" type="button">${ic('stop', 15)} 停止组合执行</button>`
-          : `<button class="btn primary ov-wb-btn-run" id="ovCfgRunBtn" type="button" ${!currentDev || isRunning ? 'disabled' : ''}>${ic('play', 15)} 立即在 ${escapeHtml(currentDev ? deviceIndexLabel(currentDev) : '当前云机')} 执行组合</button>`
+          : formatOverviewRunButtonHtml(targets, isRunning, true)
         }
       </div>
     `;
@@ -2143,14 +2169,40 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
 
   const cfgRun = event.target.closest('#ovCfgRunBtn');
   if (cfgRun) {
-    const dev = currentDevice();
-    if (!dev) { showToast('请先选择目标云机'); return; }
+    const targets = getOverviewTargetDevices();
+    if (!targets.length) { showToast('请先勾选目标云机'); return; }
+    const targetIds = targets.map(d => d.deviceId);
+    const isBundle = Boolean(state.taskBundleId);
+
     if (state.taskScriptId) {
       const script = state.scripts.find(s => s.id === state.taskScriptId);
-      if (script) await runScriptDirect(script, dev.deviceId);
+      if (!script) return;
+      let options = {};
+      try { options = collectTaskOptions(script); }
+      catch (error) { showToast(error.message); return; }
+      if (isVpcProxyScript(script) && options.action !== 'show' && options.action !== 'close') {
+        const vpcData = await promptVpcProxyDialog();
+        if (!vpcData) return;
+        options.vpcData = vpcData;
+      }
+      if (script.destructive && !(await confirmDestructive(script, options, targetIds))) return;
+      if (targetIds.length === 1) {
+        await runScriptDirect(script, targetIds[0]);
+      } else {
+        await runManagedWorkflow({
+          kind: 'script',
+          scriptId: script.id,
+          options,
+          confirmedSteps: script.destructive ? [0] : []
+        }, targetIds);
+      }
     } else if (state.taskBundleId) {
       const bundle = state.bundles.find(b => b.id === state.taskBundleId);
-      if (bundle) await executeBundle(bundle, dev.deviceId);
+      if (!bundle) return;
+      let stepOptions = null;
+      try { stepOptions = collectBundleRunOptions(bundle); }
+      catch (error) { showToast(error.message); return; }
+      await executeBundle(bundle, targetIds, stepOptions);
     }
     updateOverviewRuntime();
   }
@@ -2212,6 +2264,11 @@ eventBus.addEventListener('output:changed', () => {
 
 eventBus.addEventListener('batch:devices', () => {
   updateBatchCount();
+});
+
+eventBus.addEventListener('device:batch-changed', () => {
+  if (state.page === 'overview') updateOverviewWorkbenchFooter();
+  if (state.page === 'tasks') updateBatchCount();
 });
 
 byId('taskHeadActions')?.addEventListener?.('change', () => {});
