@@ -208,33 +208,81 @@
         <!-- 4. 消息回复 -->
         <section class="page-section" id="page-messages" hidden>
           <div class="page-head">
-            <h1 class="page-title">消息回复</h1>
+            <div class="page-head-main">
+              <h1 class="page-title">消息回复设置</h1>
+              <p class="page-sub">配置 MOMO 自动回复提示词与意向转化话术，支持多段自动连续触达并安全停靠</p>
+            </div>
             <div class="actions">
               <span class="badge" id="aiReplyStatusBadge">待命</span>
+              <button class="btn primary" id="btnSaveAiConfigTop" type="button">保存配置</button>
             </div>
           </div>
           <div class="message-layout">
-            <section class="panel">
-              <div class="panel-head"><h2>回复设置</h2><span class="badge" id="aiSaveBadge">已加载</span></div>
-              <div class="block">
-                <div class="field">
-                  <label for="aiSystemPrompt">回复提示词</label>
-                  <textarea class="input textarea" id="aiSystemPrompt" rows="6" placeholder="设置 AI 回复人设、回复口吻、业务引导话术…"></textarea>
+            <!-- 左栏：AI 人设与系统提示词 -->
+            <section class="panel ai-prompt-panel">
+              <div class="panel-head">
+                <div class="panel-head-title">
+                  <h2>回复人设与提示词</h2>
+                  <span class="char-count" id="promptCharCount">0 字</span>
                 </div>
+                <div class="panel-actions">
+                  <button class="btn sm flat" id="btnResetDefaultPrompt" type="button" title="恢复默认人设模板">默认模板</button>
+                  <span class="badge" id="aiSaveBadge">已加载</span>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="field flex-grow-field">
+                  <textarea class="input textarea ai-prompt-editor" id="aiSystemPrompt" placeholder="设置 AI 回复人设、沟通口吻、引导话术、剧情背景等..."></textarea>
+                </div>
+              </div>
+            </section>
+
+            <!-- 右栏：转化话术与动作策略 -->
+            <section class="panel ai-handoff-panel">
+              <div class="panel-head">
+                <h2>转化话术与连发策略</h2>
+                <span class="badge" id="handoffStateBadge">已关闭</span>
+              </div>
+              <div class="panel-body">
                 <div class="field">
-                  <label for="aiHandoffEnabled">联系方式话术连发（AI 判定意向后连发话术，发完自动拉黑对方）</label>
+                  <label for="aiHandoffEnabled" class="field-label-split">
+                    <span>联系方式话术连发</span>
+                    <small class="field-tip">AI 判定意向后触发连发，发送完毕自动拉黑</small>
+                  </label>
                   <select class="select full" id="aiHandoffEnabled">
-                    <option value="off">关闭</option>
-                    <option value="on">开启</option>
+                    <option value="off">关闭话术连发</option>
+                    <option value="on">开启话术连发</option>
                   </select>
                 </div>
+
                 <div class="field">
-                  <label for="aiHandoffSegments">话术段落（每段之间空一行，按顺序连发）</label>
-                  <textarea class="input textarea" id="aiHandoffSegments" rows="6" placeholder="第一段话术&#10;&#10;第二段话术&#10;&#10;第三段话术"></textarea>
+                  <label for="aiHandoffSegments" class="field-label-split">
+                    <span>话术段落编辑</span>
+                    <small class="field-tip">每段之间空一行，按顺序依次下发</small>
+                  </label>
+                  <textarea class="input textarea ai-segments-editor" id="aiHandoffSegments" rows="5" placeholder="第一段话术&#10;&#10;第二段话术&#10;&#10;第三段话术"></textarea>
                 </div>
-                <div class="save-row">
-                  <button class="btn" id="btnTestAiApi" type="button">测试连接</button>
-                  <button class="btn primary" id="btnSaveAiConfig" type="button">保存配置</button>
+
+                <!-- 实时段落拆分预览 -->
+                <div class="segments-preview-wrapper" id="segmentsPreviewWrapper">
+                  <div class="preview-header">
+                    <span>连发序列预览</span>
+                    <span class="preview-badge" id="segmentsCountBadge">共 0 段</span>
+                  </div>
+                  <div class="segments-preview-list" id="segmentsPreviewList">
+                    <div class="empty-preview">暂无话术段落，在上方输入并空行分隔</div>
+                  </div>
+                </div>
+
+                <div class="ai-footer-actions">
+                  <div class="ai-status-summary">
+                    <span class="ai-ping-indicator" id="aiPingIndicator"></span>
+                    <span class="ai-model-label" id="aiModelLabel">AI 服务未测</span>
+                  </div>
+                  <div class="action-buttons">
+                    <button class="btn" id="btnTestAiApi" type="button">测试连接</button>
+                    <button class="btn primary" id="btnSaveAiConfig" type="button">保存配置</button>
+                  </div>
                 </div>
               </div>
             </section>
@@ -297,6 +345,7 @@
                     <button class="btn primary" id="connectSession" type="submit">连接</button>
                   </div>
                 </div>
+                <p class="hint" style="margin-top: var(--sp-10); line-height: 1.6;">粘贴云 momo 平台 Token，独立保存在本地，仅对当前账号生效。</p>
               </div>
             </section>
           </div>

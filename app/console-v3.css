@@ -2830,13 +2830,12 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 
-/* ---------- 设置页克制重构 ---------- */
+/* ---------- 设置页两列自然排版 ---------- */
 .settings-layout {
-  max-width: 760px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-16);
+  align-items: start;
 }
 
 .setup-action-group {
