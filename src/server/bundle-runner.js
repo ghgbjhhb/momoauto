@@ -33,7 +33,10 @@ function resolveScriptSource(script) {
   // 2. 如果在 STEPS_V3 中有记录
   const v3Match = STEPS_V3.find(s => script.id === `flow-${String(s.order).padStart(2, '0')}-v3`);
   if (v3Match?.source) return path.join(PROJECT_ROOT, v3Match.source);
-  // 3. 直接通过 script.file 查找
+  // 3. 特殊步骤映射
+  if (script.id === 'flow-09-v2') return path.join(PROJECT_ROOT, 'src/workflows/v2/reset-data.js');
+  if (script.id === 'flow-09-v3') return path.join(PROJECT_ROOT, 'src/workflows/v3/change-model-reset.js');
+  // 4. 直接通过 script.file 查找
   if (script.file) return path.join(PROJECT_ROOT, script.file);
   return null;
 }
@@ -134,6 +137,8 @@ async function main() {
         if (mod && typeof mod.runStep === 'function') {
           // 🚀 核心优化：直接内存执行，复用已就绪会话！
           console.log(`[流水线调度] 检测到原生会话接口 runStep，采用长连接内存执行...`);
+          // 确保 control 连接可用（对于不需要 control 的纯 API 步骤，传入后也不会报错）
+          await ensureControl();
           stepResult = await mod.runStep(context);
         } else {
           // ⚠️ 降级处理：若该脚本尚未适配 runStep，通过独立子进程执行该单步

@@ -26,10 +26,10 @@ const STATUS_LABELS = {
 window.STATUS_LABELS = STATUS_LABELS;
 
 const GROUPS = [
-  { key: 'v2', title: 'V2 流程架构 (01~09)' },
-  { key: 'v3', title: 'V3 极速架构 (01~09)' },
-  { key: 'momo', title: 'MOMO 业务自动化 (11~18)' },
-  { key: 'custom', title: '自定义组合脚本' }
+  { key: 'momo', title: 'MOMO 业务', subtitle: '11~18 养号与日常', icon: 'message' },
+  { key: 'v2', title: 'V2 流程架构', subtitle: '01~09 初始化基建', icon: 'settings' },
+  { key: 'v3', title: 'V3 极速架构', subtitle: '01~09 敏捷基建', icon: 'zap' },
+  { key: 'custom', title: '组合脚本', subtitle: '自定义流水线', icon: 'grid' }
 ];
 
 const RUN_STATE_TEXT = { ok: '已完成', failed: '执行失败', cancelled: '已停止', skipped: '已跳过', pending: '排队中', running: '执行中', unknown: '状态未知' };
@@ -122,38 +122,229 @@ function bundleSteps(bundle) {
   return (bundle.stepIds || []).map(id => state.scripts.find(s => s.id === id)).filter(Boolean);
 }
 
+function activeTaskNavKey() {
+  if (state.taskNavKey) return state.taskNavKey;
+  if (state.taskBundleId) {
+    state.taskNavKey = 'custom';
+    return 'custom';
+  }
+  const cur = currentTaskScript();
+  if (cur) {
+    state.taskNavKey = scriptGroupKey(cur);
+    return state.taskNavKey;
+  }
+  state.taskNavKey = 'momo';
+  return 'momo';
+}
+
+function ensureSelectedTaskInGroup(groupKey) {
+  if (groupKey === 'custom') {
+    const bundles = Array.isArray(state.bundles) ? state.bundles : [];
+    if (!state.taskBundleId || !bundles.some(b => b.id === state.taskBundleId)) {
+      state.taskBundleId = bundles[0]?.id || '';
+      state.taskScriptId = '';
+    }
+  } else {
+    const list = groupScripts(groupKey);
+    if (!state.taskScriptId || !list.some(s => s.id === state.taskScriptId)) {
+      state.taskScriptId = list[0]?.id || '';
+      state.taskBundleId = '';
+    }
+  }
+}
+
 function renderTasksPage() {
-  const left = elements.taskLeftCol;
-  const right = elements.taskRightCol;
-  if (!left || !right) return;
+  const navCol = byId('taskNavCol') || elements.taskLeftCol;
+  const listCol = byId('taskListCol');
+  const rightCol = byId('taskRightCol') || elements.taskRightCol;
+  if (!rightCol) return;
 
   const headActions = elements.taskHeadActions;
   if (headActions) {
-    headActions.innerHTML = isScriptManageMode()
-      ? '<button class="btn" id="openCreateBundleBtn" type="button">新建组合脚本</button>'
-      : '';
+    const isManage = Boolean(state.taskManageMode);
+    headActions.innerHTML = `
+      ${isScriptManageMode() ? `<button class="btn sm ${isManage ? 'primary' : 'flat'}" id="toggleManageModeBtn" type="button" title="开启后可配置各脚本在普通用户界面的显隐">${isManage ? '完成显隐配置' : '管理显隐'}</button>` : ''}
+      <button class="btn sm" id="openCreateBundleBtn" type="button">新建组合脚本</button>
+    `;
     byId('openCreateBundleBtn')?.addEventListener('click', () => openBundleModal());
+    byId('toggleManageModeBtn')?.addEventListener('click', () => {
+      state.taskManageMode = !state.taskManageMode;
+      renderTasksPage();
+    });
   }
 
-  left.innerHTML = `
-    <section class="panel">
-      <div class="panel-head"><h2>任务列表</h2><span class="hint" id="taskCountHint"></span></div>
-      <div id="taskGroups"></div>
-    </section>
+  if (navCol) {
+    navCol.innerHTML = `
+      <section class="panel">
+        <div class="panel-head"><h2>分类导航</h2><span class="hint" id="totalScriptCountHint"></span></div>
+        <div class="task-nav-list" id="taskNavList"></div>
+      </section>
+    `;
+  }
+
+  if (listCol) {
+    listCol.innerHTML = `
+      <section class="panel">
+        <div class="panel-head"><h2 id="taskListTitle">任务列表</h2><span class="hint" id="taskCountHint"></span></div>
+        <div class="task-items-scroll" id="taskItemsContainer"></div>
+      </section>
+    `;
+  }
+
+  rightCol.innerHTML = `
+    <section class="panel" id="taskDetailPanel"><div class="empty">选择任务查看配置</div></section>
   `;
 
-  right.innerHTML = `
-    <section class="panel" id="taskDetailPanel"><div class="empty">选择左侧任务查看配置</div></section>
-  `;
-
-  byId('taskGroups')?.addEventListener('click', onTaskGroupsClick);
+  byId('taskNavList')?.addEventListener('click', onTaskNavClick);
+  byId('taskItemsContainer')?.addEventListener('click', onTaskItemsClick);
   byId('taskDetailPanel')?.addEventListener('input', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('change', onDetailInput);
   byId('taskDetailPanel')?.addEventListener('click', onDetailClick);
 
-  renderTaskGroups();
+  ensureSelectedTaskInGroup(activeTaskNavKey());
+
+  renderTaskNav();
+  renderTaskList();
   renderTaskDetail();
   eventBus.dispatchEvent(new CustomEvent('tasks:rendered'));
+}
+
+function onTaskNavClick(event) {
+  const item = event.target.closest('[data-nav-group]');
+  if (!item) return;
+  const key = item.dataset.navGroup;
+  if (state.taskNavKey === key) return;
+  state.taskNavKey = key;
+  ensureSelectedTaskInGroup(key);
+  renderTaskNav();
+  renderTaskList();
+  renderTaskDetail();
+}
+
+function renderTaskNav() {
+  const host = byId('taskNavList');
+  if (!host) return;
+  const curKey = activeTaskNavKey();
+  const manage = isScriptManageMode();
+
+  let totalCount = 0;
+  const html = GROUPS.map(g => {
+    let count = 0;
+    if (g.key === 'custom') {
+      const bundles = Array.isArray(state.bundles) ? state.bundles : [];
+      count = manage ? bundles.length : bundles.filter(bundleEffectivelyVisible).length;
+    } else {
+      const list = groupScripts(g.key);
+      count = manage ? list.length : list.filter(scriptEffectivelyVisible).length;
+    }
+    totalCount += count;
+    const active = curKey === g.key ? 'active' : '';
+    return `
+      <div class="task-nav-item ${active}" data-nav-group="${escapeHtml(g.key)}" role="button" tabindex="0">
+        <span class="task-nav-icon">${ic(g.icon || 'tasks', 16)}</span>
+        <span class="task-nav-main">
+          <div class="task-nav-title">${escapeHtml(g.title)}</div>
+          <div class="task-nav-sub">${escapeHtml(g.subtitle || '')}</div>
+        </span>
+        <span class="task-nav-badge">${count}</span>
+      </div>
+    `;
+  }).join('');
+
+  host.innerHTML = html;
+  const totalHint = byId('totalScriptCountHint');
+  if (totalHint) totalHint.textContent = `${totalCount} 项`;
+}
+
+function renderTaskList() {
+  const host = byId('taskItemsContainer');
+  if (!host) {
+    return;
+  }
+  const curKey = activeTaskNavKey();
+  const grp = GROUPS.find(g => g.key === curKey) || GROUPS[0];
+  const manage = isScriptManageMode();
+  const editVis = Boolean(state.taskManageMode && manage);
+
+  let itemsHtml = '';
+  let count = 0;
+
+  if (curKey === 'custom') {
+    const bundles = Array.isArray(state.bundles) ? state.bundles : [];
+    const display = editVis ? bundles : bundles.filter(bundleEffectivelyVisible);
+    count = display.length;
+    itemsHtml = display.length ? display.map(bundleCardHtml).join('') : '<div class="empty">暂无组合脚本，可点击右上角新建</div>';
+  } else {
+    const list = groupScripts(curKey);
+    const display = editVis ? list : list.filter(scriptEffectivelyVisible);
+    count = display.length;
+    itemsHtml = display.length ? display.map(taskCardHtml).join('') : '<div class="empty">当前分类下暂无可用任务</div>';
+  }
+
+  host.innerHTML = itemsHtml;
+
+  const titleEl = byId('taskListTitle');
+  if (titleEl) titleEl.textContent = grp.title;
+  const countEl = byId('taskCountHint');
+  if (countEl) countEl.textContent = `${count} 项`;
+}
+
+function onTaskItemsClick(event) {
+  const visBundle = event.target.closest('[data-vis-bundle]');
+  if (visBundle) {
+    const bundle = state.bundles.find(item => item.id === visBundle.dataset.visBundle);
+    if (bundle) { bundle.enabled = !(bundle.enabled !== false); saveBundleDirect(bundle); }
+    return;
+  }
+  const visScript = event.target.closest('[data-vis-script]');
+  if (visScript) {
+    saveVisibilityConfig({ type: 'script', id: visScript.dataset.visScript, visible: !visScript.classList.contains('on') });
+    return;
+  }
+  const bundleAdd = event.target.closest('[data-bundle-add]');
+  if (bundleAdd) {
+    openBundleModal();
+    return;
+  }
+  const bundleEdit = event.target.closest('[data-bundle-edit]');
+  if (bundleEdit) {
+    const bundle = state.bundles.find(item => item.id === bundleEdit.dataset.bundleEdit);
+    if (bundle) openBundleModal(bundle);
+    return;
+  }
+  const bundleDelete = event.target.closest('[data-bundle-delete]');
+  if (bundleDelete) {
+    const bundle = state.bundles.find(item => item.id === bundleDelete.dataset.bundleDelete);
+    if (!bundle) return;
+    showInPageConfirm({
+      title: '确认删除脚本组合？',
+      message: `<p class="confirm-lead">确定要彻底删除组合脚本 <strong>${escapeHtml(bundle.name)}</strong> 吗？此操作无法撤销。</p>`,
+      okText: '确认删除'
+    }).then(confirmed => { if (confirmed) deleteBundle(bundle.id); });
+    return;
+  }
+  const bundleRun = event.target.closest('[data-bundle-run]');
+  if (bundleRun) {
+    if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return; }
+    const bundle = state.bundles.find(item => item.id === bundleRun.dataset.bundleRun);
+    if (bundle) executeBundle(bundle);
+    return;
+  }
+  const bundleSelect = event.target.closest('[data-bundle-select]');
+  if (bundleSelect) {
+    state.taskBundleId = bundleSelect.dataset.bundleSelect;
+    state.taskScriptId = '';
+    renderTaskList();
+    renderTaskDetail();
+    return;
+  }
+  const card = event.target.closest('[data-task-select]');
+  if (card) {
+    state.taskScriptId = card.dataset.taskSelect;
+    state.taskBundleId = '';
+    renderTaskList();
+    renderTaskDetail();
+  }
 }
 
 function onTaskGroupsClick(event) {
@@ -269,10 +460,11 @@ function groupScripts(key) {
 
 function taskCardHtml(script) {
   const manage = isScriptManageMode();
+  const editVis = Boolean(state.taskManageMode && manage);
   const configuredVisible = scriptConfiguredVisible(script);
   const grpVisible = groupVisible(scriptGroupKey(script));
   const effectiveVisible = grpVisible && configuredVisible;
-  if (!manage && !effectiveVisible) return '';
+  if (!editVis && !effectiveVisible) return '';
   const active = state.taskScriptId === script.id ? 'active' : '';
   const danger = script.destructive ? '<span class="danger-tag">清数据</span>' : '';
   const hero = script.batch ? '<span class="hero-tag">全流程</span>' : '';
@@ -282,41 +474,44 @@ function taskCardHtml(script) {
   let switchMutedClass = '';
   let switchTitle = '';
 
-  if (manage) {
+  if (editVis) {
     if (!configuredVisible) {
-      hiddenBadge = '<span class="badge warn" title="此脚本个体开关已关闭，在用户侧隐藏">用户侧隐藏</span>';
+      hiddenBadge = '<span class="badge warn" title="此脚本个体开关已关闭，在用户侧隐藏">已隐藏</span>';
       switchTitle = '控制此脚本在用户侧是否显示（当前已关闭）';
     } else if (!grpVisible) {
       hiddenBadge = '<span class="badge warn" title="所属分组总开关已关闭，该脚本在用户侧实际处于隐藏状态">随组隐藏</span>';
       cardMutedClass = 'inherited-hidden';
       switchMutedClass = 'group-disabled';
-      switchTitle = '所属分组总开关已关闭，该脚本在用户侧处于随组隐藏状态（点击可单独关闭此脚本）';
+      switchTitle = '所属分组总开关已关闭，该脚本在用户侧处于随组隐藏状态';
     } else {
       switchTitle = '控制此脚本在用户侧是否显示（当前已开启）';
     }
   }
 
-  const visSwitch = manage ? `<button class="switch ${configuredVisible ? 'on' : ''} ${switchMutedClass}" data-vis-script="${escapeHtml(script.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>` : '';
+  const visSwitch = editVis ? `<button class="switch ${configuredVisible ? 'on' : ''} ${switchMutedClass}" data-vis-script="${escapeHtml(script.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>` : '';
+  const rightIcon = editVis ? visSwitch : `<span class="task-chevron">${ic('chevron', 14)}</span>`;
+
   return `<div class="task-card ${active} ${cardMutedClass}" data-task-select="${escapeHtml(script.id)}" role="button" tabindex="0">
-    ${script.order ? `<span class="num">${formatStepOrder(script.order)}</span>` : '<span class="num">组</span>'}
+    ${script.order ? `<span class="num">${formatStepOrder(script.order)}</span>` : '<span class="num">00</span>'}
     <span class="task-card-main">
       <span class="task-name">${escapeHtml(scriptTitle(script))}${danger}${hero}${hiddenBadge}</span>
     </span>
-    ${visSwitch}${ic('chevron', 15)}
+    ${rightIcon}
   </div>`;
 }
 
 function bundleCardHtml(bundle) {
   const manage = isScriptManageMode();
+  const editVis = Boolean(state.taskManageMode && manage);
   const enabled = bundle.enabled !== false;
   const grpVisible = groupVisible('custom');
   const effectiveVisible = grpVisible && enabled;
-  if (!manage && !effectiveVisible) return '';
+  if (!editVis && !effectiveVisible) return '';
   const steps = (bundle.stepIds || []).map((id, i) => {
     const script = state.scripts.find(s => s.id === id);
     return script ? { script, options: bundle.stepOptions?.[i] || {} } : null;
   }).filter(Boolean);
-  // 步骤流程仅管理员可见；用户侧只显示备注，避免长流程挤占卡片
+
   const stepsFlow = manage && steps.length
     ? `<span class="bundle-steps-flow">${steps.map((step, i) =>
         `${i ? '<span class="bundle-step-arrow">→</span>' : ''}<span class="bundle-step-item">${i + 1}. ${escapeHtml(scriptTitle(step.script))}${describeStepOptions(step) ? `<b class="bundle-step-opts">${escapeHtml(describeStepOptions(step))}</b>` : ''}</span>`).join('')}</span>`
@@ -327,26 +522,27 @@ function bundleCardHtml(bundle) {
   let switchMutedClass = '';
   let switchTitle = '';
 
-  if (manage) {
+  if (editVis) {
     if (!enabled) {
-      hiddenBadge = '<span class="badge warn" title="此组合自身已关闭，在用户侧隐藏">用户侧隐藏</span>';
+      hiddenBadge = '<span class="badge warn" title="此组合自身已关闭，在用户侧隐藏">已隐藏</span>';
       switchTitle = '控制此组合在用户侧是否显示（当前已关闭）';
     } else if (!grpVisible) {
       hiddenBadge = '<span class="badge warn" title="自定义组合分组总开关已关闭，该组合在用户侧实际处于隐藏状态">随组隐藏</span>';
       cardMutedClass = 'inherited-hidden';
       switchMutedClass = 'group-disabled';
-      switchTitle = '自定义组合分组总开关已关闭，该组合在用户侧处于随组隐藏状态（点击可单独关闭）';
+      switchTitle = '自定义组合分组总开关已关闭，该组合在用户侧处于随组隐藏状态';
     } else {
       switchTitle = '控制此组合在用户侧是否显示（当前已开启）';
     }
   }
 
-  const manageActions = manage ? `
+  const manageActions = editVis ? `
     <span class="task-group-extra">
       <button class="switch ${enabled ? 'on' : ''} ${switchMutedClass}" data-vis-bundle="${escapeHtml(bundle.id)}" type="button" title="${escapeHtml(switchTitle)}" role="switch"></button>
       <button class="btn sm" data-bundle-edit="${escapeHtml(bundle.id)}" type="button">编辑</button>
       <button class="btn sm flat" data-bundle-delete="${escapeHtml(bundle.id)}" type="button">删除</button>
-    </span>` : '';
+    </span>` : `<span class="task-chevron">${ic('chevron', 14)}</span>`;
+
   return `<div class="task-card ${state.taskBundleId === bundle.id ? 'active' : ''} ${cardMutedClass}" data-bundle-select="${escapeHtml(bundle.id)}" role="button" tabindex="0">
     <span class="num">组</span>
     <span class="task-card-main">
@@ -355,7 +551,6 @@ function bundleCardHtml(bundle) {
       ${stepsFlow}
     </span>
     ${manageActions}
-    <button class="btn sm primary" data-bundle-run="${escapeHtml(bundle.id)}" type="button">${ic('play', 13)} 执行组合</button>
   </div>`;
 }
 
@@ -449,7 +644,7 @@ function renderTaskDetail() {
   }
   const script = currentTaskScript();
   if (!script) {
-    panel.innerHTML = '<div class="empty">暂无可执行任务</div>';
+    panel.innerHTML = '<div class="empty">选择任务查看配置</div>';
     return;
   }
   if (!state.taskScriptId) state.taskScriptId = script.id;
@@ -490,7 +685,7 @@ function renderTaskDetail() {
       <h3>任务配置</h3>
       <span class="badge ${state.batchRunning ? 'run' : ''}" id="detailRunBadge">${state.batchRunning ? '执行中' : '待命'}</span>
     </div>
-    <div class="details">
+    <div class="details-scroll">
       <div class="details-heading">
         <h2>${escapeHtml(scriptTitle(script))}</h2>
         ${script.destructive ? '<span class="danger-tag">清数据</span>' : ''}
@@ -499,12 +694,12 @@ function renderTaskDetail() {
       ${fieldsHtml}
       ${renderDevicePicker()}
       ${renderBatchResults()}
-      <div class="details-footer">
-        <span class="footer-note" id="detailNote"></span>
-        ${state.batchRunning
-          ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-          : `<button class="btn primary" id="batchRunBtn" type="button">${ic('play', 15)} 执行 (<span id="batchCount">0</span> 台)</button>`}
-      </div>
+    </div>
+    <div class="details-footer">
+      <span class="footer-note" id="detailNote"></span>
+      ${state.batchRunning
+        ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
+        : `<button class="btn primary" id="batchRunBtn" type="button">${ic('play', 15)} 立即执行 (<span id="batchCount">0</span> 台)</button>`}
     </div>
   `;
   updateBatchCount();
@@ -539,7 +734,6 @@ function bundleRunFieldHtml(bundle, script, stepIndex, field) {
 
 function renderBundleDetail(panel, bundle) {
   const steps = bundleSteps(bundle);
-  // 仅展示需要设置参数的步骤，无参脚本不占面板；编号保留组合中的原始顺序
   const stepsHtml = steps.map((script, i) => {
     const fields = (script.parameters || []).map(field => bundleRunFieldHtml(bundle, script, i, field)).join('');
     if (!fields) return '';
@@ -554,7 +748,7 @@ function renderBundleDetail(panel, bundle) {
       <h3>任务配置</h3>
       <span class="badge ${state.batchRunning ? 'run' : ''}" id="detailRunBadge">${state.batchRunning ? '执行中' : '待命'}</span>
     </div>
-    <div class="details">
+    <div class="details-scroll">
       <div class="details-heading">
         <h2>${escapeHtml(bundle.name)}</h2>
       </div>
@@ -562,12 +756,12 @@ function renderBundleDetail(panel, bundle) {
       ${stepsHtml || (steps.length ? '<div class="empty">此组合内的脚本均无需参数，选择设备后可直接执行</div>' : '<div class="empty">此组合未包含有效脚本步骤</div>')}
       ${renderDevicePicker()}
       ${renderBatchResults()}
-      <div class="details-footer">
-        <span class="footer-note" id="detailNote"></span>
-        ${state.batchRunning
-          ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
-          : `<button class="btn primary" id="bundleRunBtn" type="button">${ic('play', 15)} 执行组合 (<span id="batchCount">0</span> 台)</button>`}
-      </div>
+    </div>
+    <div class="details-footer">
+      <span class="footer-note" id="detailNote"></span>
+      ${state.batchRunning
+        ? `<button class="btn danger" id="batchStopBtn" type="button">${ic('stop', 15)} 停止执行</button>`
+        : `<button class="btn primary" id="bundleRunBtn" type="button">${ic('play', 15)} 立即执行组合 (<span id="batchCount">0</span> 台)</button>`}
     </div>
   `;
   updateBatchCount();
@@ -639,7 +833,9 @@ function renderDevicePicker() {
 }
 
 function renderBatchResults() {
-  if (!state.batchResults?.length) return '';
+  if (!state.batchRunning && !state.batchResults?.length) return '';
+  if (!state.batchRunning && !state.batchResults.some(r => r.status && r.status !== 'pending')) return '';
+
   const rows = state.batchResults.map(result => {
     const device = state.devices.find(d => d.deviceId === result.deviceId);
     const cls = result.status === 'ok' ? 'ok' : result.status === 'running' ? 'run'
@@ -663,7 +859,7 @@ function updateBatchCount() {
   const note = byId('detailNote');
   if (!note) return;
   if (bundle) {
-    note.textContent = '组合内步骤按顺序串行执行，多台设备逐台运行';
+    note.textContent = '组合内步骤按顺序执行，多台设备并行运行';
   } else {
     note.textContent = script?.requiresDevice
       ? '并发运行'

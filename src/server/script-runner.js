@@ -579,7 +579,14 @@ function configureScript(script, body, env) {
   const definitions = script.parameters ?? [];
   const allowed = new Set(definitions.map(field => field.name));
   if (script.id.startsWith('flow-03')) allowed.add('vpcData');
-  if (Object.keys(options).some(name => !allowed.has(name))) throw invalidOptions('存在未知脚本参数');
+  if (script.id.startsWith('flow-06')) {
+    allowed.add('mode');
+    allowed.add('address');
+  }
+  if (Object.keys(options).some(name => !allowed.has(name))) {
+    const unknown = Object.keys(options).filter(name => !allowed.has(name));
+    throw invalidOptions('存在未知脚本参数: ' + unknown.join(', '));
+  }
   for (const field of definitions) {
     const value = options[field.name];
     if (field.required && (typeof value !== 'string' || !value.trim())) {
