@@ -347,76 +347,7 @@ function onTaskItemsClick(event) {
   }
 }
 
-function onTaskGroupsClick(event) {
-  const collapse = event.target.closest('[data-collapse-group]');
-  if (collapse) {
-    const key = collapse.dataset.collapseGroup;
-    const next = !collapse.closest('.task-group').classList.contains('collapsed');
-    collapse.closest('.task-group').classList.toggle('collapsed', next);
-    try { localStorage.setItem('yunmomo.collapse.' + key, String(next)); } catch {}
-    return;
-  }
-  const visBundle = event.target.closest('[data-vis-bundle]');
-  if (visBundle) {
-    const bundle = state.bundles.find(item => item.id === visBundle.dataset.visBundle);
-    if (bundle) { bundle.enabled = !(bundle.enabled !== false); saveBundleDirect(bundle); }
-    return;
-  }
-  const visScript = event.target.closest('[data-vis-script]');
-  if (visScript) {
-    saveVisibilityConfig({ type: 'script', id: visScript.dataset.visScript, visible: !visScript.classList.contains('on') });
-    return;
-  }
-  const visGroup = event.target.closest('[data-vis-group]');
-  if (visGroup) {
-    saveVisibilityConfig({ type: 'group', id: visGroup.dataset.visGroup, visible: !visGroup.classList.contains('on') });
-    return;
-  }
-  const bundleAdd = event.target.closest('[data-bundle-add]');
-  if (bundleAdd) {
-    openBundleModal();
-    return;
-  }
-  const bundleEdit = event.target.closest('[data-bundle-edit]');
-  if (bundleEdit) {
-    const bundle = state.bundles.find(item => item.id === bundleEdit.dataset.bundleEdit);
-    if (bundle) openBundleModal(bundle);
-    return;
-  }
-  const bundleDelete = event.target.closest('[data-bundle-delete]');
-  if (bundleDelete) {
-    const bundle = state.bundles.find(item => item.id === bundleDelete.dataset.bundleDelete);
-    if (!bundle) return;
-    showInPageConfirm({
-      title: '确认删除脚本组合？',
-      message: `<p class="confirm-lead">确定要彻底删除组合脚本 <strong>${escapeHtml(bundle.name)}</strong> 吗？此操作无法撤销。</p>`,
-      okText: '确认删除'
-    }).then(confirmed => { if (confirmed) deleteBundle(bundle.id); });
-    return;
-  }
-  const bundleRun = event.target.closest('[data-bundle-run]');
-  if (bundleRun) {
-    if (state.batchRunning || state.activeRun || state.activeBundleRun) { showToast('请等待当前脚本完成'); return; }
-    const bundle = state.bundles.find(item => item.id === bundleRun.dataset.bundleRun);
-    if (bundle) executeBundle(bundle);
-    return;
-  }
-  const bundleSelect = event.target.closest('[data-bundle-select]');
-  if (bundleSelect) {
-    state.taskBundleId = bundleSelect.dataset.bundleSelect;
-    state.taskScriptId = '';
-    renderTaskGroups();
-    renderTaskDetail();
-    return;
-  }
-  const card = event.target.closest('[data-task-select]');
-  if (card) {
-    state.taskScriptId = card.dataset.taskSelect;
-    state.taskBundleId = '';
-    renderTaskGroups();
-    renderTaskDetail();
-  }
-}
+
 
 function onDetailInput(event) {
   const batch = event.target.closest('[data-batch-device]');
@@ -555,6 +486,11 @@ function bundleCardHtml(bundle) {
 }
 
 function renderTaskGroups() {
+  if (byId('taskNavList') && byId('taskItemsContainer')) {
+    renderTaskNav();
+    renderTaskList();
+    return;
+  }
   const host = byId('taskGroups');
   if (!host) return;
   const manage = isScriptManageMode();
