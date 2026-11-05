@@ -23,13 +23,47 @@ async function mapLimit(values, limit, read, signal) {
   return results;
 }
 
+function isPidAlive(pid) {
+  if (!pid || typeof pid !== 'number' || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+/**
+ * 清理由于异常中断残留在磁盘上的孤儿锁 (Orphan Locks)
+ */
+async function cleanStaleLocks() {
+  const locksDir = path.join(PROJECT_ROOT, 'storage', 'locks');
+  try {
+    const files = await fs.readdir(locksDir);
+    for (const file of files) {
+      if (!file.endsWith('.lock')) continue;
+      const fullPath = path.join(locksDir, file);
+      try {
+        const raw = await fs.readFile(fullPath, 'utf8');
+        const data = JSON.parse(raw);
+        if (data.pid && !isPidAlive(data.pid)) {
+          await fs.unlink(fullPath);
+        }
+      } catch {
+        await fs.unlink(fullPath).catch(() => {});
+      }
+    }
+  } catch {}
+}
+
 /**
  * 跨进程原子排他互斥锁 (Cross-Process Exclusive Mutex)
  * 基于文件系统原子排他创建 (flag: 'wx') 实现。
  * 具备：
  * 1. 毫秒级轮询与排队等待；
- * 2. 陈旧死锁自愈 (Stale Lock Auto-recovery，10分钟未更新自动回收)；
- * 3. 租约释放句柄。
+ * 2. 进程活性自愈 (PID Liveness Check，持有进程退出时自动秒级回收)；
+ * 3. 超时保护 (10分钟超时双保险)；
+ * 4. 租约释放句柄。
  */
 async function acquireExclusiveLock(lockName, options = {}) {
   const timeoutMs = options.timeoutMs ?? (15 * 60 * 1000);
@@ -65,10 +99,27 @@ async function acquireExclusiveLock(lockName, options = {}) {
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
 
-      // 检测是否为进程异常中断遗留的陈旧死锁
+      // 检测是否为进程异常中断遗留的死锁（PID 已死亡或超过最大时限）
       try {
-        const stat = await fs.stat(lockFile);
-        if (Date.now() - stat.mtimeMs > staleMs) {
+        const raw = await fs.readFile(lockFile, 'utf8').catch(() => null);
+        let isStale = false;
+        if (raw) {
+          try {
+            const data = JSON.parse(raw);
+            if (data.pid && !isPidAlive(data.pid)) {
+              isStale = true;
+            }
+          } catch {
+            isStale = true;
+          }
+        }
+        if (!isStale) {
+          const stat = await fs.stat(lockFile);
+          if (Date.now() - stat.mtimeMs > staleMs) {
+            isStale = true;
+          }
+        }
+        if (isStale) {
           await fs.unlink(lockFile).catch(() => {});
           continue;
         }
@@ -86,4 +137,4 @@ async function acquireExclusiveLock(lockName, options = {}) {
   throw new Error(`获取全局排他锁 [${safeName}] 超时 (${Math.round(timeoutMs / 1000)}s)，前序任务可能占用过久`);
 }
 
-module.exports = { mapLimit, acquireExclusiveLock };
+module.exports = { mapLimit, acquireExclusiveLock, cleanStaleLocks };

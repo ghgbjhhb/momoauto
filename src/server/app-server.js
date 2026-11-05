@@ -143,6 +143,8 @@ function createServer() {
 
 async function start() {
   await loadLocalEnv();
+  const { cleanStaleLocks } = require('../automation/concurrency');
+  await cleanStaleLocks().catch(() => {});
   require('../automation/recognition-service').serviceCommand('start')
     .then(() => console.log('GPU recognition service ready'))
     .catch(error => console.error('GPU recognition startup failed: ' + (error.code ?? 'SERVICE_FAILED')));
