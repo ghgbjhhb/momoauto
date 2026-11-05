@@ -470,7 +470,7 @@ function renderGridViewer(forceRebuild = false) {
     return '<div class="device-tile ' + (isSelected ? 'selected ' : '') + (isBatchChecked ? 'is-batch-checked ' : '') + (online ? '' : 'is-offline') + '" data-tile-device="' + escapeHtml(device.deviceId) + '" tabindex="0" role="button" aria-pressed="' + isSelected + '">' +
       '<div class="tile-header">' +
         '<div class="tile-id-badge">' +
-          '<label class="tile-check-label" title="选择设备" onclick="event.stopPropagation()">' +
+          '<label class="tile-check-label" title="选择设备">' +
             '<input type="checkbox" class="tile-checkbox" data-tile-check="' + escapeHtml(device.deviceId) + '" ' + (isBatchChecked ? 'checked' : '') + '>' +
           '</label>' +
           '<i class="small-dot ' + (key === 'down' ? 'down' : key === 'busy' ? 'busy' : '') + '"></i>' +
@@ -488,9 +488,6 @@ function renderGridViewer(forceRebuild = false) {
       '<div class="tile-screen-wrap">' +
         '<div class="tile-screen" data-shot-for="' + escapeHtml(device.deviceId) + '">' +
           (online ? '<div class="tile-skeleton"><div class="tile-shimmer"></div><span class="tile-hint">获取快照…</span></div>' : '<div class="tile-offline"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="2" width="14" height="20" rx="2.5"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg><span>设备离线</span></div>') +
-        '</div>' +
-        '<div class="tile-hover-overlay">' +
-          '<span class="tile-hover-text">双击进入单台</span>' +
         '</div>' +
       '</div>' +
       '<div class="tile-footer">' +
@@ -677,21 +674,39 @@ elements.deviceChips?.addEventListener?.('click', event => {
 
 let lastTileClick = { deviceId: null, at: 0 };
 
+function toggleTileBatchSelection(deviceId, forceState = null) {
+  if (!Array.isArray(state.batchDevices)) state.batchDevices = [];
+  const currentlyChecked = state.batchDevices.includes(deviceId);
+  const nextChecked = forceState !== null ? Boolean(forceState) : !currentlyChecked;
+
+  if (nextChecked) {
+    if (!currentlyChecked) state.batchDevices.push(deviceId);
+    selectDevice(deviceId);
+  } else {
+    state.batchDevices = state.batchDevices.filter(id => id !== deviceId);
+    if (state.selectedDeviceId === deviceId) {
+      if (state.batchDevices.length) {
+        selectDevice(state.batchDevices[state.batchDevices.length - 1]);
+      }
+    }
+  }
+  updateGridSelection();
+  notifyBatchSelectionChanged();
+}
+window.toggleTileBatchSelection = toggleTileBatchSelection;
+
 elements.viewerStage?.addEventListener?.('click', event => {
-  // 0. 复选框勾选 (多选设备)
+  // 0. 复选框或其标签勾选 (多选设备)
   const check = event.target.closest('[data-tile-check]');
   if (check) {
-    event.stopPropagation();
     const id = check.dataset.tileCheck;
-    if (check.checked) {
-      if (!state.batchDevices.includes(id)) state.batchDevices.push(id);
-    } else {
-      state.batchDevices = state.batchDevices.filter(item => item !== id);
-    }
-    const tile = check.closest('.device-tile');
-    if (tile) tile.classList.toggle('is-batch-checked', check.checked);
-    updateGridBatchTools();
-    notifyBatchSelectionChanged();
+    toggleTileBatchSelection(id, check.checked);
+    return;
+  }
+  const checkLabel = event.target.closest('.tile-check-label');
+  if (checkLabel) {
+    const input = checkLabel.querySelector('[data-tile-check]');
+    if (input) toggleTileBatchSelection(input.dataset.tileCheck);
     return;
   }
 
@@ -723,33 +738,13 @@ elements.viewerStage?.addEventListener?.('click', event => {
     return;
   }
 
-  // 3. 悬停提示层点击（直接点“双击进入单台”的浮层，支持单击或双击均切入单台）
-  const hoverOverlay = event.target.closest('.tile-hover-overlay');
-  if (hoverOverlay) {
-    const tile = hoverOverlay.closest('[data-tile-device]');
-    if (tile) {
-      const deviceId = tile.dataset.tileDevice;
-      const now = Date.now();
-      if (lastTileClick.deviceId === deviceId && (now - lastTileClick.at) < 500) {
-        lastTileClick.at = 0;
-        selectDevice(deviceId);
-        switchToView('single');
-        return;
-      }
-      lastTileClick.deviceId = deviceId;
-      lastTileClick.at = now;
-      selectDevice(deviceId);
-      return;
-    }
-  }
-
-  // 4. 卡片点击与双击检测
+  // 3. 点击卡片主体：双击进入单台，单击直接切换多选勾选状态！
   const tile = event.target.closest('[data-tile-device]');
   if (tile) {
     const deviceId = tile.dataset.tileDevice;
     const now = Date.now();
-    // 软件级连击判定：500ms 内连续两次点击同一卡片，视同双击，直接平滑切入单台！
-    if (lastTileClick.deviceId === deviceId && (now - lastTileClick.at) < 500) {
+    // 软件级连击判定：400ms 内连续两次点击同一卡片，平滑切入单台
+    if (lastTileClick.deviceId === deviceId && (now - lastTileClick.at) < 400) {
       lastTileClick.at = 0;
       selectDevice(deviceId);
       switchToView('single');
@@ -757,12 +752,9 @@ elements.viewerStage?.addEventListener?.('click', event => {
     }
     lastTileClick.deviceId = deviceId;
     lastTileClick.at = now;
-    selectDevice(deviceId);
-    if (!state.batchDevices.includes(deviceId) && state.batchDevices.length <= 1) {
-      state.batchDevices = [deviceId];
-      updateGridSelection();
-      notifyBatchSelectionChanged();
-    }
+
+    // 单击卡片主体：直接切换勾选！
+    toggleTileBatchSelection(deviceId);
     return;
   }
 
