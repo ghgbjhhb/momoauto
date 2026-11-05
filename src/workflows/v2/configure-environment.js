@@ -175,7 +175,7 @@ async function runStep(context = {}) {
   }
 
   const targetName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
-  console.log(`[准备] 目标设备: ${targetName} (${targetDeviceId}) | 流程: 环境配置v2`);
+  console.log(`📱 目标设备: ${targetName} (${targetDeviceId}) | 环境配置`);
 
   const phone = context.phone || client.device(targetDeviceId);
   let control = context.control;
@@ -199,7 +199,7 @@ async function runStep(context = {}) {
   try {
     if (!control.connected) await control.connect();
 
-    console.log('[1/4] 正在检查并确认主屏幕...');
+    console.log('🏠 [1/4] 正在检查桌面...');
     let home;
     if (state.lastObservation && isDesktopScreen(state.lastObservation.items)) {
       home = state.lastObservation;
@@ -207,22 +207,22 @@ async function runStep(context = {}) {
       home = await ensureHomeScreen(phone, control, worker, directory, state, options);
     }
     initialAnchors = homeAnchorMatches(home.items);
-    console.log(`      主屏幕已就绪（${initialAnchors.length >= 1 ? `锚点: ${initialAnchors.join('、')}` : '已识别到桌面'}）`);
+    console.log('   桌面已就绪');
 
-    console.log('[2/4] 正在主屏定位并启动“密钥认证”...');
+    console.log('🔍 [2/4] 正在打开“密钥认证”...');
     const found = await findApp(phone, control, worker, directory, state, home, {
       ...options,
       homeTimeoutMs: 4000,
     });
     opened = await openKeyAuth(phone, control, worker, directory, state, found, options);
-    console.log(`      已打开密钥认证页面（点击坐标: ${opened.point.x}, ${opened.point.y}）`);
+    console.log('   已进入密钥认证页面');
 
     finalState = successState(opened.opened.items);
-    console.log('[3/4] 正在核验密钥与证书状态...');
-    console.log(`      根证书: ${finalState.certificate ? '谷歌硬件根证书 (有效)' : '未检测到硬件根证书 (异常)'}`);
-    console.log(`      引导程序: ${finalState.bootloader ? '已锁定 (正常)' : '未锁定 (异常)'}`);
+    console.log('📜 [3/4] 检查证书与引导锁状态...');
+    console.log(`   📜 根证书: ${finalState.certificate ? '有效' : '异常'}`);
+    console.log(`   🔒 引导锁: ${finalState.bootloader ? '已锁定' : '未锁定'}`);
 
-    console.log('[4/4] 退出密钥认证，恢复主屏幕...');
+    console.log('🏠 [4/4] 正在返回桌面...');
     await sendHome(control);
     await shared.sleep(400);
     const finalHome = await shared.observeUntil(
@@ -238,7 +238,7 @@ async function runStep(context = {}) {
     finalAnchors = homeAnchorMatches(finalHome.items);
     homeRestored = isDesktopScreen(finalHome.items);
     success = finalState.ok;
-    console.log(`      主屏幕恢复${homeRestored ? '完成' : '失败'}`);
+    console.log('   桌面已恢复');
 
     if (state) state.lastObservation = finalHome;
 
@@ -252,7 +252,7 @@ async function runStep(context = {}) {
       throw new Error('未能成功恢复桌面状态，主屏锚点不足');
     }
 
-    console.log('[完成] 环境配置核验通过！');
+    console.log('✅ 环境配置完成');
     return { ok: true, certificate: finalState.certificate, bootloader: finalState.bootloader };
   } catch (err) {
     executionError = err;

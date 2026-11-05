@@ -1047,20 +1047,15 @@ function parseCliArgs(argv) {
 function printSummary(result, duration, error = null) {
   console.log('\n' + '='.repeat(60));
   if (result?.state === 'waiting_verify_code') {
-    console.log('【执行结果】：等待输入验证码 (新码已触发下发)');
-    console.log('【任务名称】：陌陌一键上号全流程 (授权/资料完善/手机绑定)');
-    console.log('【退出状态码】：0');
-    console.log(`【已完成阶段】：打开陌陌 -> 微信登录 -> 丫丫授权 -> 资料完善(女生/网名/生日) -> 头像上传 -> 手机号键入 [${result.phoneNumber}] -> 验证码过盾成功已触发下发！`);
+    console.log('💬 等待输入短信验证码');
+    console.log(`📱 手机号: ${result.phoneNumber}`);
     if (result.authSession) {
-      console.log(`【微信授权生命周期倒计时】：8分钟时限剩余可用 ${result.authSession.remainingFormatted}`);
+      console.log(`⏳ 微信授权有效剩余: ${result.authSession.remainingFormatted}`);
     }
-    console.log('【下一步行动】：请在对话中发送您收到的 6 位短信验证码，收到后脚本将直接推进打字提交！');
-    console.log(`【执行耗时】：${duration} 秒`);
+    console.log('📩 请在聊天框中回复收到的 6 位短信验证码');
+    console.log(`⏱️ 耗时: ${duration} 秒`);
   } else if (result?.ok) {
-    console.log('【执行结果】：🎉 陌陌一键上号成功！');
-    console.log('【任务名称】：陌陌一键上号全流程 (登录授权/资料完善/头像上传/手机绑定)');
-    console.log('【退出状态码】：0');
-    console.log('【主页终态】：已成功进入陌陌主界面 (识别到“开启附近功能”与底栏导航)');
+    console.log('🎉 陌陌登录成功！');
     if (result.nickname) {
       console.log(`【账号网名】：${result.nickname}`);
     }
@@ -1092,10 +1087,7 @@ function printSummary(result, duration, error = null) {
       durationSeconds: Number(duration),
     })}`);
   } else {
-    console.log('【执行结果】：失败');
-    console.log('【任务名称】：陌陌一键上号 (登录授权/资料完善/头像上传/手机绑定停靠)');
-    console.log('【退出状态码】：1');
-    console.log(`【失败原因】：${error?.message || '未知错误'}`);
+    console.log(`❌ 陌陌登录失败: ${error?.message || '未知错误'}`);
     const shotPath = error?.lastScreenshotPath || result?.lastScreenshotPath;
     if (shotPath) {
       console.log(`【现场截图】：${path.relative(PROJECT_ROOT, shotPath)}`);

@@ -152,11 +152,11 @@ async function runStep(context = {}) {
   const deviceId = context.phone?.deviceId || context.deviceId || process.env.YUNMOMO_DEVICE_ID;
   const sdkVersion = context.options?.sdkVersion || process.env.YUNMOMO_SDK_VERSION || 'v2';
   const plan = await prepareResetData(client, deviceId, { sdkVersion });
-  console.log(`[目标设备] ${plan.device.id}`);
-  console.log(`[执行操作] 重置数据`);
+  console.log(`📱 目标设备: ${plan.device.id}`);
+  console.log('🔄 正在重置设备数据...');
   const response = await submitResetData(client, plan);
-  console.log(`[执行状态] 已提交云端`);
-  console.log(`[执行结果] 成功`);
+  console.log('📤 已提交云端处理');
+  console.log('✅ 重置数据成功');
   return { success: true, response, plan };
 }
 

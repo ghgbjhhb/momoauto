@@ -1103,8 +1103,8 @@ async function runYayaWorkflow(customParams = {}) {
   const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
   logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, mode });
 
-  logger.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
-  logger.console(`[运行模式] ${mode === 'direct' ? '模式一：直接登录(一键授权)' : '模式二：历史复扫'}`);
+  logger.console(`📱 目标设备: ${deviceName} (${resolvedDeviceId})`);
+  logger.console(`⚙️ 运行模式: ${mode === 'direct' ? '直接登录 (一键授权)' : '历史复扫'}`);
 
   const phone = client.device(resolvedDeviceId);
   const control = customParams.control || await phone.openControl({ udid: target.udid });
@@ -1121,17 +1121,17 @@ async function runYayaWorkflow(customParams = {}) {
     }
 
     // 0. 最前置：在执行流程前先按 Home 键退出任意前台应用，确保从桌面安全启动
-    logger.console('[0/4] 初始化：按 Home 键退出当前前台应用并返回桌面...');
+    logger.console('🏠 [0/4] 按 Home 键返回桌面...');
     await sendHome(control);
     await sleep(800);
 
     // 1. 确认主屏幕就绪
-    logger.console('[1/4] 正在确认主屏幕状态...');
+    logger.console('🏠 [1/4] 检查桌面状态...');
     const home = await confirmHome(phone, control, worker, directory, state, options);
     logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
 
     // 2. 寻找并打开 YY
-    logger.console('[2/4] 正在桌面寻找并打开应用“YY”...');
+    logger.console('🔍 [2/4] 在桌面寻找 YY...');
     const found = await findApp(
       phone,
       control,
@@ -1146,10 +1146,10 @@ async function runYayaWorkflow(customParams = {}) {
     logger.file('App located on launcher', { page: found.page, point: found.point });
 
     const opened = await openYaya(phone, control, worker, directory, state, found, options);
-    logger.console(`[2/4] 已点击应用图标并进入YY应用 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
+    logger.console('👆 [2/4] 已点击 YY 图标，等待启动...');
 
     // 3. 通用前置：登录账号密码并确认主界面
-    logger.console('[3/4] 正在核验账号登录态与弹窗...');
+    logger.console('🎯 [3/4] 检查登录状态与弹窗...');
     const loginResult = await ensureYayaLoggedInAndReady(
       phone,
       control,
@@ -1163,7 +1163,7 @@ async function runYayaWorkflow(customParams = {}) {
     );
 
     // 4. 双模式分流执行
-    logger.console(`[4/4] 正在执行业务流程模式: [${mode}]...`);
+    logger.console(`▶️ [4/4] 开始执行业务模式: ${mode === 'direct' ? '直接登录' : '历史复扫'}...`);
     let workflowResult;
     if (mode === 'direct') {
       workflowResult = await executeDirectMode(
@@ -1191,14 +1191,13 @@ async function runYayaWorkflow(customParams = {}) {
       );
     }
 
-    logger.console(`[完成] YY业务流程执行成功！`);
-    logger.console(`       模式: ${workflowResult.mode} | 状态: ${workflowResult.status}`);
-    logger.console(`       授权点击时间: ${workflowResult.clickedTimeFormatted} (${workflowResult.clickedAt})`);
+    logger.console('✅ YY 执行完成');
+    logger.console(`   ⚙️ 模式: ${workflowResult.mode} | 状态: ${workflowResult.status}`);
+    logger.console(`   ⏰ 点击时间: ${workflowResult.clickedTimeFormatted}`);
     if (workflowResult.toastText) {
-      logger.console(`       捕获提示: ${workflowResult.toastText}`);
+      logger.console(`   💬 提示: ${workflowResult.toastText}`);
     }
-    logger.console(`[执行结果] 成功`);
-    logger.console(`[完整日志] ${logger.relativeLogPath}`);
+    logger.console('✅ 执行成功');
 
     return workflowResult;
   } finally {

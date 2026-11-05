@@ -142,9 +142,9 @@ async function runStep(context = {}) {
   const publicDiskFiles = await disk.list({ channel: '2', size: 10000 });
   const publicFiles = selectPublicFiles(publicDiskFiles.records);
 
-  console.log(`目标云机: ${context.deviceName ?? target.deviceName ?? target.name ?? 'SF'} (${actualDeviceId})`);
-  console.log(`文件清单: 私有云盘 ${privateFiles.records.length} 个，公共应用 ${publicFiles.length} 个`);
-  console.log(`公共应用: ${publicFiles.map(f => f.displayLabel || f.appName || f.name).join('、')}`);
+  console.log(`📱 目标设备: ${context.deviceName ?? target.deviceName ?? target.name ?? 'SF'} (${actualDeviceId})`);
+  console.log(`📦 待分发: 私有文件 ${privateFiles.records.length} 个，应用包 ${publicFiles.length} 个`);
+  console.log(`📦 应用清单: ${publicFiles.map(f => f.displayLabel || f.appName || f.name).join('、')}`);
 
   if (verifyOnly) {
     console.log(JSON.stringify({ transferStatus: summarizeStatus(await disk.transferStatus()) }));
@@ -152,7 +152,7 @@ async function runStep(context = {}) {
   }
 
   // 第一阶段：向云机传输私有云盘所有文件
-  console.log(`\n[Phase 1/2] 开始向云机传输私有云盘文件（共 ${privateFiles.records.length} 个）...`);
+  console.log(`\n📤 [1/2] 正在发送私有文件 (${privateFiles.records.length} 个)...`);
   await disk.sendToDevices([actualDeviceId], privateFiles.records, {
     fileType,
     timeoutMs: 60 * 60 * 1000,
@@ -162,10 +162,10 @@ async function runStep(context = {}) {
     privateStatus.successCount !== privateFiles.records.length) {
     throw new Error('私有云盘文件传输未全部成功: ' + JSON.stringify(privateStatus));
   }
-  console.log(`[Phase 1/2] 私有云盘文件全部传输完成！\n`);
+  console.log('✅ [1/2] 私有文件发送完成\n');
 
   // 第二阶段：等待私有传输完成后，向云机传输指定的公共文件
-  console.log(`[Phase 2/2] 开始向云机传输公共云盘指定应用（共 ${publicFiles.length} 个）...`);
+  console.log(`📤 [2/2] 正在发送应用安装包 (${publicFiles.length} 个)...`);
   await disk.sendToDevices([actualDeviceId], publicFiles, {
     fileType,
     timeoutMs: 60 * 60 * 1000,
@@ -175,8 +175,8 @@ async function runStep(context = {}) {
     publicStatus.successCount !== publicFiles.length) {
     throw new Error('公共云盘指定应用传输未全部成功: ' + JSON.stringify(publicStatus));
   }
-  console.log(`[Phase 2/2] 公共云盘指定应用全部传输完成！`);
-  console.log('>>> 全部云盘与公共应用传输成功 OK');
+  console.log('✅ [2/2] 应用安装包发送完成');
+  console.log('✅ 所有文件与应用发送完成');
   return { ok: true, privateCount: privateFiles.records.length, publicCount: publicFiles.length };
 }
 

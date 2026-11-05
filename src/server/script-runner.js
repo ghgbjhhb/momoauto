@@ -391,7 +391,10 @@ async function executeScriptMeasured(body, user = null, workflowLease = null) {
       throw new Error('请先在启动软件前设置 YUNMOMO_CERT_PATH');
     }
 
-    const env = { ...process.env };
+    const env = {
+      ...process.env,
+      YUNMOMO_LOCAL_SERVER_PORT: String(process.env.YUNMOMO_APP_PORT || 4318),
+    };
     if (ownerUserId) {
       env.YUNMOMO_USER_ID = ownerUserId;
       env.YUNMOMO_USER_ROLE = user?.role || 'user';

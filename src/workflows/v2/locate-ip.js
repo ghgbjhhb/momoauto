@@ -811,9 +811,9 @@ async function runStep(context = {}) {
   const actualDeviceId = deviceIdOf(target);
   const deviceName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
 
-  console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
-  console.log(`运行模式: ${mode === 'search' ? `搜索地点穿越 (目标: ${address})` : '定位到IP所在地'}`);
-  console.log('[1/5] 正在确认主屏幕就绪...');
+  console.log(`📱 目标设备: ${deviceName} (${actualDeviceId})`);
+  console.log(`📍 模式: ${mode === 'search' ? `搜索定位 (${address})` : 'IP 自动定位'}`);
+  console.log('🏠 [1/5] 检查桌面状态...');
 
   const runId = String(process.env.YUNMOMO_SCRIPT_RUN_ID || ('run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)));
   const screenshotsDir = path.join(PROJECT_ROOT, 'logs', 'screenshots', runId);
@@ -845,7 +845,7 @@ async function runStep(context = {}) {
     let found;
 
     if (directBox && !clipboardToastVisible(initialObs.items)) {
-      console.log('[2/5] 当前屏幕已就绪且直达“虚拟定位”入口，直接进入...');
+      console.log('🔍 [2/5] 桌面已找到“虚拟定位”，直接打开...');
       const settled = await ensureStableObservation(
         phone, worker, directory, state, initialObs,
         obs => Boolean(virtualLocationBox(obs.items)),
@@ -858,7 +858,7 @@ async function runStep(context = {}) {
         ...options,
         homeConfirmation: { firstAttemptTimeoutMs: 2500 }
       });
-      console.log('[2/5] 正在桌面寻找应用“虚拟定位”...');
+      console.log('🔍 [2/5] 在桌面寻找“虚拟定位”...');
       found = await findApp(
         phone,
         control,
@@ -872,19 +872,19 @@ async function runStep(context = {}) {
       );
     }
 
-    console.log('[3/5] 正在打开“虚拟定位”并等待就绪...');
+    console.log('📍 [3/5] 正在打开虚拟定位...');
     const mapObs = await tapAppAndWaitMap(phone, control, worker, directory, state, found, options);
 
     let result;
     if (mode === 'search') {
-      console.log(`[4/5] 正在执行“搜索地点并穿越” (目标地址: ${address})...`);
+      console.log(`📍 [4/5] 正在搜索并设置定位 (${address})...`);
       result = await searchAddressAndTraverse(phone, control, worker, directory, state, mapObs, address, options);
     } else {
-      console.log('[4/5] 正在执行“定位到ip所在地”并穿越...');
+      console.log('📍 [4/5] 正在定位到当前 IP 地址...');
       result = await clickIpLocationAndTraverse(phone, control, worker, directory, state, mapObs, options);
     }
 
-    console.log('[5/5] 穿越完成，正在返回主屏幕并核验...');
+    console.log('🏠 [5/5] 定位完成，正在返回桌面...');
     await sendHome(control);
     await swipeHomePage(control, 'right');
     const finalHome = await confirmHome(phone, control, worker, directory, state, {
@@ -901,8 +901,8 @@ async function runStep(context = {}) {
       throw new Error('执行未完成：未能成功恢复主屏');
     }
 
-    console.log(`[核验完成] 已成功恢复主屏幕 (桌面锚点: ${finalAnchors.length} 个)`);
-    console.log(`>>> 定位到ip地执行成功 OK (模式: ${mode}, 目标位置: ${result.targetLocation})`);
+    console.log(`✅ 定位完成: ${result.targetLocation || '已生效'}`);
+    console.log('✅ 已回到桌面');
     return { ok: true, mode, targetLocation: result.targetLocation };
   } finally {
     if (!homeRestored && control && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {

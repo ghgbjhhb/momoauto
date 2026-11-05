@@ -43,9 +43,9 @@ async function runStep(context = {}) {
   const deviceName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
   const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
 
-  console.log(`[准备] 目标云机: ${deviceName} (ID: ${actualDeviceId}, 系统: ${sdkVer})`);
-  console.log(`[准备] 证书文件: ${fileName} (${sizeKb} KB)`);
-  console.log(`[执行] 正在上传证书到云机...`);
+  console.log(`📱 目标设备: ${deviceName} (${actualDeviceId})`);
+  console.log(`📄 证书文件: ${fileName} (${sizeKb} KB)`);
+  console.log('📤 正在上传证书...');
 
   const result = await client.device(actualDeviceId).uploadGoogleCertificate(data, {
     fileName,
@@ -56,7 +56,7 @@ async function runStep(context = {}) {
     throw new Error('云端处理失败: ' + (payload.message || JSON.stringify(payload)));
   }
   const replyText = typeof payload === 'string' ? payload : (payload?.message || '上传成功');
-  console.log(`[完成] ✅ 证书上传成功！云端确认返回: ${replyText}`);
+  console.log(`✅ 证书上传完成: ${replyText}`);
   return { ok: true, message: replyText };
 }
 

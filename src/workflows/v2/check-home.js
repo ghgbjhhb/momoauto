@@ -80,7 +80,7 @@ async function main() {
   if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
   const targetName = target.deviceName ?? target.name ?? 'SF';
-  console.log(`[准备] 目标设备: ${targetName} (${targetDeviceId}) | 检查桌面状态`);
+  console.log(`📱 目标设备: ${targetName} (${targetDeviceId}) | 检查桌面`);
 
   const phone = client.device(targetDeviceId);
   const control = await phone.openControl({ udid: target.udid });
@@ -91,13 +91,12 @@ async function main() {
   try {
     await control.connect();
     const result = await ensureHomeScreen(phone, control, worker, directory, state);
-    const anchors = homeAnchorMatches(result.observation.items);
     if (result.alreadyHome) {
-      console.log(`[完成] 设备当前已处于桌面主屏（${anchors.length ? `锚点: ${anchors.join('、')}` : '识别到桌面应用'}）`);
+      console.log('✅ 设备当前已在桌面');
     } else if (result.restored) {
-      console.log(`[完成] 已成功按 HOME 键恢复至桌面主屏（${anchors.length ? `锚点: ${anchors.join('、')}` : '识别到桌面应用'}）`);
+      console.log('🏠 已按 HOME 键返回桌面');
     } else {
-      throw new Error('未能成功恢复桌面主屏');
+      throw new Error('未能成功恢复桌面');
     }
   } finally {
     await worker.close();

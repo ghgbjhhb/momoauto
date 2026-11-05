@@ -433,6 +433,7 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
       YUNMOMO_BUNDLE_RUN_ID: run.id,
       YUNMOMO_BUNDLE_SPEC: bundleSpec,
       YUNMOMO_START_STEP_INDEX: String(startStepIndex),
+      YUNMOMO_LOCAL_SERVER_PORT: String(process.env.YUNMOMO_APP_PORT || 4318),
     };
 
     const child = spawn(process.execPath, [workerScript], {

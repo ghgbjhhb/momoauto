@@ -419,12 +419,33 @@ async function handleConsoleRoutes(ctx, request, response, url) {
   if (request.method === 'GET' && url.pathname === '/api/screenshot') {
     const deviceId = url.searchParams.get('deviceId');
     const hd = url.searchParams.get('hd') === '1' || url.searchParams.get('hd') === 'true';
-    if (!user || !await authService.ensureDeviceAccess(user, deviceId)) {
+
+    let tokenOrUser = user;
+    let hasAccess = false;
+    if (user && await authService.ensureDeviceAccess(user, deviceId)) {
+      hasAccess = true;
+    } else {
+      // 自动化脚本本机回环极速取帧通道：仅允许 loopback 发起，并验证其携带的平台 token 归属
+      const isLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.socket.remoteAddress);
+      const platToken = request.headers['x-yunmomo-token'] || url.searchParams.get('platToken');
+      if (isLoopback && platToken) {
+        try {
+          const c = new YunmomoClient({ token: platToken, timeoutMs: 6000 });
+          const dev = await c.getDevice(deviceId);
+          if (dev) {
+            hasAccess = true;
+            tokenOrUser = platToken;
+          }
+        } catch {}
+      }
+    }
+
+    if (!hasAccess) {
       json(response, 403, { ok: false, error: '无权查看此设备画面或该设备已到期回收' });
       return true;
     }
     try {
-      const result = await previewImage(deviceId, user, { hd });
+      const result = await previewImage(deviceId, tokenOrUser, { hd });
       const headers = {
         'Content-Type': result.contentType || 'image/jpeg',
         'Cache-Control': 'no-store',

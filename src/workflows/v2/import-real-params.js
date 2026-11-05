@@ -259,7 +259,7 @@ async function main() {
   }
 
   // 下发并应用真机参数
-  console.log(`[3/3] 正在向云端控制流下发并配置真机参数...`);
+  console.log('📲 [3/3] 正在下发真机参数...');
   const result = await client.device(actualDeviceId).setDeviceInfo({
     brand: deviceInfo.brand,
     marketName: deviceInfo.marketName,
@@ -269,7 +269,7 @@ async function main() {
   });
 
   const replyText = typeof result === 'string' ? result : (result?.message || result?.data || '设置成功');
-  console.log(`[完成] ✅ 真机参数导入成功！云端返回: ${replyText}`);
+  console.log(`✅ 真机参数导入完成: ${replyText}`);
 
   // [步骤 4] 写入真参状态标记并核销额度
   authService.markZhencanFileUsed(fileName, {
@@ -277,7 +277,7 @@ async function main() {
     deviceId: actualDeviceId,
     deviceName
   });
-  console.log(`[状态] ✅ 真参文件 [${fileName}] 已成功标记为【已使用】(使用时间: ${new Date().toLocaleString('zh-CN')}, 云机: ${deviceName})`);
+  console.log(`📋 真参文件 [${fileName}] 已标记为已使用`);
 
   if (userId) {
     if (!isPrivilegedAdmin) {

@@ -523,7 +523,7 @@ async function runGenerateAllWorkflow({ phone, control, worker, directory, state
     await control.connect();
   }
 
-  console.log('[1/6] 正在确认主屏幕就绪...');
+  console.log('🏠 [1/6] 检查桌面状态...');
 
   // 优先就近检测：若当前桌面视口已经包含“伍羊工具箱”，直接使用，大幅提速
   state.counter += 1;
@@ -532,14 +532,14 @@ async function runGenerateAllWorkflow({ phone, control, worker, directory, state
   let found;
 
   if (directBox && !clipboardToastVisible(initialObs.items)) {
-    console.log('[2/6] 当前屏幕已就绪且直达“伍羊工具箱”入口，直接进入...');
+    console.log('🔍 [2/6] 桌面已找到“伍羊工具箱”，直接打开...');
     found = { observation: initialObs, box: directBox, direction: 'none', page: 0 };
   } else {
     const home = await confirmHome(phone, control, worker, directory, state, {
       ...options,
       homeConfirmation: { firstAttemptTimeoutMs: 2500 }
     });
-    console.log('[2/6] 正在桌面寻找应用“伍羊工具箱”...');
+    console.log('🔍 [2/6] 在桌面寻找“伍羊工具箱”...');
     found = await findApp(
       phone,
       control,
@@ -553,10 +553,10 @@ async function runGenerateAllWorkflow({ phone, control, worker, directory, state
     );
   }
 
-  console.log('[3/6] 正在打开“伍羊工具箱”并等待就绪...');
+  console.log('📱 [3/6] 正在打开“伍羊工具箱”...');
   const opened = await tapToolAndWaitReady(phone, control, worker, directory, state, found, options);
 
-  console.log('[4/6] 正在执行数据生成并实时监控状态...');
+  console.log('⚙️ [4/6] 点击“一键全部生成”，等待生成完毕...');
   const generated = await clickGenerateAllAndWait(
     phone,
     control,
@@ -567,7 +567,7 @@ async function runGenerateAllWorkflow({ phone, control, worker, directory, state
     options,
   );
 
-  console.log('[5/6] 数据生成完毕，正在卸载“伍羊工具箱”...');
+  console.log('🗑️ [5/6] 数据生成完毕，正在卸载“伍羊工具箱”...');
   const uninstalled = await uninstallToolBox(
     phone,
     control,
@@ -577,7 +577,7 @@ async function runGenerateAllWorkflow({ phone, control, worker, directory, state
     options,
   );
 
-  console.log('[6/6] 正在返回并核验主屏幕第一页...');
+  console.log('🏠 [6/6] 正在返回桌面首页...');
   await sendHome(control);
   await swipeHomePage(control, 'right');
   const finalHome = await confirmHome(phone, control, worker, directory, state, {
@@ -592,8 +592,8 @@ async function runGenerateAllWorkflow({ phone, control, worker, directory, state
     throw new Error('执行未完成：' + (!generated.buttonReturned ? '“一键生成全部”未确认完成' : !uninstalled.uninstalled ? '“伍羊工具箱”卸载未确认' : '未能成功恢复主屏'));
   }
 
-  console.log(`[核验完成] 已成功恢复主屏幕第一页 (桌面锚点: ${finalAnchors.length} 个)`);
-  console.log(`>>> 一键生成全部并卸载执行成功 OK (生成耗时: ${generated.elapsedSeconds}s)`);
+  console.log(`✅ 生成与卸载完成 (耗时 ${generated.elapsedSeconds}秒)`);
+  console.log('🏠 已返回桌面首页');
 
   if (state) {
     state.lastObservation = finalHome;
