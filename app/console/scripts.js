@@ -995,13 +995,24 @@ async function followManagedWorkflow(runId) {
       ':' + (snapshot.output || '');
     if (progress !== lastProgress) {
       lastProgress = progress;
-      writeOutput('Windows 后台任务：' + snapshot.title, [
+      const commonLog = [
         '已派发步骤：' + snapshot.currentStep + '/' + snapshot.totalSteps,
         ...snapshot.results.map(item => item.deviceId + '：' + item.status +
           '（' + item.completedSteps + '/' + item.totalSteps + ' 步）' +
           (item.message ? '；' + item.message : '')),
         ...(snapshot.output ? ['最近输出：', snapshot.output] : [])
-      ]);
+      ];
+
+      // 将服务端返回的每台设备独立日志缓存至前端设备切片
+      if (snapshot.deviceOutputs && typeof snapshot.deviceOutputs === 'object') {
+        for (const [devId, out] of Object.entries(snapshot.deviceOutputs)) {
+          if (state.deviceLogs) state.deviceLogs.set(devId, out);
+        }
+      }
+
+      writeOutput('Windows 后台任务：' + snapshot.title, commonLog, {
+        deviceId: snapshot.currentDeviceId || (snapshot.results[0]?.deviceId)
+      });
     }
     if (snapshot.state === 'interrupted') {
       state.activeWorkflowRun = { ...state.activeWorkflowRun, interrupted: true, runId };

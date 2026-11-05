@@ -136,10 +136,9 @@
                       <button class="segment" id="dockTabTerminalSystem" type="button" hidden>系统运行日志 <span class="log-badge" id="dockSystemLogBadge" hidden>0</span></button>
                     </div>
                     <div class="dock-actions">
-                      <button class="btn sm" id="dockStopScriptBtn" type="button" hidden>停止脚本</button>
-                      <button class="btn sm" id="dockCopyOutputBtn" type="button" title="复制日志">复制</button>
+                      <button class="btn sm flat" id="dockCopyOutputBtn" type="button" title="复制日志">复制</button>
                       <button class="btn sm flat" id="dockClearOutput" type="button" title="清空">清空</button>
-                      <button class="btn sm flat" data-goto="logs" type="button" title="全屏查看完整日志">全屏</button>
+                      <button class="btn sm flat" id="dockMaximizeBtn" type="button" title="原位最大化/还原日志窗口">最大化</button>
                       <button class="dock-btn-icon" id="dockCollapseBtn" type="button" title="收起运行日志" aria-label="收起运行日志">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
                       </button>
@@ -149,6 +148,7 @@
                   <div class="dock-body">
                     <pre class="log-box dock-log-box" id="dockOutputBox">暂无执行记录。</pre>
                     <pre class="log-box dock-log-box" id="dockSystemLogBox" hidden>暂无系统日志。</pre>
+                    <button class="dock-jump-bottom-btn" id="dockJumpBottomBtn" type="button" hidden>↓ 最新日志</button>
                   </div>
                 </div>
               </div>

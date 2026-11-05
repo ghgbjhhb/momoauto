@@ -406,6 +406,50 @@ function initLogPage() {
   eventBus.addEventListener('output:changed', updateStopButton);
 }
 
+/* ---------- 设备日志独立切片与主动回溯 ---------- */
+async function fetchDeviceLogHistory(deviceId, runId) {
+  if (!deviceId || !runId) return;
+  try {
+    const res = await requestJson('/api/logs?scriptRunId=' + encodeURIComponent(runId));
+    if (res?.ok && res.content) {
+      if (state.deviceLogs) state.deviceLogs.set(deviceId, res.content);
+      if (state.deviceActiveRunIds) state.deviceActiveRunIds.set(deviceId, runId);
+      const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+      if (currentDev && currentDev.deviceId === deviceId) {
+        const box = elements.dockOutputBox;
+        if (box) {
+          box.textContent = res.content;
+          if (state.logDockAutoScroll !== false) box.scrollTop = box.scrollHeight;
+        }
+      }
+    }
+  } catch {}
+}
+window.fetchDeviceLogHistory = fetchDeviceLogHistory;
+
+function syncCurrentDeviceLogView() {
+  const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+  if (!currentDev) return;
+  const deviceId = currentDev.deviceId;
+  const devState = (state.deviceStates && state.deviceStates[deviceId]) ? state.deviceStates[deviceId] : { status: 'idle' };
+  const box = elements.dockOutputBox;
+  if (!box) return;
+
+  const label = typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId;
+  if (state.deviceLogs && state.deviceLogs.has(deviceId)) {
+    box.textContent = state.deviceLogs.get(deviceId);
+    if (state.logDockAutoScroll !== false) box.scrollTop = box.scrollHeight;
+  } else if (devState.runId) {
+    box.textContent = `[${label}] 正在拉取运行日志…`;
+    fetchDeviceLogHistory(deviceId, devState.runId);
+  } else {
+    box.textContent = `[${label}] 暂无执行记录。`;
+  }
+  if (typeof updateStopButton === 'function') updateStopButton();
+  if (typeof updateLogMeta === 'function') updateLogMeta();
+}
+window.syncCurrentDeviceLogView = syncCurrentDeviceLogView;
+
 function initOverviewLogDock() {
   const dock = elements.overviewLogDock;
   if (!dock) return;
@@ -419,8 +463,14 @@ function initOverviewLogDock() {
   function setDockCollapsed(val) {
     dock.classList.toggle('collapsed', val);
     try { localStorage.setItem(preferenceKey, String(val)); } catch {}
-    if (!val) {
-      if (elements.dockOutputBox) elements.dockOutputBox.scrollTop = elements.dockOutputBox.scrollHeight;
+    if (val) {
+      dock.classList.remove('is-maximized');
+      state.logDockMaximized = false;
+      if (elements.dockMaximizeBtn) elements.dockMaximizeBtn.textContent = '最大化';
+    } else {
+      if (elements.dockOutputBox && state.logDockAutoScroll !== false) {
+        elements.dockOutputBox.scrollTop = elements.dockOutputBox.scrollHeight;
+      }
       if (elements.dockSystemLogBox) elements.dockSystemLogBox.scrollTop = elements.dockSystemLogBox.scrollHeight;
     }
   }
@@ -448,9 +498,13 @@ function initOverviewLogDock() {
       updateSystemLogBadge();
       showToast('已清空系统运行日志');
     } else {
+      const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+      if (currentDev && state.deviceLogs) {
+        state.deviceLogs.delete(currentDev.deviceId);
+      }
       if (elements.outputBox) elements.outputBox.textContent = '暂无执行记录。';
       if (elements.dockOutputBox) elements.dockOutputBox.textContent = '暂无执行记录。';
-      showToast('已清空脚本执行日志');
+      showToast('已清空执行日志');
     }
   });
 
@@ -461,19 +515,41 @@ function initOverviewLogDock() {
     copyToClipboard(text, state.logTab === 'system' ? '已复制系统运行日志到剪贴板' : '已复制脚本执行日志到剪贴板');
   });
 
-  elements.dockStopScriptBtn?.addEventListener('click', () => {
-    if (state.batchRunning) {
-      if (typeof stopTaskBatch === 'function') stopTaskBatch();
-    } else if (state.activeBundleRun) {
-      if (typeof stopRunningBundle === 'function') stopRunningBundle();
-    } else if (typeof stopRunningScript === 'function') {
-      stopRunningScript();
+  // 原位最大化/还原日志窗口：在当前右列拉伸至 85% 高度，左侧手机画面始终保留
+  elements.dockMaximizeBtn?.addEventListener('click', () => {
+    if (!dock) return;
+    state.logDockMaximized = !state.logDockMaximized;
+    dock.classList.toggle('is-maximized', state.logDockMaximized);
+    elements.dockMaximizeBtn.textContent = state.logDockMaximized ? '还原' : '最大化';
+    if (elements.dockOutputBox && state.logDockAutoScroll !== false) {
+      elements.dockOutputBox.scrollTop = elements.dockOutputBox.scrollHeight;
+    }
+  });
+
+  // 智能吸底（Stick-to-bottom）：根据当前可视位置判断是否在底部
+  const dockBox = elements.dockOutputBox;
+  if (dockBox) {
+    dockBox.addEventListener('scroll', () => {
+      const threshold = 25;
+      const isAtBottom = (dockBox.scrollHeight - dockBox.scrollTop - dockBox.clientHeight) <= threshold;
+      state.logDockAutoScroll = isAtBottom;
+      const jumpBtn = elements.dockJumpBottomBtn;
+      if (jumpBtn) jumpBtn.hidden = isAtBottom;
+    }, { passive: true });
+  }
+
+  elements.dockJumpBottomBtn?.addEventListener('click', () => {
+    if (dockBox) {
+      dockBox.scrollTop = dockBox.scrollHeight;
+      state.logDockAutoScroll = true;
+      if (elements.dockJumpBottomBtn) elements.dockJumpBottomBtn.hidden = true;
     }
   });
 
   if (elements.outputBox && elements.dockOutputBox && elements.outputBox.textContent !== '暂无执行记录。') {
     elements.dockOutputBox.textContent = elements.outputBox.textContent;
   }
+  syncCurrentDeviceLogView();
 }
 
 /* ---------- 设置页 ---------- */

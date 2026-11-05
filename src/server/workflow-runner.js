@@ -153,12 +153,14 @@ function getWorkflow(id, user) {
 }
 function statusSnapshot(run) {
   let logText = run.lastOutput || '';
+  const deviceOutputsObj = {};
   if (run.deviceOutputs && run.deviceOutputs.size > 0) {
     const entries = [];
     for (const [devId, out] of run.deviceOutputs) {
       if (out && out.trim()) {
         const shortId = devId.length > 8 ? devId.slice(-6) : devId;
         entries.push(`[设备 ${shortId}]\n` + out.trim().split('\n').slice(-15).join('\n'));
+        deviceOutputsObj[devId] = safeOutput(run.ownerUserId, out).slice(-4000);
       }
     }
     if (entries.length > 0) logText = entries.join('\n\n');
@@ -167,6 +169,7 @@ function statusSnapshot(run) {
   const activeDevices = run.activeDeviceRuns ? [...run.activeDeviceRuns.keys()] : [];
   return {
     output: safeOutput(run.ownerUserId, logText).slice(-4000),
+    deviceOutputs: deviceOutputsObj,
     ok: true, workflowRunId: run.id, state: run.state, kind: run.kind,
     title: run.title, stopRequested: run.stopRequested,
     currentDeviceId: activeDevices.join(','),

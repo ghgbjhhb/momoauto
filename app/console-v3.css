@@ -2252,6 +2252,19 @@ body:has(#page-overview:not([hidden])) .page {
   grid-template-rows: minmax(0, 1fr) auto auto;
 }
 
+#page-overview .right-col:has(.overview-log-dock.is-maximized) {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+#page-overview .right-col:has(.overview-log-dock.is-maximized) .overview-tasks-panel .ov-task-split {
+  display: none;
+}
+
+#page-overview .right-col:has(.overview-log-dock.is-maximized) .overview-tasks-panel {
+  height: auto;
+  min-height: 0;
+}
+
 #page-overview .overview-tasks-panel {
   min-height: 0;
   min-width: 0;
@@ -2473,6 +2486,38 @@ body:has(#page-overview:not([hidden])) .page {
 #page-overview .right-col .dock-log-box {
   background: var(--card);
   font-size: var(--fs-12);
+}
+
+#page-overview .right-col .dock-body {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+}
+
+.dock-jump-bottom-btn {
+  position: absolute;
+  right: var(--sp-16);
+  bottom: var(--sp-12);
+  z-index: 10;
+  background: var(--blue, #2563eb);
+  color: #fff;
+  border: 0;
+  border-radius: var(--r-full, 9999px);
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.18s, transform 0.18s;
+  user-select: none;
+}
+
+.dock-jump-bottom-btn:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
 }
 
 /* 窄窗口压缩任务选择栏，输入区仍保留独立滚动与固定执行入口。 */

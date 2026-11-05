@@ -127,6 +127,7 @@ function selectDevice(deviceId) {
   if (!state.devices.some(device => device.deviceId === deviceId)) return;
   const changed = state.selectedDeviceId !== deviceId;
   state.selectedDeviceId = deviceId;
+  if (typeof syncCurrentDeviceLogView === 'function') syncCurrentDeviceLogView();
   renderDeviceChips();
   renderViewer();
   renderStatusBar();

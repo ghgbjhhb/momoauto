@@ -73,6 +73,10 @@ const state = {
   tileShots: new Map(),
   manualDeviceId: '',
   deviceStates: {},
+  deviceLogs: new Map(),
+  deviceActiveRunIds: new Map(),
+  logDockAutoScroll: true,
+  logDockMaximized: false,
   runtimeState: { runs: [], manualDevices: [] },
   runtimeStateStale: false,
   devicesStale: false,
@@ -274,18 +278,36 @@ function writeOutput(title, lines, meta = {}) {
     cleanLines.push(`[原始日志] ${logFile}`);
   }
   const text = header + '\n' + cleanLines.join('\n');
+
+  // 1. 设备独立日志隔离存储
+  const deviceId = meta.deviceId || state.activeRun?.deviceId || (typeof currentDevice === 'function' ? currentDevice()?.deviceId : '') || '';
+  if (deviceId && state.deviceLogs) {
+    state.deviceLogs.set(deviceId, text);
+    if (runId && state.deviceActiveRunIds) state.deviceActiveRunIds.set(deviceId, runId);
+  }
+
+  // 2. 独立全屏运行日志页始终同步最新
   const box = elements.outputBox;
   if (box) {
     box.textContent = text;
     box.scrollTop = box.scrollHeight;
   }
+
+  // 3. 总览页 Dock：仅在写入的设备正是当前查看的设备时才更新视口，杜绝多机串台
+  const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+  const isCurrentDev = !deviceId || (currentDev && currentDev.deviceId === deviceId);
+
   const dockBox = elements.dockOutputBox;
-  if (dockBox) {
+  if (dockBox && isCurrentDev) {
     dockBox.textContent = text;
-    dockBox.scrollTop = dockBox.scrollHeight;
+    // 智能吸底（Stick-to-bottom）：仅当用户位于底部时自动跟随，向上翻阅历史时绝不强拽用户
+    if (state.logDockAutoScroll !== false) {
+      dockBox.scrollTop = dockBox.scrollHeight;
+    }
   }
-  state.lastOutput = { at, title, runId, logFile };
-  state.logFeed = [{ at, title, runId }, ...state.logFeed].slice(0, 12);
+
+  state.lastOutput = { at, title, runId, logFile, deviceId };
+  state.logFeed = [{ at, title, runId, deviceId }, ...state.logFeed].slice(0, 12);
   updateLogMeta();
   eventBus.dispatchEvent(new CustomEvent('output:changed'));
 }
@@ -304,8 +326,12 @@ function updateLogMeta() {
   }
   const text = `最近: ${last.title}` + (last.runId ? ` · 调用ID ${last.runId}` : '') + (last.logFile ? ` · ${last.logFile}` : '');
   if (meta) meta.textContent = text;
-  if (dockMeta) dockMeta.textContent = text;
-  if (dockMiniHint) dockMiniHint.textContent = last.title || '最近执行';
+
+  const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+  const devState = currentDev && state.deviceStates ? state.deviceStates[currentDev.deviceId] : null;
+  const dockText = devState?.taskTitle ? `当前执行: ${devState.taskTitle}` : text;
+  if (dockMeta) dockMeta.textContent = dockText;
+  if (dockMiniHint) dockMiniHint.textContent = devState?.taskTitle || last.title || '最近执行';
 }
 
 /* ---------- 设备基础判断 ---------- */
