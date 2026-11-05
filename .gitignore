@@ -23,5 +23,6 @@ sdk-xuanwu/
 scripts/frp-4318/frpc.exe
 scripts/frp-4318/pki/*.key
 
-# 运行时工作流断点存储
+# 运行时工作流断点存储与锁目录
 storage/workflows/
+storage/locks/

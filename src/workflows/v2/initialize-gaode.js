@@ -203,7 +203,7 @@ async function initializeGaode(phone, control, worker, directory, state, opened,
     if (action && promptActionCount < maxPromptActions) {
       const point = tapBox(control, action.box, observation);
       logger?.file(`Found prompt action: "${action.label}" at (${point.x}, ${point.y})`, { action, point });
-      logger?.console(`[3/4] 检测并处理弹窗: "${action.label}" (第 ${promptActionCount + 1} 个)...`);
+      logger?.console(`🎯 [3/4] 处理弹窗: "${action.label}" (第 ${promptActionCount + 1} 个)...`);
 
       await control.tap(point.x, point.y);
       await control.flush();
@@ -222,7 +222,7 @@ async function initializeGaode(phone, control, worker, directory, state, opened,
       stableObservations += 1;
       logger?.file(`Map ready stable observation #${stableObservations}/${options.stableObservations}`);
       if (stableObservations >= options.stableObservations) {
-        logger?.console(`[3/4] 高德地图首页已稳定就绪 (共处理弹窗 ${promptActionCount} 个)`);
+        logger?.console(`✅ [3/4] 地图首页已打开 (共处理 ${promptActionCount} 个弹窗)`);
         return { ready: observation, promptActions };
       }
     } else {
@@ -399,12 +399,12 @@ async function runGaodeWorkflow({ phone, control, worker, directory, state = { c
   }
 
   // 1. 确认主屏幕就绪
-  logger.console('[1/4] 正在确认主屏幕状态...');
+  logger.console('🏠 [1/4] 检查桌面状态...');
   const home = await confirmHome(phone, control, worker, directory, state, options);
   logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
 
   // 2. 寻找并打开高德地图
-  logger.console('[2/4] 正在桌面寻找并打开应用“高德地图”...');
+  logger.console('🔍 [2/4] 在桌面寻找高德地图...');
   const found = await findApp(
     phone,
     control,
@@ -419,11 +419,11 @@ async function runGaodeWorkflow({ phone, control, worker, directory, state = { c
   logger.file('App located on launcher', { page: found.page, point: found.point });
 
   const opened = await openGaode(phone, control, worker, directory, state, found, options);
-  logger.console(`[2/4] 已点击应用图标并等待响应 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
+  logger.console('👆 [2/4] 已点击高德地图图标，等待启动...');
   logger.file('App opened observation', { text: opened.opened.text });
 
   // 3. 处理初始化权限弹窗与地图就绪
-  logger.console('[3/4] 正在监听并处理首次启动权限/隐私弹窗...');
+  logger.console('🎯 [3/4] 检查权限与隐私弹窗...');
   const initialized = await initializeGaode(
     phone,
     control,
@@ -438,7 +438,7 @@ async function runGaodeWorkflow({ phone, control, worker, directory, state = { c
   await sleep(options.appVisibleMs || DEFAULT_APP_VISIBLE_MS);
 
   // 4. 返回桌面并确认
-  logger.console('[4/4] 地图已就绪，正在返回主屏幕并核验...');
+  logger.console('🏠 [4/4] 地图已打开，正在返回桌面...');
   const finalHome = await confirmHome(phone, control, worker, directory, state, {
     ...options,
     homeConfirmation: {
@@ -466,12 +466,12 @@ async function runGaodeWorkflow({ phone, control, worker, directory, state = { c
     throw new Error('高德地图初始化未完全成功或未能成功恢复主屏幕');
   }
 
-  logger.console(`[完成] 高德地图首次初始化成功并已恢复主屏幕！`);
+  logger.console('✅ 高德地图初始化完成，已回到桌面');
   if (resolvedDeviceId) {
-    logger.console(`       目标设备: ${deviceName} (${resolvedDeviceId})`);
+    logger.console(`   📱 目标设备: ${deviceName} (${resolvedDeviceId})`);
   }
-  logger.console(`       主屏锚点: ${finalAnchors.length} 个 | 处理弹窗: ${initialized.promptActions.length} 个`);
-  logger.console(`[执行结果] 成功`);
+  logger.console(`   🎯 处理弹窗: ${initialized.promptActions.length} 个`);
+  logger.console('✅ 执行成功');
 
   if (state) {
     state.lastObservation = finalHome;

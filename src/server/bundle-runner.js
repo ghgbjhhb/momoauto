@@ -66,7 +66,7 @@ async function main() {
   if (!target) throw new Error('目标设备不在当前账号列表中: ' + targetDeviceId);
 
   const deviceName = target.deviceName ?? target.name ?? 'SF';
-  console.log(`[组合流水线] 目标设备: ${deviceName} (${targetDeviceId}) | 共 ${steps.length} 个步骤`);
+  console.log(`📱 目标设备: ${deviceName} (${targetDeviceId}) | 共 ${steps.length} 个步骤`);
 
   const phone = client.device(targetDeviceId);
   let control = null;
@@ -75,10 +75,10 @@ async function main() {
 
   const ensureControl = async () => {
     if (!control) {
-      console.log(`[组合流水线] 正在建立设备控制通道与 /stream 输入流...`);
+      console.log(`🔌 正在连接设备...`);
       control = await phone.openControl({ udid: target.udid });
       await control.connect();
-      console.log(`[组合流水线] 设备控制通道已就绪 (画面: ${control.screenWidth}x${control.screenHeight})`);
+      console.log(`📱 设备已连接 (${control.screenWidth}×${control.screenHeight})`);
     }
     return control;
   };
@@ -114,23 +114,23 @@ async function main() {
   try {
     const startStepIndex = Number.parseInt(process.env.YUNMOMO_START_STEP_INDEX || '0', 10) || 0;
     if (startStepIndex > 0) {
-      console.log(`[组合流水线] 命中断点续传指令，前 ${startStepIndex} 个已完成步骤直接跳过，从第 ${startStepIndex + 1} 步开始接力执行。`);
+      console.log(`⏩ 从第 ${startStepIndex + 1} 步继续执行 (前 ${startStepIndex} 步已跳过)`);
     }
 
     for (let index = 0; index < steps.length; index++) {
       const stepDef = steps[index];
       const script = scriptById(stepDef.scriptId);
-      if (!script) throw new Error(`未找到步骤编号对应的定义: ${stepDef.scriptId}`);
+      if (!script) throw new Error(`未找到步骤定义: ${stepDef.scriptId}`);
 
       const title = script.title || stepDef.scriptId;
       if (index < startStepIndex) {
-        console.log(`[步骤 ${index + 1}/${steps.length}] ⏩ [断点跳过已完成] ${title}`);
+        console.log(`⏩ [步骤 ${index + 1}/${steps.length}] 跳过已完成: ${title}`);
         continue;
       }
 
       console.log(`\n================================================================================`);
       console.log(`::step-start:${index}:${stepDef.scriptId}::`);
-      console.log(`[步骤 ${index + 1}/${steps.length}] 开始执行: ${title}`);
+      console.log(`▶️ [步骤 ${index + 1}/${steps.length}] 开始: ${title}`);
       console.log(`================================================================================`);
 
       const startTime = Date.now();
@@ -147,16 +147,16 @@ async function main() {
       try {
         if (isExclusive) {
           const lockKey = script.exclusiveKey || script.id;
-          console.log(`[步骤调度] 步骤 [${title}] 声明为全局独占排他属性 (exclusive)，正在申请排他执行锁...`);
+          console.log(`🔒 等待独占执行 [${title}]...`);
           exclusiveLock = await acquireExclusiveLock(lockKey, {
             deviceId: targetDeviceId,
             onWaiting: (sec) => {
               if (sec % 9 === 0) {
-                console.log(`[步骤调度] 正在排队等待前序设备释放云端全局通道 (${sec}s)...`);
+                console.log(`⏳ 等待其他设备完成 (${sec}秒)...`);
               }
             }
           });
-          console.log(`[步骤调度] ✅ 成功获取全局排他锁，独占执行步骤 [${title}]`);
+          console.log(`🔒 开始独占执行: ${title}`);
         }
 
         let mod = null;
@@ -169,50 +169,46 @@ async function main() {
         }
 
         if (mod && typeof mod.runStep === 'function') {
-          // 🚀 核心优化：直接内存执行，复用已就绪会话！
-          console.log(`[流水线调度] 检测到原生会话接口 runStep，采用长连接内存执行...`);
-          // 确保 control 连接可用（对于不需要 control 的纯 API 步骤，传入后也不会报错）
           await ensureControl();
           stepResult = await mod.runStep(context);
         } else {
-          // ⚠️ 降级处理：若该脚本尚未适配 runStep，通过独立子进程执行该单步
-          console.log(`[流水线调度] 步骤未导出 runStep，采用进程级隔离执行...`);
           stepResult = await runLegacyScriptProcess(script, targetDeviceId, stepOptions, token);
         }
 
         const durationMs = Date.now() - startTime;
+        const durationSec = (durationMs / 1000).toFixed(1);
         const ok = stepResult === undefined || stepResult === true || (stepResult && stepResult.ok !== false);
         if (!ok) {
           throw new Error(stepResult?.message || `步骤 ${index + 1} (${title}) 返回失败`);
         }
 
         console.log(`::step-end:${index}:${stepDef.scriptId}:ok::`);
-        console.log(`[步骤 ${index + 1}/${steps.length}] ✅ ${title} 执行完成 (耗时: ${durationMs}ms)`);
+        console.log(`✅ [步骤 ${index + 1}/${steps.length}] ${title} 执行完成 (耗时 ${durationSec}秒)`);
       } catch (stepErr) {
         allOk = false;
         console.error(`::step-end:${index}:${stepDef.scriptId}:fail::`);
-        console.error(`[步骤 ${index + 1}/${steps.length}] ❌ ${title} 执行失败:`, stepErr.message);
+        console.error(`❌ [步骤 ${index + 1}/${steps.length}] ${title} 执行失败:`, stepErr.message);
         throw stepErr;
       } finally {
         if (exclusiveLock) {
           await exclusiveLock.release();
-          console.log(`[步骤调度] 独占步骤 [${title}] 执行结束，已安全释放全局排他锁。`);
+          console.log(`🔓 [${title}] 独占执行结束`);
         }
       }
     }
 
     console.log(`\n================================================================================`);
-    console.log(`[组合流水线] ✅ 全流程 ${steps.length} 个步骤全部圆满完成！`);
+    console.log(`🎉 全部 ${steps.length} 个步骤已执行完成！`);
     console.log(`================================================================================`);
   } finally {
-    console.log(`[组合流水线] 正在释放会话资源与控制通道...`);
+    console.log(`🔌 正在断开设备连接...`);
     if (worker) {
       try { await worker.close(); } catch {}
     }
     if (control) {
       try { await control.close(); } catch {}
     }
-    console.log(`[组合流水线] 控制权与连接已全部安全释放。`);
+    console.log(`🧹 设备连接已断开`);
   }
 }
 
