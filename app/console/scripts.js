@@ -1928,6 +1928,36 @@ function formatOverviewRunButtonHtml(targets, isRunning, isBundle) {
   return `<button class="btn primary ov-wb-btn-run is-batch" id="ovCfgRunBtn" type="button" ${isRunning ? 'disabled' : ''}>${ic('play', 15)} 批量执行${isBundle ? '组合' : ''} (${targets.length}台)</button>`;
 }
 
+
+/* ---------- 任务运行时状态判定辅助 ---------- */
+function getCurrentlyRunningTaskInfo() {
+  if (state.activeWorkflowRun && state.batchRunning) {
+    return {
+      type: state.activeWorkflowRun.kind,
+      id: state.activeWorkflowRun.kind === 'bundle' ? state.activeWorkflowRun.bundleId : state.activeWorkflowRun.scriptId,
+      title: state.activeWorkflowRun.title || (state.activeWorkflowRun.kind === 'bundle' ? '组合任务' : '业务脚本')
+    };
+  }
+  if (state.activeBundleRun) {
+    const bundle = (state.bundles || []).find(b => b.id === state.activeBundleRun.bundleId);
+    return { type: 'bundle', id: state.activeBundleRun.bundleId, title: bundle?.name || '组合流程' };
+  }
+  if (state.activeRun) {
+    const script = (state.scripts || []).find(s => s.id === state.activeRun.scriptId);
+    return { type: 'script', id: state.activeRun.scriptId, title: script ? scriptTitle(script) : '业务脚本' };
+  }
+  const currentDev = currentDevice();
+  if (currentDev) {
+    const sharedRun = (state.runtimeState?.runs || []).find(run =>
+      run.deviceId === currentDev.deviceId && ['starting', 'running', 'stopping'].includes(run.status)
+    );
+    if (sharedRun) {
+      return { type: 'script', id: sharedRun.scriptId, title: sharedRun.title || '业务脚本' };
+    }
+  }
+  return null;
+}
+
 function updateOverviewWorkbenchFooter(currentDev, isRunning) {
   const container = byId('ovTaskConfig');
   if (!container) return;
