@@ -227,6 +227,30 @@ function onTaskGroupsClick(event) {
   }
 }
 
+function syncLocateParams(container, changedParam, value, attrName) {
+  if (!state.taskScriptId || !state.taskScriptId.startsWith('flow-06') || !container) return;
+  const isAddress = changedParam === 'address';
+  const isMode = changedParam === 'mode';
+  if (!isAddress && !isMode) return;
+
+  const modeEl = container.querySelector(`select[${attrName}="mode"]`);
+  const addrEl = container.querySelector(`input[${attrName}="address"], textarea[${attrName}="address"]`);
+
+  if (isAddress) {
+    const trimmed = String(value || '').trim();
+    const newMode = trimmed ? 'search' : 'ip';
+    if (modeEl && modeEl.value !== newMode) {
+      modeEl.value = newMode;
+      state.taskParamValues[state.taskScriptId + ':mode'] = newMode;
+    }
+  } else if (isMode) {
+    if (value === 'ip' && addrEl && addrEl.value) {
+      addrEl.value = '';
+      delete state.taskParamValues[state.taskScriptId + ':address'];
+    }
+  }
+}
+
 function onDetailInput(event) {
   const batch = event.target.closest('[data-batch-device]');
   if (batch) {
@@ -240,6 +264,7 @@ function onDetailInput(event) {
   const input = event.target.closest('[data-task-param]');
   if (input && state.taskScriptId) {
     state.taskParamValues[state.taskScriptId + ':' + input.dataset.taskParam] = input.value;
+    syncLocateParams(byId('taskDetailPanel'), input.dataset.taskParam, input.value, 'data-task-param');
   }
   const bundleParam = event.target.closest('[data-bundle-run-param]');
   if (bundleParam && state.taskBundleId) {
@@ -458,7 +483,12 @@ function renderTaskDetail() {
   const isSingleInline = params.length === 1 && !params[0].multiline;
   const fieldsHtml = params.map(field => {
     const key = script.id + ':' + field.name;
-    const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+    let value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+    if (script.id.startsWith('flow-06') && field.name === 'mode') {
+      const addr = (state.taskParamValues[script.id + ':address'] ?? '').trim();
+      if (addr) value = 'search';
+      else if (!state.taskParamValues[key]) value = 'ip';
+    }
     if (isSingleInline) return '';
     if (field.choices) {
       return `<div class="field"><label for="param-${field.name}">${escapeHtml(field.label)}</label>
@@ -690,6 +720,13 @@ function collectTaskOptions(script) {
         throw new Error((input.closest('.ov-wb-field, .field')?.querySelector('label')?.textContent || '该参数') + '为必填项');
       }
       if (value) options[overview ? input.dataset.ovParam : input.dataset.taskParam] = value;
+    }
+  }
+  if (script && script.id && script.id.startsWith('flow-06')) {
+    if (options.address && options.address.trim()) {
+      options.mode = 'search';
+    } else {
+      options.mode = 'ip';
     }
   }
   return options;
@@ -1752,7 +1789,12 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
 
     const fieldsHtml = params.map(field => {
       const key = script.id + ':' + field.name;
-      const value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+      let value = state.taskParamValues[key] ?? field.defaultValue ?? '';
+      if (script.id.startsWith('flow-06') && field.name === 'mode') {
+        const addr = (state.taskParamValues[script.id + ':address'] ?? '').trim();
+        if (addr) value = 'search';
+        else if (!state.taskParamValues[key]) value = 'ip';
+      }
       if (field.choices) {
         return `
           <div class="ov-wb-field">
@@ -2001,6 +2043,7 @@ function onOvParamChange(event) {
   const input = event.target.closest('[data-ov-param]');
   if (input && state.taskScriptId) {
     state.taskParamValues[state.taskScriptId + ':' + input.dataset.ovParam] = input.value;
+    syncLocateParams(byId('overviewTaskPanel'), input.dataset.ovParam, input.value, 'data-ov-param');
   }
 }
 

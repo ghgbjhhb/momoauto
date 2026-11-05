@@ -791,7 +791,13 @@ async function main() {
   const cliAddr = cliAddrIdx !== -1 && process.argv[cliAddrIdx + 1] ? process.argv[cliAddrIdx + 1].trim() : '';
 
   const address = cliAddr || rawAddress;
-  const mode = cliMode || (address && rawMode !== 'ip' ? 'search' : (rawMode || 'ip'));
+  // 如果填入了地址就默认是定位到地址的地方，如果没填入就默认是定位到ip地
+  let mode;
+  if (address) {
+    mode = 'search';
+  } else {
+    mode = (cliMode === 'search' || rawMode === 'search') ? 'search' : 'ip';
+  }
 
   if (mode === 'search' && !address) {
     throw new Error('搜索模式下必须提供目标搜索地址（通过 YUNMOMO_LOCATION_ADDRESS 或 --address）');
