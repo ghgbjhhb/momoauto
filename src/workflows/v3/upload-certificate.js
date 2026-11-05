@@ -60,8 +60,28 @@ async function main() {
   }));
 }
 
+async function runStep(context = {}) {
+  const client = context.client || new YunmomoClient({ timeoutMs: 100000 });
+  const deviceId = context.phone?.deviceId || context.deviceId || String(process.env.YUNMOMO_DEVICE_ID || '');
+  if (!deviceId) throw new Error('runStep 必须提供目标云机设备 ID');
+  const filePath = String(context.options?.certPath || process.env.YUNMOMO_CERT_PATH || DEFAULT_CERT_PATH);
+  const fileName = path.basename(filePath);
+  const data = await fs.readFile(filePath);
+  console.log(`[上传证书] 正在上传证书 ${fileName} (${data.length} 字节) 到设备 ${deviceId}...`);
+  const result = await client.device(deviceId).uploadGoogleCertificate(data, {
+    fileName,
+    timeoutMs: 10 * 60 * 1000,
+  });
+  const payload = result?.data ?? result;
+  if (payload && typeof payload === 'object' && payload.success === false) {
+    throw new Error('云端返回 success=false');
+  }
+  console.log('>>> 上传证书完成 OK');
+  return { success: true, payload };
+}
+
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.upload-certificate', main);
 
 if (require.main === module) require('../../automation/runtime').launchCli(main);
 
-module.exports = { main };
+module.exports = { main, runStep };

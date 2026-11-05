@@ -357,88 +357,13 @@ async function main() {
     const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script7-');
     const worker = new RapidOcrWorker();
     const state = { counter: 0 };
-    let success = false;
     let homeRestored = false;
 
     try {
       await control.connect();
       logger.file('Control connected successfully');
-
-      // 1. 确认主屏幕就绪
-      logger.console('[1/4] 正在确认主屏幕状态...');
-      const home = await confirmHome(phone, control, worker, directory, state, options);
-      logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
-
-      // 2. 寻找并打开高德地图
-      logger.console('[2/4] 正在桌面寻找并打开应用“高德地图”...');
-      const found = await findApp(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        home,
-        options,
-        gaodeTargetBox,
-        '高德地图',
-      );
-      logger.file('App located on launcher', { page: found.page, point: found.point });
-
-      const opened = await openGaode(phone, control, worker, directory, state, found, options);
-      logger.console(`[2/4] 已点击应用图标并等待响应 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
-      logger.file('App opened observation', { text: opened.opened.text });
-
-      // 3. 处理初始化权限弹窗与地图就绪
-      logger.console('[3/4] 正在监听并处理首次启动权限/隐私弹窗...');
-      const initialized = await initializeGaode(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        opened.opened,
-        options,
-        logger,
-      );
-
-      // Keep the initialized app visible briefly so the state is observable in
-      // the web console before the final HOME action.
-      await sleep(options.appVisibleMs);
-
-      // 4. 返回桌面并确认
-      logger.console('[4/4] 地图已就绪，正在返回主屏幕并核验...');
-      const finalHome = await confirmHome(phone, control, worker, directory, state, {
-        ...options,
-        homeConfirmation: {
-          settleMs: 300,
-          firstAttemptTimeoutMs: 900,
-          retryDelayMs: 300,
-          retryTimeoutMs: 1500,
-          pollMs: 300,
-          allowClipboardToast: true,
-        },
-      });
-      const finalAnchors = homeAnchorMatches(finalHome.items);
-      homeRestored = finalAnchors.length >= 2;
-      success = gaodeMapReady(initialized.ready.items) && homeRestored;
-
-      logger.file('Task execution summary', {
-        success,
-        promptActions: initialized.promptActions,
-        finalAnchorsCount: finalAnchors.length,
-        homeRestored,
-        screenshotObservations: state.counter,
-      });
-
-      if (!success) {
-        throw new Error('高德地图初始化未完全成功或未能成功恢复主屏幕');
-      }
-
-      logger.console(`[完成] 高德地图首次初始化成功并已恢复主屏幕！`);
-      logger.console(`       目标设备: ${deviceName} (${resolvedDeviceId})`);
-      logger.console(`       主屏锚点: ${finalAnchors.length} 个 | 处理弹窗: ${initialized.promptActions.length} 个`);
-      logger.console(`[执行结果] 成功`);
-      logger.console(`[完整日志] ${logger.relativeLogPath}`);
+      await runGaodeWorkflow({ phone, control, worker, directory, state, options, logger, deviceName, resolvedDeviceId });
+      homeRestored = true;
     } finally {
       if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
         try {
@@ -465,8 +390,138 @@ async function main() {
   }
 }
 
+async function runGaodeWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, logger = defaultLogger(), deviceName = '设备', resolvedDeviceId = '' }) {
+  if (!control.connected) {
+    await control.connect();
+    logger.file('Control connected successfully');
+  }
+
+  // 1. 确认主屏幕就绪
+  logger.console('[1/4] 正在确认主屏幕状态...');
+  const home = await confirmHome(phone, control, worker, directory, state, options);
+  logger.file('Home confirmed', { anchors: homeAnchorMatches(home.items).length, ocrText: home.text });
+
+  // 2. 寻找并打开高德地图
+  logger.console('[2/4] 正在桌面寻找并打开应用“高德地图”...');
+  const found = await findApp(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    home,
+    options,
+    gaodeTargetBox,
+    '高德地图',
+  );
+  logger.file('App located on launcher', { page: found.page, point: found.point });
+
+  const opened = await openGaode(phone, control, worker, directory, state, found, options);
+  logger.console(`[2/4] 已点击应用图标并等待响应 (坐标: x=${opened.point.x}, y=${opened.point.y})`);
+  logger.file('App opened observation', { text: opened.opened.text });
+
+  // 3. 处理初始化权限弹窗与地图就绪
+  logger.console('[3/4] 正在监听并处理首次启动权限/隐私弹窗...');
+  const initialized = await initializeGaode(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    opened.opened,
+    options,
+    logger,
+  );
+
+  await sleep(options.appVisibleMs || DEFAULT_APP_VISIBLE_MS);
+
+  // 4. 返回桌面并确认
+  logger.console('[4/4] 地图已就绪，正在返回主屏幕并核验...');
+  const finalHome = await confirmHome(phone, control, worker, directory, state, {
+    ...options,
+    homeConfirmation: {
+      settleMs: 300,
+      firstAttemptTimeoutMs: 900,
+      retryDelayMs: 300,
+      retryTimeoutMs: 1500,
+      pollMs: 300,
+      allowClipboardToast: true,
+    },
+  });
+  const finalAnchors = homeAnchorMatches(finalHome.items);
+  const homeRestored = finalAnchors.length >= 2;
+  const success = gaodeMapReady(initialized.ready.items) && homeRestored;
+
+  logger.file('Task execution summary', {
+    success,
+    promptActions: initialized.promptActions,
+    finalAnchorsCount: finalAnchors.length,
+    homeRestored,
+    screenshotObservations: state.counter,
+  });
+
+  if (!success) {
+    throw new Error('高德地图初始化未完全成功或未能成功恢复主屏幕');
+  }
+
+  logger.console(`[完成] 高德地图首次初始化成功并已恢复主屏幕！`);
+  if (resolvedDeviceId) {
+    logger.console(`       目标设备: ${deviceName} (${resolvedDeviceId})`);
+  }
+  logger.console(`       主屏锚点: ${finalAnchors.length} 个 | 处理弹窗: ${initialized.promptActions.length} 个`);
+  logger.console(`[执行结果] 成功`);
+
+  if (state) {
+    state.lastObservation = finalHome;
+  }
+  return { success: true, initialized, finalHome };
+}
+
+function defaultLogger() {
+  return {
+    console: (...args) => console.log(...args),
+    file: () => {},
+    relativeLogPath: 'session'
+  };
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    openAttemptTimeoutMs: numberOr(process.env.YUNMOMO_OPEN_ATTEMPT_TIMEOUT_MS, DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS),
+    initTimeoutMs: numberOr(process.env.YUNMOMO_GAODE_INIT_TIMEOUT_MS, DEFAULT_INIT_TIMEOUT_MS),
+    promptSettleMs: numberOr(process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
+    appVisibleMs: numberOr(process.env.YUNMOMO_GAODE_APP_VISIBLE_MS, DEFAULT_APP_VISIBLE_MS),
+    stableObservations: numberOr(process.env.YUNMOMO_STABLE_OBSERVATIONS, DEFAULT_STABLE_OBSERVATIONS),
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    ...(context.options || {})
+  };
+
+  const targetDir = directory || path.join(PROJECT_ROOT, 'logs', 'screenshots', 'session');
+  await fs.mkdir(targetDir, { recursive: true });
+
+  return await runGaodeWorkflow({
+    phone,
+    control,
+    worker,
+    directory: targetDir,
+    state: state || { counter: 0 },
+    options,
+    logger: defaultLogger(),
+    deviceName: target?.deviceName || target?.name || '云机',
+    resolvedDeviceId: phone.deviceId
+  });
+}
+
 openGaode = require('../../automation/timing').timed('workflow.initialize-gaode.openGaode', openGaode);
 initializeGaode = require('../../automation/timing').timed('workflow.initialize-gaode.initializeGaode', initializeGaode);
+runGaodeWorkflow = require('../../automation/timing').timed('workflow.initialize-gaode.runWorkflow', runGaodeWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.initialize-gaode', main);
 
 if (require.main === module) {
@@ -477,6 +532,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
+  runGaodeWorkflow,
   gaodeTargetBox,
   gaodeLaunchEvidence,
   gaodeMapReady,

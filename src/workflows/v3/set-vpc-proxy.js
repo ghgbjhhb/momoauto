@@ -224,8 +224,23 @@ async function main() {
 }
 
 requestedVpcId = require('../../automation/timing').timed('workflow.set-vpc-proxy.requestedVpcId', requestedVpcId);
+
+async function runStep(context = {}) {
+  const deviceId = String(context.phone?.deviceId || context.deviceId || process.env.YUNMOMO_DEVICE_ID || DEFAULT_DEVICE_ID).trim();
+  const actionParam = String(context.options?.action || '').trim().toLowerCase();
+  process.env.YUNMOMO_DEVICE_ID = deviceId;
+  process.env.YUNMOMO_CONFIRM_VPC_PROXY = 'YES';
+  if (actionParam === 'show' || actionParam === 'status') {
+    if (!process.argv.includes('--show')) process.argv.push('--show');
+  } else if (actionParam === 'close' || actionParam === 'stop') {
+    if (!process.argv.includes('--stop')) process.argv.push('--stop');
+  }
+  await main();
+  return { ok: true };
+}
+
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.set-vpc-proxy', main);
 
 if (require.main === module) require('../../automation/runtime').launchCli(main);
 
-module.exports = { main, selectLine, requestedVpcId };
+module.exports = { main, selectLine, requestedVpcId, runStep };

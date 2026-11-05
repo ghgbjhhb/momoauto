@@ -1233,6 +1233,25 @@ async function main() {
 }
 
 runYayaWorkflow = require('../../automation/timing').timed('workflow.login-yaya.run', runYayaWorkflow);
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target, client, options } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const result = await runYayaWorkflow({
+    client,
+    control,
+    worker,
+    deviceId: phone.deviceId,
+    target,
+    directory,
+    state,
+    ...(options || {})
+  });
+  return result;
+}
+
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.login-yaya', main);
 
 if (require.main === module) {
@@ -1243,6 +1262,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
   runYayaWorkflow,
   recordAuthHistory,
   getLatestAuthHistory,

@@ -315,8 +315,19 @@ async function main() {
   console.log(`诊断数据已存入: .local-output/真机参数/latest.json`);
 }
 
+async function runStep(context = {}) {
+  const targetDeviceId = String(context.deviceId || process.env.YUNMOMO_DEVICE_ID || '').trim();
+  process.env.YUNMOMO_DEVICE_ID = targetDeviceId;
+  process.env.YUNMOMO_CONFIRM_REAL_PARAMS = 'YES';
+  if (context.options?.filePath) {
+    process.env.YUNMOMO_REAL_PARAMS_FILE = context.options.filePath;
+  }
+  await main();
+  return { ok: true };
+}
+
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.import-real-params', main);
 
 if (require.main === module) require('../../automation/runtime').launchCli(main);
 
-module.exports = { main, extractDeviceInfo, resolveRealParamsFile };
+module.exports = { main, runStep, extractDeviceInfo, resolveRealParamsFile };

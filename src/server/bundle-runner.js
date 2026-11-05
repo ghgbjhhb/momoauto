@@ -89,12 +89,18 @@ async function main() {
     return worker;
   };
 
+  const bundleRunId = String(process.env.YUNMOMO_SCRIPT_RUN_ID || ('bundle-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)));
+  const sessionDirectory = path.join(PROJECT_ROOT, 'logs', 'screenshots', bundleRunId);
+  await fs.mkdir(sessionDirectory, { recursive: true });
+
   const context = {
     deviceId: targetDeviceId,
     deviceName,
     target,
     client,
     phone,
+    directory: sessionDirectory,
+    runId: bundleRunId,
     ensureControl,
     get control() { return control; },
     get worker() { return ensureWorker(); },

@@ -146,9 +146,20 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
+async function runStep(context = {}) {
+  const client = context.client || new YunmomoClient();
+  const deviceId = context.phone?.deviceId || context.deviceId || process.env.YUNMOMO_DEVICE_ID;
+  const sdkVersion = context.options?.sdkVersion || process.env.YUNMOMO_SDK_VERSION || 'v2';
+  const plan = await prepareResetData(client, deviceId, { sdkVersion });
+  console.log(`正在向云端下发“重置数据”指令 (目标云机: ${plan.device.id})...`);
+  const response = await submitResetData(client, plan);
+  console.log(`重置数据指令下发成功 OK`);
+  return { success: true, response, plan };
+}
+
 prepareResetData = require('../../automation/timing').timed('workflow.reset-data.prepareResetData', prepareResetData);
 submitResetData = require('../../automation/timing').timed('workflow.reset-data.submitResetData', submitResetData);
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.reset-data', main);
 
 if (require.main === module) main().catch(error => { console.error(redact(error.message)); process.exitCode = 1; });
-module.exports = { prepareResetData, submitResetData, main };
+module.exports = { prepareResetData, submitResetData, main, runStep };

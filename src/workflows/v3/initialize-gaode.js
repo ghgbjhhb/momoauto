@@ -251,74 +251,23 @@ async function main() {
   const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script7-');
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
-  let success = false;
   let homeRestored = false;
 
   try {
     await control.connect();
-    const home = await confirmHome(phone, control, worker, directory, state, options);
-    const found = await findApp(
+    await runGaodeWorkflow({
       phone,
       control,
       worker,
       directory,
       state,
-      home,
       options,
-      gaodeTargetBox,
-      '高德地图',
-    );
-    const opened = await openGaode(phone, control, worker, directory, state, found, options);
-    const initialized = await initializeGaode(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      opened.opened,
-      options,
-    );
-
-    // Keep the initialized app visible briefly so the state is observable in
-    // the web console before the final HOME action.
-    await sleep(options.appVisibleMs);
-    const finalHome = await confirmHome(phone, control, worker, directory, state, {
-      ...options,
-      homeConfirmation: {
-        settleMs: 300,
-        firstAttemptTimeoutMs: 900,
-        retryDelayMs: 300,
-        retryTimeoutMs: 1500,
-        pollMs: 300,
-        allowClipboardToast: true,
-      },
-    });
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    homeRestored = finalAnchors.length >= 2;
-    success = gaodeMapReady(initialized.ready.items) && homeRestored;
-
-    console.log(JSON.stringify({
-      ok: success,
-      script: '高德初始化',
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      ocr: 'RapidOCR 1.2.3 (local WSL worker)',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      initialized: gaodeMapReady(initialized.ready.items),
-      promptActions: initialized.promptActions,
-      initializedText: initialized.ready.text.slice(0, 600),
-      finalHomeAnchors: finalAnchors,
-      homeRestored,
-      homeReturnElapsedMs: finalHome.homeConfirmation?.elapsedMs,
-      homeReturnAttempts: finalHome.homeConfirmation?.attempts,
-      screenshotObservations: state.counter,
-    }, null, 2));
+      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+    });
+    homeRestored = true;
   } finally {
-    if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
         await sendHome(control);
         homeRestored = true;
@@ -336,8 +285,115 @@ async function main() {
   }
 }
 
+async function runGaodeWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, targetDeviceId, targetDeviceName = '设备' }) {
+  if (!control.connected) {
+    await control.connect();
+  }
+  const home = await confirmHome(phone, control, worker, directory, state, options);
+  const found = await findApp(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    home,
+    options,
+    gaodeTargetBox,
+    '高德地图',
+  );
+  const opened = await openGaode(phone, control, worker, directory, state, found, options);
+  const initialized = await initializeGaode(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    opened.opened,
+    options,
+  );
+
+  await sleep(options.appVisibleMs || DEFAULT_APP_VISIBLE_MS);
+  const finalHome = await confirmHome(phone, control, worker, directory, state, {
+    ...options,
+    homeConfirmation: {
+      settleMs: 300,
+      firstAttemptTimeoutMs: 900,
+      retryDelayMs: 300,
+      retryTimeoutMs: 1500,
+      pollMs: 300,
+      allowClipboardToast: true,
+    },
+  });
+  const finalAnchors = homeAnchorMatches(finalHome.items);
+  const homeRestored = finalAnchors.length >= 2;
+  const success = gaodeMapReady(initialized.ready.items) && homeRestored;
+
+  const result = {
+    ok: success,
+    script: '高德初始化',
+    targetDeviceId,
+    targetDeviceName,
+    ocr: 'RapidOCR (local worker)',
+    initialHomeAnchors: homeAnchorMatches(home.items),
+    appLocated: true,
+    appTap: opened.point,
+    appTapRetried: opened.retried,
+    appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+    initialized: gaodeMapReady(initialized.ready.items),
+    promptActions: initialized.promptActions,
+    initializedText: initialized.ready.text.slice(0, 600),
+    finalHomeAnchors: finalAnchors,
+    homeRestored,
+    homeReturnElapsedMs: finalHome.homeConfirmation?.elapsedMs,
+    homeReturnAttempts: finalHome.homeConfirmation?.attempts,
+    screenshotObservations: state.counter,
+  };
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    throw new Error('高德地图初始化未完全成功或未能成功恢复主屏幕');
+  }
+  if (state) {
+    state.lastObservation = finalHome;
+  }
+  return result;
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    openAttemptTimeoutMs: numberOr(process.env.YUNMOMO_OPEN_ATTEMPT_TIMEOUT_MS, DEFAULT_OPEN_ATTEMPT_TIMEOUT_MS),
+    initTimeoutMs: numberOr(process.env.YUNMOMO_GAODE_INIT_TIMEOUT_MS, DEFAULT_INIT_TIMEOUT_MS),
+    promptSettleMs: numberOr(process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
+    appVisibleMs: numberOr(process.env.YUNMOMO_GAODE_APP_VISIBLE_MS, DEFAULT_APP_VISIBLE_MS),
+    stableObservations: numberOr(process.env.YUNMOMO_STABLE_OBSERVATIONS, DEFAULT_STABLE_OBSERVATIONS),
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    ...(context.options || {})
+  };
+
+  const targetDir = directory || path.join(PROJECT_ROOT, 'logs', 'screenshots', 'session');
+  await fs.mkdir(targetDir, { recursive: true });
+
+  return await runGaodeWorkflow({
+    phone,
+    control,
+    worker,
+    directory: targetDir,
+    state: state || { counter: 0 },
+    options,
+    targetDeviceId: phone.deviceId,
+    targetDeviceName: target?.deviceName || target?.name || '云机'
+  });
+}
+
 openGaode = require('../../automation/timing').timed('workflow.initialize-gaode.openGaode', openGaode);
 initializeGaode = require('../../automation/timing').timed('workflow.initialize-gaode.initializeGaode', initializeGaode);
+runGaodeWorkflow = require('../../automation/timing').timed('workflow.initialize-gaode.runWorkflow', runGaodeWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.initialize-gaode', main);
 
 if (require.main === module) {
@@ -349,6 +405,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
+  runGaodeWorkflow,
   gaodeTargetBox,
   gaodeLaunchEvidence,
   gaodeMapReady,

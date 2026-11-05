@@ -449,11 +449,13 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   log.console(`[执行操作] 陌陌一键上号 (登录授权 -> 资料完善 -> 头像上传 -> 手机绑定停靠)`);
 
   const phone = client.device(resolvedDeviceId);
-  const control = await phone.openControl({ udid: target.udid });
+  const control = options.control || (await phone.openControl({ udid: target.udid }));
+  const ownsControl = !options.control;
   const runId = randomUUID();
   const screenshotsDir = path.join(PROJECT_ROOT, '.local-output', 'logs', 'v2', 'login-momo', runId);
   const ocrDir = await shared.createOcrDirectory('yunmomo-momo-login-');
-  const worker = new RapidOcrWorker();
+  const worker = options.worker || (new RapidOcrWorker());
+  const ownsWorker = !options.worker;
   const state = { counter: 0 };
   let lastScreenshotPath = null;
   let yayaResult = null;
@@ -828,8 +830,8 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   } finally {
     // 成功/人工等待收尾仅停看护：号码仍在使用中或已被消费，严禁在此释放
     grabber.dispose();
-    await control.close().catch(() => {});
-    await worker.close().catch(() => {});
+    if (ownsControl) await control.close().catch(() => {});
+    if (ownsWorker) await worker.close().catch(() => {});
     if (process.env.YUNMOMO_KEEP_OCR_SCREENSHOTS !== '1') {
       await fs.rm(ocrDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -1131,8 +1133,26 @@ async function main() {
   }
 }
 
+async function runStep(context = {}) {
+  const { phone, control, worker, target, client, options } = context;
+  const taskId = randomUUID();
+  const logDir = path.join(PROJECT_ROOT, ".local-output", "logs", "v2", "login-momo");
+  const logFile = path.join(logDir, taskId + ".log");
+  const logger = createLogger(logFile);
+  const deviceId = phone?.deviceId || context.deviceId || process.env.YUNMOMO_DEVICE_ID;
+  const mergedOptions = {
+    execute: true,
+    deviceId,
+    control,
+    worker,
+    ...(options || {})
+  };
+  return await runMomoLogin(client || new YunmomoClient({ timeoutMs: 100000 }), deviceId, mergedOptions, logger);
+}
+
 module.exports = {
   main,
+  runStep,
   runMomoLogin,
   isPrivacyDialog,
   isLoginPage,

@@ -630,215 +630,17 @@ async function main() {
 
   try {
     await control.connect();
-    const home = await confirmHome(phone, control, worker, directory, state, options);
-    const found = await findApp(
+    await runInputMethodWorkflow({
       phone,
       control,
       worker,
       directory,
       state,
-      home,
       options,
-      sogouTargetBox,
-      '搜狗输入法',
-    );
-    const opened = await openSogou(phone, control, worker, directory, state, found, options);
-    if (sogouAgreementVisible(opened.opened.items)) {
-      const accepted = await acceptSogouAgreement(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        opened.opened,
-        options,
-      );
-      success = true;
-      console.log(JSON.stringify({
-        ok: true,
-        script: '输入法初始化',
-        targetDeviceId,
-        targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-        initialHomeAnchors: homeAnchorMatches(home.items),
-        appLocated: true,
-        appTap: opened.point,
-        appTapRetried: opened.retried,
-        stage: 'sogou-agreement-accepted',
-        agreementTap: accepted.agreementPoint,
-        finalScreen: '搜狗输入法首启后页面',
-        finalText: accepted.afterText,
-        appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-        screenshotObservations: state.counter,
-      }, null, 2));
-      return;
-    }
-    const enable = enableButtonBox(opened.opened.items);
-    let enablePoint = null;
-    let sogouResult = {
-      page: opened.opened,
-      state: 'already-on',
-      changed: false,
-      assumedOff: false,
-      promptActions: [],
-    };
-    let iflyResult = {
-      page: opened.opened,
-      state: 'already-on',
-      changed: false,
-      assumedOff: false,
-      promptActions: [],
-    };
-    let app = opened.opened;
-
-    if (enable) {
-      enablePoint = tapBox(control, enable, opened.opened);
-      await control.tap(enablePoint.x, enablePoint.y);
-      await control.flush();
-
-      let settings = await observeUntil(
-        phone,
-        worker,
-        directory,
-        state,
-        observation => inputSettingsEvidence(observation.items) || inputMethodWarning(observation.items),
-        options.settingsTimeoutMs,
-        options.pollMs,
-        'input-method-settings-open',
-      );
-      settings = await waitForInputSettings(phone, control, worker, directory, state, options, settings);
-      settings = await enterInputMethodList(phone, control, worker, directory, state, settings, options);
-
-      // 搜狗开关启用后会自动返回软件，先处理讯飞，最后启用搜狗。
-      iflyResult = await enableOneInputMethod(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        settings,
-        IFly_ALIASES,
-        options,
-      );
-      sogouResult = await enableOneInputMethod(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        iflyResult.page,
-        SOGOU_ALIASES,
-        options,
-      );
-      app = await returnToSogou(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        sogouResult.page,
-        options,
-        home,
-      );
-    } else if (!sogouAppReady(opened.opened.items)) {
-      throw new Error('搜狗输入法界面未识别到“启用”或已完成初始化状态');
-    }
-    if (sogouAgreementVisible(app.items)) {
-      const accepted = await acceptSogouAgreement(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        app,
-        options,
-      );
-      success = true;
-      console.log(JSON.stringify({
-        ok: true,
-        script: '输入法初始化',
-        targetDeviceId,
-        targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-        initialHomeAnchors: homeAnchorMatches(home.items),
-        appLocated: true,
-        appTap: opened.point,
-        appTapRetried: opened.retried,
-        enableTap: enablePoint,
-        sogouEnabled: sogouResult.state,
-        sogouAssumedOff: sogouResult.assumedOff,
-        iflyEnabled: iflyResult.state,
-        iflyAssumedOff: iflyResult.assumedOff,
-        sogouPromptActions: sogouResult.promptActions,
-        iflyPromptActions: iflyResult.promptActions,
-        stage: 'sogou-agreement-accepted',
-        agreementTap: accepted.agreementPoint,
-        finalScreen: '搜狗输入法首启后页面',
-        finalText: accepted.afterText,
-        appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-        screenshotObservations: state.counter,
-      }, null, 2));
-      return;
-    }
-    const selected = await clickSwitchAndChooseIfly(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      app,
-      options,
-    );
-    if (selected.agreedTerms) {
-      success = true;
-      console.log(JSON.stringify({
-        ok: true,
-        script: '输入法初始化',
-        targetDeviceId,
-        targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-        initialHomeAnchors: homeAnchorMatches(home.items),
-        appLocated: true,
-        appTap: opened.point,
-        appTapRetried: opened.retried,
-        enableTap: enablePoint,
-        sogouEnabled: sogouResult.state,
-        sogouAssumedOff: sogouResult.assumedOff,
-        iflyEnabled: iflyResult.state,
-        iflyAssumedOff: iflyResult.assumedOff,
-        sogouPromptActions: sogouResult.promptActions,
-        iflyPromptActions: iflyResult.promptActions,
-        stage: 'sogou-agreement-accepted',
-        agreementTap: selected.agreementPoint,
-        finalScreen: '搜狗输入法首启后页面',
-        finalText: selected.afterText,
-        appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-        screenshotObservations: state.counter,
-      }, null, 2));
-      return;
-    }
-    success = selected.pickerClosed;
-
-    console.log(JSON.stringify({
-      ok: success,
-      script: '输入法初始化',
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      enableTap: enablePoint,
-      sogouEnabled: sogouResult.state,
-      sogouAssumedOff: sogouResult.assumedOff,
-      iflyEnabled: iflyResult.state,
-      iflyAssumedOff: iflyResult.assumedOff,
-      sogouPromptActions: sogouResult.promptActions,
-      iflyPromptActions: iflyResult.promptActions,
-      selectedInputMethod: '讯飞输入法',
-      pickerClosed: selected.pickerClosed,
-      finalScreen: '搜狗输入法',
-      finalText: selected.afterText,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      screenshotObservations: state.counter,
-    }, null, 2));
+      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+    });
+    success = true;
   } finally {
     if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
@@ -857,6 +659,257 @@ async function main() {
   }
 }
 
+async function runInputMethodWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, targetDeviceId, targetDeviceName = '设备' }) {
+  if (!control.connected) {
+    await control.connect();
+  }
+  const home = await confirmHome(phone, control, worker, directory, state, options);
+  const found = await findApp(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    home,
+    options,
+    sogouTargetBox,
+    '搜狗输入法',
+  );
+  const opened = await openSogou(phone, control, worker, directory, state, found, options);
+  if (sogouAgreementVisible(opened.opened.items)) {
+    const accepted = await acceptSogouAgreement(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      opened.opened,
+      options,
+    );
+    const result = {
+      ok: true,
+      script: '输入法初始化',
+      targetDeviceId,
+      targetDeviceName,
+      initialHomeAnchors: homeAnchorMatches(home.items),
+      appLocated: true,
+      appTap: opened.point,
+      appTapRetried: opened.retried,
+      stage: 'sogou-agreement-accepted',
+      agreementTap: accepted.agreementPoint,
+      finalScreen: '搜狗输入法首启后页面',
+      finalText: accepted.afterText,
+      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+      screenshotObservations: state.counter,
+    };
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
+  const enable = enableButtonBox(opened.opened.items);
+  let enablePoint = null;
+  let sogouResult = {
+    page: opened.opened,
+    state: 'already-on',
+    changed: false,
+    assumedOff: false,
+    promptActions: [],
+  };
+  let iflyResult = {
+    page: opened.opened,
+    state: 'already-on',
+    changed: false,
+    assumedOff: false,
+    promptActions: [],
+  };
+  let app = opened.opened;
+
+  if (enable) {
+    enablePoint = tapBox(control, enable, opened.opened);
+    await control.tap(enablePoint.x, enablePoint.y);
+    await control.flush();
+
+    let settings = await observeUntil(
+      phone,
+      worker,
+      directory,
+      state,
+      observation => inputSettingsEvidence(observation.items) || inputMethodWarning(observation.items),
+      options.settingsTimeoutMs,
+      options.pollMs,
+      'input-method-settings-open',
+    );
+    settings = await waitForInputSettings(phone, control, worker, directory, state, options, settings);
+    settings = await enterInputMethodList(phone, control, worker, directory, state, settings, options);
+
+    // 搜狗开关启用后会自动返回软件，先处理讯飞，最后启用搜狗。
+    iflyResult = await enableOneInputMethod(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      settings,
+      IFly_ALIASES,
+      options,
+    );
+    sogouResult = await enableOneInputMethod(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      iflyResult.page,
+      SOGOU_ALIASES,
+      options,
+    );
+    app = await returnToSogou(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      sogouResult.page,
+      options,
+      home,
+    );
+  } else if (!sogouAppReady(opened.opened.items)) {
+    throw new Error('搜狗输入法界面未识别到“启用”或已完成初始化状态');
+  }
+  if (sogouAgreementVisible(app.items)) {
+    const accepted = await acceptSogouAgreement(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      app,
+      options,
+    );
+    const result = {
+      ok: true,
+      script: '输入法初始化',
+      targetDeviceId,
+      targetDeviceName,
+      initialHomeAnchors: homeAnchorMatches(home.items),
+      appLocated: true,
+      appTap: opened.point,
+      appTapRetried: opened.retried,
+      enableTap: enablePoint,
+      sogouEnabled: sogouResult.state,
+      sogouAssumedOff: sogouResult.assumedOff,
+      iflyEnabled: iflyResult.state,
+      iflyAssumedOff: iflyResult.assumedOff,
+      sogouPromptActions: sogouResult.promptActions,
+      iflyPromptActions: iflyResult.promptActions,
+      stage: 'sogou-agreement-accepted',
+      agreementTap: accepted.agreementPoint,
+      finalScreen: '搜狗输入法首启后页面',
+      finalText: accepted.afterText,
+      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+      screenshotObservations: state.counter,
+    };
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
+  const selected = await clickSwitchAndChooseIfly(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    app,
+    options,
+  );
+  if (selected.agreedTerms) {
+    const result = {
+      ok: true,
+      script: '输入法初始化',
+      targetDeviceId,
+      targetDeviceName,
+      initialHomeAnchors: homeAnchorMatches(home.items),
+      appLocated: true,
+      appTap: opened.point,
+      appTapRetried: opened.retried,
+      enableTap: enablePoint,
+      sogouEnabled: sogouResult.state,
+      sogouAssumedOff: sogouResult.assumedOff,
+      iflyEnabled: iflyResult.state,
+      iflyAssumedOff: iflyResult.assumedOff,
+      sogouPromptActions: sogouResult.promptActions,
+      iflyPromptActions: iflyResult.promptActions,
+      stage: 'sogou-agreement-accepted',
+      agreementTap: selected.agreementPoint,
+      finalScreen: '搜狗输入法首启后页面',
+      finalText: selected.afterText,
+      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+      screenshotObservations: state.counter,
+    };
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
+  const successResult = selected.pickerClosed;
+  const result = {
+    ok: successResult,
+    script: '输入法初始化',
+    targetDeviceId,
+    targetDeviceName,
+    initialHomeAnchors: homeAnchorMatches(home.items),
+    appLocated: true,
+    appTap: opened.point,
+    appTapRetried: opened.retried,
+    enableTap: enablePoint,
+    sogouEnabled: sogouResult.state,
+    sogouAssumedOff: sogouResult.assumedOff,
+    iflyEnabled: iflyResult.state,
+    iflyAssumedOff: iflyResult.assumedOff,
+    sogouPromptActions: sogouResult.promptActions,
+    iflyPromptActions: iflyResult.promptActions,
+    selectedInputMethod: '讯飞输入法',
+    pickerClosed: selected.pickerClosed,
+    finalScreen: '搜狗输入法',
+    finalText: selected.afterText,
+    appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+    screenshotObservations: state.counter,
+  };
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    throw new Error('输入法初始化失败：未成功关闭输入法选择器');
+  }
+  return result;
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    settingsTimeoutMs: numberOr(process.env.YUNMOMO_INPUT_SETTINGS_TIMEOUT_MS, DEFAULT_SETTINGS_TIMEOUT_MS),
+    toggleTimeoutMs: numberOr(process.env.YUNMOMO_INPUT_TOGGLE_TIMEOUT_MS, DEFAULT_TOGGLE_TIMEOUT_MS),
+    pickerTimeoutMs: numberOr(process.env.YUNMOMO_INPUT_PICKER_TIMEOUT_MS, DEFAULT_PICKER_TIMEOUT_MS),
+    promptSettleMs: numberOr(process.env.YUNMOMO_PROMPT_SETTLE_MS, DEFAULT_PROMPT_SETTLE_MS),
+    appVisibleMs: numberOr(process.env.YUNMOMO_INPUT_APP_VISIBLE_MS, DEFAULT_APP_VISIBLE_MS),
+    maxSettingsSwipes: numberOr(process.env.YUNMOMO_MAX_SETTINGS_SWIPES, DEFAULT_MAX_SETTINGS_SWIPES),
+    toggleUnknown: process.env.YUNMOMO_INPUT_TOGGLE_UNKNOWN === '1',
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    ...(context.options || {})
+  };
+
+  return await runInputMethodWorkflow({
+    phone,
+    control,
+    worker,
+    directory: directory || (await require('../../automation/screen').createOcrDirectory('yunmomo-script8-')),
+    state: state || { counter: 0 },
+    options,
+    targetDeviceId: phone.deviceId,
+    targetDeviceName: target?.deviceName || target?.name || '云机'
+  });
+}
+
 capture = require('../../automation/timing').timed('workflow.initialize-input-method.capture', capture);
 chooseSogouFromPicker = require('../../automation/timing').timed('workflow.initialize-input-method.chooseSogouFromPicker', chooseSogouFromPicker);
 acceptSogouAgreement = require('../../automation/timing').timed('workflow.initialize-input-method.acceptSogouAgreement', acceptSogouAgreement);
@@ -868,6 +921,7 @@ findInputMethodRow = require('../../automation/timing').timed('workflow.initiali
 enableOneInputMethod = require('../../automation/timing').timed('workflow.initialize-input-method.enableOneInputMethod', enableOneInputMethod);
 returnToSogou = require('../../automation/timing').timed('workflow.initialize-input-method.returnToSogou', returnToSogou);
 clickSwitchAndChooseIfly = require('../../automation/timing').timed('workflow.initialize-input-method.clickSwitchAndChooseIfly', clickSwitchAndChooseIfly);
+runInputMethodWorkflow = require('../../automation/timing').timed('workflow.initialize-input-method.runWorkflow', runInputMethodWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.initialize-input-method', main);
 
 if (require.main === module) {
@@ -879,6 +933,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
+  runInputMethodWorkflow,
   sogouTargetBox,
   sogouAppReady,
   inputSettingsEvidence,

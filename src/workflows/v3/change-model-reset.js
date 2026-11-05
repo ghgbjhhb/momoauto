@@ -163,4 +163,17 @@ submitChangeModelReset = require('../../automation/timing').timed('workflow.chan
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.change-model-reset', main);
 
 if (require.main === module) main().catch(error => { console.error(redact(error.message)); process.exitCode = 1; });
-module.exports = { WEB_ANDROID_VERSIONS, countryOptions, prepareChangeModelReset, submitChangeModelReset, main };
+async function runStep(context = {}) {
+  const client = context.client || new YunmomoClient();
+  const deviceId = context.phone?.deviceId || context.deviceId || process.env.YUNMOMO_DEVICE_ID;
+  const sdkVersion = context.options?.sdkVersion || process.env.YUNMOMO_SDK_VERSION || 'v3';
+  const countryCode = context.options?.countryCode || process.env.YUNMOMO_COUNTRY_CODE || 'CN';
+  const androidVersion = context.options?.androidVersion || process.env.YUNMOMO_ANDROID_VERSION || '16';
+  const plan = await prepareChangeModelReset(client, deviceId, { countryCode, androidVersion, sdkVersion });
+  console.log(`正在向云端下发“改机重置”指令 (目标云机: ${plan.device.id}, 机型: ${plan.model.name})...`);
+  const response = await submitChangeModelReset(client, plan);
+  console.log(`改机重置指令下发成功 OK`);
+  return { success: true, response, plan };
+}
+
+module.exports = { WEB_ANDROID_VERSIONS, countryOptions, prepareChangeModelReset, submitChangeModelReset, main, runStep };

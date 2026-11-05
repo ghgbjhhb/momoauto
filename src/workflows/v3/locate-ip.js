@@ -533,123 +533,23 @@ async function main() {
   const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script6-');
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
-  let success = false;
+  let homeRestored = false;
   try {
     await control.connect();
-    const home = await settleHome(phone, control, worker, directory, state, options);
-    const found = await findApp(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      home,
-      options,
-      extensionServicesBox,
-      '扩展服务',
-    );
-    const opened = await tapExtensionServicesAndWaitReady(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      found,
-      options,
-    );
-    const virtual = await openVirtualLocation(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      opened.opened,
-      options,
-    );
-    const amap = await openAmapAndWaitMap(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      virtual.page,
-      options,
-    );
-    const ipButton = ipLocationButtonBox(amap.map.items);
-    if (!ipButton) throw new Error('高德地图页面未识别到“定位到ip所在地”按钮');
-    const ipPoint = tapBox(control, ipButton, amap.map);
-    await control.tap(ipPoint.x, ipPoint.y);
-    await control.flush();
-    const location = await waitForLocationComplete(
-      phone,
-      worker,
-      directory,
-      state,
-      amap.map,
-      options,
-    );
-    const centered = await centerMapOnLocation(
+    await runLocateIpWorkflow({
       phone,
       control,
       worker,
       directory,
       state,
       options,
-      location.observation,
-    );
-    const nearby = await tapRandomNearbyLocation(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      options,
-      centered.centered.observation,
-    );
-    const finalHome = await settleHome(phone, control, worker, directory, state, options);
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    success = finalAnchors.length >= 2;
-    console.log(JSON.stringify({
-      ok: success,
-      script: '定位到ip地',
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      ocr: 'RapidOCR 1.2.3 (local WSL worker)',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      virtualLocationTap: virtual.point,
-      amapTap: amap.point,
-      amapEntryWaitMs: options.amapEntryWaitMs,
-      amapEntryLoadingCleared: true,
-      ipLocationTap: ipPoint,
-      spinnerSeen: location.spinnerSeen,
-      locationStableObservations: location.stableObservations,
-      ipSuccessToastSeen: location.successToastSeen,
-      locationIconTap: centered.point,
-      centeredMapText: centered.centered.observation.text,
-      centeredMapMarker: centered.centered.observation.mapVision.marker,
-      centeredMapRendered: centered.centered.observation.mapVision.rendered,
-      randomNearbyLocationTap: nearby.point,
-      randomNearbyLocationTapCount: nearby.tapCount,
-      randomNearbyMarkerTap: nearby.markerTap,
-      randomNearbyMarker: nearby.marker,
-      randomNearbyMarkerStableObservations: nearby.markerStableObservations,
-      randomLocationConfirmation: nearby.confirmation,
-      randomLocationSpinnerSeen: nearby.settled.spinnerSeen,
-      randomLocationStableObservations: nearby.settled.stableObservations,
-      randomMapChanged: nearby.settled.mapChanged,
-      randomSuccessToastSeen: nearby.settled.successToastSeen,
-      randomMapText: nearby.settled.observation.text,
-      finalHomeAnchors: finalAnchors,
-      homeRestored: finalAnchors.length >= 2,
-      screenshotObservations: state.counter,
-    }, null, 2));
+      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+    });
+    homeRestored = true;
   } finally {
-    if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
-      try { await sendHome(control); } catch { /* preserve the original failure */ }
+    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+      try { await sendHome(control); homeRestored = true; } catch { /* preserve the original failure */ }
     }
     await worker.close();
     await control.close();
@@ -661,6 +561,176 @@ async function main() {
   }
 }
 
+async function runLocateIpWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, targetDeviceId, targetDeviceName = '设备' }) {
+  if (!control.connected) {
+    await control.connect();
+  }
+  const home = await settleHome(phone, control, worker, directory, state, options);
+  const found = await findApp(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    home,
+    options,
+    extensionServicesBox,
+    '扩展服务',
+  );
+  const opened = await tapExtensionServicesAndWaitReady(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    found,
+    options,
+  );
+  const virtual = await openVirtualLocation(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    opened.opened,
+    options,
+  );
+  const amap = await openAmapAndWaitMap(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    virtual.page,
+    options,
+  );
+  const ipButton = ipLocationButtonBox(amap.map.items);
+  if (!ipButton) throw new Error('高德地图页面未识别到“定位到ip所在地”按钮');
+  const ipPoint = tapBox(control, ipButton, amap.map);
+  await control.tap(ipPoint.x, ipPoint.y);
+  await control.flush();
+  const location = await waitForLocationComplete(
+    phone,
+    worker,
+    directory,
+    state,
+    amap.map,
+    options,
+  );
+  const centered = await centerMapOnLocation(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    options,
+    location.observation,
+  );
+  const nearby = await tapRandomNearbyLocation(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    options,
+    centered.centered.observation,
+  );
+  const finalHome = await settleHome(phone, control, worker, directory, state, options);
+  const finalAnchors = homeAnchorMatches(finalHome.items);
+  const success = finalAnchors.length >= 2;
+  const result = {
+    ok: success,
+    script: '定位到ip地',
+    targetDeviceId,
+    targetDeviceName,
+    ocr: 'RapidOCR (local worker)',
+    initialHomeAnchors: homeAnchorMatches(home.items),
+    appLocated: true,
+    appTap: opened.point,
+    appTapRetried: opened.retried,
+    appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+    virtualLocationTap: virtual.point,
+    amapTap: amap.point,
+    amapEntryWaitMs: options.amapEntryWaitMs,
+    amapEntryLoadingCleared: true,
+    ipLocationTap: ipPoint,
+    spinnerSeen: location.spinnerSeen,
+    locationStableObservations: location.stableObservations,
+    ipSuccessToastSeen: location.successToastSeen,
+    locationIconTap: centered.point,
+    centeredMapText: centered.centered.observation.text,
+    centeredMapMarker: centered.centered.observation.mapVision.marker,
+    centeredMapRendered: centered.centered.observation.mapVision.rendered,
+    randomNearbyLocationTap: nearby.point,
+    randomNearbyLocationTapCount: nearby.tapCount,
+    randomNearbyMarkerTap: nearby.markerTap,
+    randomNearbyMarker: nearby.marker,
+    randomNearbyMarkerStableObservations: nearby.markerStableObservations,
+    randomLocationConfirmation: nearby.confirmation,
+    randomLocationSpinnerSeen: nearby.settled.spinnerSeen,
+    randomLocationStableObservations: nearby.settled.stableObservations,
+    randomMapChanged: nearby.settled.mapChanged,
+    randomSuccessToastSeen: nearby.settled.successToastSeen,
+    randomMapText: nearby.settled.observation.text,
+    finalHomeAnchors: finalAnchors,
+    homeRestored: finalAnchors.length >= 2,
+    screenshotObservations: state.counter,
+  };
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    throw new Error('定位到ip地执行失败：未能成功恢复主屏');
+  }
+  if (state) {
+    state.lastObservation = finalHome;
+  }
+  return result;
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    homeSettleMs: numberOr(process.env.YUNMOMO_HOME_SETTLE_MS, DEFAULT_HOME_SETTLE_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    entryAttemptTimeoutMs: numberOr(process.env.YUNMOMO_ENTRY_ATTEMPT_TIMEOUT_MS, DEFAULT_ENTRY_ATTEMPT_TIMEOUT_MS),
+    amapEntryWaitMs: numberOr(process.env.YUNMOMO_AMAP_ENTRY_WAIT_MS, DEFAULT_AMAP_ENTRY_WAIT_MS),
+    locationTimeoutMs: numberOr(process.env.YUNMOMO_LOCATION_TIMEOUT_MS, DEFAULT_LOCATION_TIMEOUT_MS),
+    locationMinWaitMs: numberOr(process.env.YUNMOMO_LOCATION_MIN_WAIT_MS, DEFAULT_LOCATION_MIN_WAIT_MS),
+    locationStableObservations: numberOr(
+      process.env.YUNMOMO_LOCATION_STABLE_OBSERVATIONS,
+      DEFAULT_LOCATION_STABLE_OBSERVATIONS,
+    ),
+    afterIconWaitMs: numberOr(process.env.YUNMOMO_AFTER_ICON_WAIT_MS, DEFAULT_AFTER_ICON_WAIT_MS),
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    locationIconXRatio: numberOr(process.env.YUNMOMO_LOCATION_ICON_X_RATIO, DEFAULT_LOCATION_ICON_X_RATIO),
+    locationIconYRatio: numberOr(process.env.YUNMOMO_LOCATION_ICON_Y_RATIO, DEFAULT_LOCATION_ICON_Y_RATIO),
+    mapCenterXRatio: numberOr(process.env.YUNMOMO_MAP_CENTER_X_RATIO, DEFAULT_MAP_CENTER_X_RATIO),
+    mapCenterYRatio: numberOr(process.env.YUNMOMO_MAP_CENTER_Y_RATIO, DEFAULT_MAP_CENTER_Y_RATIO),
+    randomRadiusXRatio: numberOr(process.env.YUNMOMO_RANDOM_RADIUS_X_RATIO, DEFAULT_RANDOM_RADIUS_X_RATIO),
+    randomRadiusYRatio: numberOr(process.env.YUNMOMO_RANDOM_RADIUS_Y_RATIO, DEFAULT_RANDOM_RADIUS_Y_RATIO),
+    randomLocationMarkerSettleMs: numberOr(
+      process.env.YUNMOMO_RANDOM_LOCATION_MARKER_SETTLE_MS,
+      RANDOM_LOCATION_MARKER_SETTLE_MS,
+    ),
+    ...(context.options || {})
+  };
+
+  return await runLocateIpWorkflow({
+    phone,
+    control,
+    worker,
+    directory: directory || (await require('../../automation/screen').createOcrDirectory('yunmomo-script6-')),
+    state: state || { counter: 0 },
+    options,
+    targetDeviceId: phone.deviceId,
+    targetDeviceName: target?.deviceName || target?.name || '云机'
+  });
+}
+
 settleHome = require('../../automation/timing').timed('workflow.locate-ip.settleHome', settleHome);
 tapExtensionServicesAndWaitReady = require('../../automation/timing').timed('workflow.locate-ip.tapExtensionServicesAndWaitReady', tapExtensionServicesAndWaitReady);
 openVirtualLocation = require('../../automation/timing').timed('workflow.locate-ip.openVirtualLocation', openVirtualLocation);
@@ -669,6 +739,7 @@ waitForLocationComplete = require('../../automation/timing').timed('workflow.loc
 waitForRandomLocationMarker = require('../../automation/timing').timed('workflow.locate-ip.waitForRandomLocationMarker', waitForRandomLocationMarker);
 tapRandomNearbyLocation = require('../../automation/timing').timed('workflow.locate-ip.tapRandomNearbyLocation', tapRandomNearbyLocation);
 centerMapOnLocation = require('../../automation/timing').timed('workflow.locate-ip.centerMapOnLocation', centerMapOnLocation);
+runLocateIpWorkflow = require('../../automation/timing').timed('workflow.locate-ip.runWorkflow', runLocateIpWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.locate-ip', main);
 
 if (require.main === module) {
@@ -680,6 +751,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
+  runLocateIpWorkflow,
   extensionServicesBox,
   extensionServicesReady,
   virtualLocationTitleBox,

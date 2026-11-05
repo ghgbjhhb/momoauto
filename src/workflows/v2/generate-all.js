@@ -486,7 +486,6 @@ async function main() {
   }
 
   console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
-  console.log('[1/6] 正在确认主屏幕就绪...');
 
   const runId = String(process.env.YUNMOMO_SCRIPT_RUN_ID || ('run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)));
   const screenshotsDir = path.join(PROJECT_ROOT, 'logs', 'screenshots', runId);
@@ -497,81 +496,12 @@ async function main() {
   const control = await phone.openControl({ udid: target.udid });
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
-  let success = false;
   let homeRestored = false;
 
   try {
     await control.connect();
-
-    // 优先就近检测：若当前桌面视口已经包含“伍羊工具箱”，直接使用，大幅提速
-    state.counter += 1;
-    const initialObs = await screenshotAndOcr(phone, worker, directory, state.counter);
-    const directBox = toolBox(initialObs.items);
-    let found;
-
-    if (directBox && !clipboardToastVisible(initialObs.items)) {
-      console.log('[2/6] 当前屏幕已就绪且直达“伍羊工具箱”入口，直接进入...');
-      found = { observation: initialObs, box: directBox, direction: 'none', page: 0 };
-    } else {
-      const home = await confirmHome(phone, control, worker, directory, state, {
-        ...options,
-        homeConfirmation: { firstAttemptTimeoutMs: 2500 }
-      });
-      console.log('[2/6] 正在桌面寻找应用“伍羊工具箱”...');
-      found = await findApp(
-        phone,
-        control,
-        worker,
-        directory,
-        state,
-        home,
-        options,
-        toolBox,
-        '伍羊工具箱',
-      );
-    }
-
-    console.log('[3/6] 正在打开“伍羊工具箱”并等待就绪...');
-    const opened = await tapToolAndWaitReady(phone, control, worker, directory, state, found, options);
-
-    console.log('[4/6] 正在执行数据生成并实时监控状态...');
-    const generated = await clickGenerateAllAndWait(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      opened.opened,
-      options,
-    );
-
-    console.log('[5/6] 数据生成完毕，正在卸载“伍羊工具箱”...');
-    const uninstalled = await uninstallToolBox(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      options,
-    );
-
-    console.log('[6/6] 正在返回并核验主屏幕第一页...');
-    await sendHome(control);
-    await swipeHomePage(control, 'right');
-    const finalHome = await confirmHome(phone, control, worker, directory, state, {
-      ...options,
-      homeConfirmation: { firstAttemptTimeoutMs: 2500 }
-    });
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    homeRestored = finalAnchors.length >= 2;
-    success = generated.buttonReturned && uninstalled.uninstalled && homeRestored;
-
-    if (!success) {
-      throw new Error('执行未完成：' + (!generated.buttonReturned ? '“一键生成全部”未确认完成' : !uninstalled.uninstalled ? '“伍羊工具箱”卸载未确认' : '未能成功恢复主屏'));
-    }
-
-    console.log(`[核验完成] 已成功恢复主屏幕第一页 (桌面锚点: ${finalAnchors.length} 个)`);
-    console.log(`>>> 一键生成全部并卸载执行成功 OK (生成耗时: ${generated.elapsedSeconds}s)`);
+    await runGenerateAllWorkflow({ phone, control, worker, directory, state, options });
+    homeRestored = true;
   } finally {
     if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
@@ -588,9 +518,132 @@ async function main() {
   }
 }
 
+async function runGenerateAllWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {} }) {
+  if (!control.connected) {
+    await control.connect();
+  }
+
+  console.log('[1/6] 正在确认主屏幕就绪...');
+
+  // 优先就近检测：若当前桌面视口已经包含“伍羊工具箱”，直接使用，大幅提速
+  state.counter += 1;
+  const initialObs = await screenshotAndOcr(phone, worker, directory, state.counter);
+  const directBox = toolBox(initialObs.items);
+  let found;
+
+  if (directBox && !clipboardToastVisible(initialObs.items)) {
+    console.log('[2/6] 当前屏幕已就绪且直达“伍羊工具箱”入口，直接进入...');
+    found = { observation: initialObs, box: directBox, direction: 'none', page: 0 };
+  } else {
+    const home = await confirmHome(phone, control, worker, directory, state, {
+      ...options,
+      homeConfirmation: { firstAttemptTimeoutMs: 2500 }
+    });
+    console.log('[2/6] 正在桌面寻找应用“伍羊工具箱”...');
+    found = await findApp(
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      home,
+      options,
+      toolBox,
+      '伍羊工具箱',
+    );
+  }
+
+  console.log('[3/6] 正在打开“伍羊工具箱”并等待就绪...');
+  const opened = await tapToolAndWaitReady(phone, control, worker, directory, state, found, options);
+
+  console.log('[4/6] 正在执行数据生成并实时监控状态...');
+  const generated = await clickGenerateAllAndWait(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    opened.opened,
+    options,
+  );
+
+  console.log('[5/6] 数据生成完毕，正在卸载“伍羊工具箱”...');
+  const uninstalled = await uninstallToolBox(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    options,
+  );
+
+  console.log('[6/6] 正在返回并核验主屏幕第一页...');
+  await sendHome(control);
+  await swipeHomePage(control, 'right');
+  const finalHome = await confirmHome(phone, control, worker, directory, state, {
+    ...options,
+    homeConfirmation: { firstAttemptTimeoutMs: 2500 }
+  });
+  const finalAnchors = homeAnchorMatches(finalHome.items);
+  const homeRestored = finalAnchors.length >= 2;
+  const success = generated.buttonReturned && uninstalled.uninstalled && homeRestored;
+
+  if (!success) {
+    throw new Error('执行未完成：' + (!generated.buttonReturned ? '“一键生成全部”未确认完成' : !uninstalled.uninstalled ? '“伍羊工具箱”卸载未确认' : '未能成功恢复主屏'));
+  }
+
+  console.log(`[核验完成] 已成功恢复主屏幕第一页 (桌面锚点: ${finalAnchors.length} 个)`);
+  console.log(`>>> 一键生成全部并卸载执行成功 OK (生成耗时: ${generated.elapsedSeconds}s)`);
+
+  if (state) {
+    state.lastObservation = finalHome;
+  }
+  return { success: true, generated, uninstalled, finalHome };
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    generationTimeoutMs: numberOr(process.env.YUNMOMO_GENERATION_TIMEOUT_MS, DEFAULT_GENERATION_TIMEOUT_MS),
+    completionStableObservations: numberOr(
+      process.env.YUNMOMO_COMPLETION_STABLE_OBSERVATIONS,
+      DEFAULT_COMPLETION_STABLE_OBSERVATIONS,
+    ),
+    minPostGenerationWaitMs: numberOr(
+      process.env.YUNMOMO_MIN_POST_GENERATION_WAIT_MS,
+      DEFAULT_MIN_POST_GENERATION_WAIT_MS,
+    ),
+    completionQuietMs: numberOr(
+      process.env.YUNMOMO_COMPLETION_QUIET_MS,
+      DEFAULT_COMPLETION_QUIET_MS,
+    ),
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    ...(context.options || {})
+  };
+
+  const targetDir = directory || path.join(PROJECT_ROOT, 'logs', 'screenshots', 'session');
+  await fs.mkdir(targetDir, { recursive: true });
+
+  return await runGenerateAllWorkflow({
+    phone,
+    control,
+    worker,
+    directory: targetDir,
+    state: state || { counter: 0 },
+    options
+  });
+}
+
 tapToolAndWaitReady = require('../../automation/timing').timed('workflow.generate-all.tapToolAndWaitReady', tapToolAndWaitReady);
 clickGenerateAllAndWait = require('../../automation/timing').timed('workflow.generate-all.clickGenerateAllAndWait', clickGenerateAllAndWait);
 uninstallToolBox = require('../../automation/timing').timed('workflow.generate-all.uninstallToolBox', uninstallToolBox);
+runGenerateAllWorkflow = require('../../automation/timing').timed('workflow.generate-all.runWorkflow', runGenerateAllWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v2.generate-all', main);
 
 if (require.main === module) {
@@ -599,6 +652,8 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  runStep,
+  runGenerateAllWorkflow,
   statsFingerprint,
   toolBox,
   toolReady,

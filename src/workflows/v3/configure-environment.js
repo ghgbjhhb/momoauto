@@ -64,38 +64,22 @@ async function main() {
   const directory = await shared.createOcrDirectory('yunmomo-script4-');
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
-  let success = false;
   let homeRestored = false;
   try {
     await control.connect();
-    const home = await confirmHome(phone, control, worker, directory, state, options);
-    const found = await findApp(phone, control, worker, directory, state, home, options);
-    const opened = await openKeyAuth(phone, control, worker, directory, state, found, options);
-    const finalHome = await confirmHome(phone, control, worker, directory, state, options);
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    const finalState = successState(opened.opened.items);
-    success = finalState.ok;
-    homeRestored = finalAnchors.length >= 2;
-    console.log(JSON.stringify({
-      ok: success && homeRestored,
-      script: 'environment-config',
+    await runConfigEnvWorkflow({
+      phone,
+      control,
+      worker,
+      directory,
+      state,
+      options,
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      ocr: 'RapidOCR 1.2.3 (local WSL worker)',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      certificateState: finalState.certificate,
-      bootloaderState: finalState.bootloader,
-      successDetected: success,
-      finalHomeAnchors: finalAnchors,
-      homeRestored,
-      screenshotObservations: state.counter,
-    }, null, 2));
+      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+    });
+    homeRestored = true;
   } finally {
-    if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
       try {
         await sendHome(control);
         homeRestored = true;
@@ -113,7 +97,73 @@ async function main() {
   }
 }
 
+async function runConfigEnvWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, targetDeviceId, targetDeviceName = '设备' }) {
+  if (!control.connected) {
+    await control.connect();
+  }
+  const home = await confirmHome(phone, control, worker, directory, state, options);
+  const found = await findApp(phone, control, worker, directory, state, home, options);
+  const opened = await openKeyAuth(phone, control, worker, directory, state, found, options);
+  const finalHome = await confirmHome(phone, control, worker, directory, state, options);
+  const finalAnchors = homeAnchorMatches(finalHome.items);
+  const finalState = successState(opened.opened.items);
+  const success = finalState.ok;
+  const homeRestored = finalAnchors.length >= 2;
+  const result = {
+    ok: success && homeRestored,
+    script: 'environment-config',
+    targetDeviceId,
+    targetDeviceName,
+    ocr: 'RapidOCR (local worker)',
+    initialHomeAnchors: homeAnchorMatches(home.items),
+    appLocated: true,
+    appTap: opened.point,
+    appTapRetried: opened.retried,
+    appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+    certificateState: finalState.certificate,
+    bootloaderState: finalState.bootloader,
+    successDetected: success,
+    finalHomeAnchors: finalAnchors,
+    homeRestored,
+    screenshotObservations: state.counter,
+  };
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    throw new Error('环境配置核验失败：' + (!success ? '证书或引导锁定未通过' : '未能成功恢复主屏'));
+  }
+  if (state) {
+    state.lastObservation = finalHome;
+  }
+  return result;
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    ...(context.options || {})
+  };
+
+  return await runConfigEnvWorkflow({
+    phone,
+    control,
+    worker,
+    directory: directory || (await shared.createOcrDirectory('yunmomo-script4-')),
+    state: state || { counter: 0 },
+    options,
+    targetDeviceId: phone.deviceId,
+    targetDeviceName: target?.deviceName || target?.name || '云机'
+  });
+}
+
 openKeyAuth = require('../../automation/timing').timed('workflow.configure-environment.openKeyAuth', openKeyAuth);
+runConfigEnvWorkflow = require('../../automation/timing').timed('workflow.configure-environment.runWorkflow', runConfigEnvWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.configure-environment', main);
 
 if (require.main === module) {
@@ -124,4 +174,4 @@ if (require.main === module) {
 }
 
 // Preserve the old helper exports for compatibility; new callers import automation/screen.
-module.exports = { ...shared, main };
+module.exports = { ...shared, main, runStep, runConfigEnvWorkflow };

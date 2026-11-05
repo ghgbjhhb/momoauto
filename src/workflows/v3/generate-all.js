@@ -254,61 +254,23 @@ async function main() {
   const directory = await require('../../automation/screen').createOcrDirectory('yunmomo-script5-');
   const worker = new RapidOcrWorker();
   const state = { counter: 0 };
-  let success = false;
+  let homeRestored = false;
   try {
     await control.connect();
-    const home = await confirmHome(phone, control, worker, directory, state, options);
-    const found = await findApp(
+    await runGenerateAllWorkflow({
       phone,
       control,
       worker,
       directory,
       state,
-      home,
       options,
-      toolBox,
-      '伍羊工具箱',
-    );
-    const opened = await tapToolAndWaitReady(phone, control, worker, directory, state, found, options);
-    const generated = await clickGenerateAllAndWait(
-      phone,
-      control,
-      worker,
-      directory,
-      state,
-      opened.opened,
-      options,
-    );
-    const finalHome = await confirmHome(phone, control, worker, directory, state, options);
-    const finalAnchors = homeAnchorMatches(finalHome.items);
-    success = generated.buttonReturned && finalAnchors.length >= 2;
-    console.log(JSON.stringify({
-      ok: success,
-      script: 'generate-all-data',
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF',
-      ocr: 'RapidOCR 1.2.3 (local WSL worker)',
-      initialHomeAnchors: homeAnchorMatches(home.items),
-      appLocated: true,
-      appTap: opened.point,
-      appTapRetried: opened.retried,
-      appNavigationRecoveries: state.appNavigationRecoveries ?? [],
-      beforeStats: generated.beforeStats,
-      afterStats: generated.afterStats,
-      generationStartedDetected: generated.generationStarted,
-      generatingObservations: generated.generatingObservations,
-      completionToastDetected: generated.completionToast,
-      buttonReturned: generated.buttonReturned,
-      normalButtonStableObservations: generated.normalButtonStableObservations,
-      permissionPromptsSeen: generated.permissionPromptsSeen,
-      permissionPromptsAllowed: generated.permissionPromptsAllowed,
-      finalHomeAnchors: finalAnchors,
-      homeRestored: finalAnchors.length >= 2,
-      screenshotObservations: state.counter,
-    }, null, 2));
+      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+    });
+    homeRestored = true;
   } finally {
-    if (!success && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
-      try { await sendHome(control); } catch { /* preserve original failure */ }
+    if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
+      try { await sendHome(control); homeRestored = true; } catch { /* preserve original failure */ }
     }
     await worker.close();
     await control.close();
@@ -320,8 +282,110 @@ async function main() {
   }
 }
 
+async function runGenerateAllWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, targetDeviceId, targetDeviceName = '设备' }) {
+  if (!control.connected) {
+    await control.connect();
+  }
+  const home = await confirmHome(phone, control, worker, directory, state, options);
+  const found = await findApp(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    home,
+    options,
+    toolBox,
+    '伍羊工具箱',
+  );
+  const opened = await tapToolAndWaitReady(phone, control, worker, directory, state, found, options);
+  const generated = await clickGenerateAllAndWait(
+    phone,
+    control,
+    worker,
+    directory,
+    state,
+    opened.opened,
+    options,
+  );
+  const finalHome = await confirmHome(phone, control, worker, directory, state, options);
+  const finalAnchors = homeAnchorMatches(finalHome.items);
+  const success = generated.buttonReturned && finalAnchors.length >= 2;
+  const result = {
+    ok: success,
+    script: 'generate-all-data',
+    targetDeviceId,
+    targetDeviceName,
+    ocr: 'RapidOCR (local worker)',
+    initialHomeAnchors: homeAnchorMatches(home.items),
+    appLocated: true,
+    appTap: opened.point,
+    appTapRetried: opened.retried,
+    appNavigationRecoveries: state.appNavigationRecoveries ?? [],
+    beforeStats: generated.beforeStats,
+    afterStats: generated.afterStats,
+    generationStartedDetected: generated.generationStarted,
+    generatingObservations: generated.generatingObservations,
+    completionToastDetected: generated.completionToast,
+    buttonReturned: generated.buttonReturned,
+    normalButtonStableObservations: generated.normalButtonStableObservations,
+    permissionPromptsSeen: generated.permissionPromptsSeen,
+    permissionPromptsAllowed: generated.permissionPromptsAllowed,
+    finalHomeAnchors: finalAnchors,
+    homeRestored: finalAnchors.length >= 2,
+    screenshotObservations: state.counter,
+  };
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    throw new Error('一键生成数据失败：' + (!generated.buttonReturned ? '未确认完成' : '未能成功恢复主屏'));
+  }
+  if (state) {
+    state.lastObservation = finalHome;
+  }
+  return result;
+}
+
+async function runStep(context = {}) {
+  const { phone, control, worker, directory, state, target } = context;
+  if (!phone || !control || !worker) {
+    throw new Error('runStep 必须提供 phone, control, worker 会话对象');
+  }
+  const options = {
+    pollMs: numberOr(process.env.YUNMOMO_OCR_POLL_MS, DEFAULT_POLL_MS),
+    homeTimeoutMs: numberOr(process.env.YUNMOMO_HOME_TIMEOUT_MS, DEFAULT_HOME_TIMEOUT_MS),
+    appTimeoutMs: numberOr(process.env.YUNMOMO_APP_TIMEOUT_MS, DEFAULT_APP_TIMEOUT_MS),
+    generationTimeoutMs: numberOr(process.env.YUNMOMO_GENERATION_TIMEOUT_MS, DEFAULT_GENERATION_TIMEOUT_MS),
+    completionStableObservations: numberOr(
+      process.env.YUNMOMO_COMPLETION_STABLE_OBSERVATIONS,
+      DEFAULT_COMPLETION_STABLE_OBSERVATIONS,
+    ),
+    minPostGenerationWaitMs: numberOr(
+      process.env.YUNMOMO_MIN_POST_GENERATION_WAIT_MS,
+      DEFAULT_MIN_POST_GENERATION_WAIT_MS,
+    ),
+    completionQuietMs: numberOr(
+      process.env.YUNMOMO_COMPLETION_QUIET_MS,
+      DEFAULT_COMPLETION_QUIET_MS,
+    ),
+    maxPagesPerDirection: numberOr(process.env.YUNMOMO_MAX_HOME_PAGES, DEFAULT_MAX_PAGES_PER_DIRECTION),
+    ...(context.options || {})
+  };
+
+  return await runGenerateAllWorkflow({
+    phone,
+    control,
+    worker,
+    directory: directory || (await require('../../automation/screen').createOcrDirectory('yunmomo-script5-')),
+    state: state || { counter: 0 },
+    options,
+    targetDeviceId: phone.deviceId,
+    targetDeviceName: target?.deviceName || target?.name || '云机'
+  });
+}
+
 tapToolAndWaitReady = require('../../automation/timing').timed('workflow.generate-all.tapToolAndWaitReady', tapToolAndWaitReady);
 clickGenerateAllAndWait = require('../../automation/timing').timed('workflow.generate-all.clickGenerateAllAndWait', clickGenerateAllAndWait);
+runGenerateAllWorkflow = require('../../automation/timing').timed('workflow.generate-all.runWorkflow', runGenerateAllWorkflow);
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.generate-all', main);
 
 if (require.main === module) {
@@ -331,4 +395,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, statsFingerprint, toolBox, toolReady, generatingState, completionEvidence };
+module.exports = { main, runStep, runGenerateAllWorkflow, statsFingerprint, toolBox, toolReady, generatingState, completionEvidence };

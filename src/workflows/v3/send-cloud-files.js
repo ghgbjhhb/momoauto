@@ -125,8 +125,31 @@ async function main() {
 }
 
 waitForTransfer = require('../../automation/timing').timed('workflow.send-cloud-files.waitForTransfer', waitForTransfer);
+
+async function runStep(context = {}) {
+  const client = context.client || new YunmomoClient({ timeoutMs: 100000 });
+  const disk = client.cloudDisk();
+  const actualDeviceId = context.phone?.deviceId || context.deviceId || String(process.env.YUNMOMO_DEVICE_ID || '');
+  if (!actualDeviceId) throw new Error('runStep 必须提供目标云机设备 ID');
+  const fileType = String(process.env.YUNMOMO_FILE_TYPE || 'auto');
+  const files = await disk.list({ channel: '1', size: 10000 });
+  if (!files.records.length) throw new Error('私有云盘没有可传输文件');
+  console.log(`[导入云盘] 正在传输 ${files.records.length} 个私有云盘文件到设备 ${actualDeviceId}...`);
+  await disk.sendToDevices([actualDeviceId], files.records, {
+    fileType,
+    timeoutMs: 60 * 60 * 1000,
+  });
+  const status = await waitForTransfer(disk, files.records.length);
+  if (!status.finished || status.expired || status.failCount !== 0 ||
+    status.successCount !== files.records.length) {
+    throw new Error('云盘传输未全部成功: ' + JSON.stringify(status));
+  }
+  console.log('>>> 导入云盘所有文件完成 OK');
+  return { success: true, transfer: status };
+}
+
 main = require('../../automation/timing').timedScript('script.src.workflows.v3.send-cloud-files', main);
 
 if (require.main === module) require('../../automation/runtime').launchCli(main);
 
-module.exports = { main, summarizeStatus, waitForTransfer };
+module.exports = { main, summarizeStatus, waitForTransfer, runStep };
