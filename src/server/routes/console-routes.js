@@ -98,23 +98,31 @@ function getCloudDiskFiles(dirName) {
   return files;
 }
 
-async function previewImage(deviceId, tokenOrUser = null) {
+async function previewImage(deviceId, tokenOrUser = null, options = {}) {
   let token = typeof tokenOrUser === 'string' ? tokenOrUser : null;
   if (!token && tokenOrUser?.id) {
     token = authService.getDeviceAccessToken(tokenOrUser, deviceId);
   }
   const device = await selectedDevice(deviceId, token);
   const c = token ? new YunmomoClient({ token, timeoutMs: 15000 }) : client();
-  const jobKey = `${deviceId}_${token || 'global'}`;
+  const hd = Boolean(options.hd);
+  const jobKey = `${deviceId}_${token || 'global'}_${hd ? 'hd' : 'low'}`;
   if (screenshotJobs.has(jobKey)) return screenshotJobs.get(jobKey);
-  const pending = c.screenshot(deviceId, {
-    source: 'stream',
-    udid: device.udid || undefined,
-    maxSize: 1280,
-    bitrate: 4194304,
-    maxAgeMs: 400,
-    timeoutMs: 15000
-  });
+  // 前端默认使用轻量级低分辨率 JPEG 快照以极大节省网络流量；自动化调试等显式传入 hd 时使用 720P 原生高清流
+  const pending = hd
+    ? c.screenshot(deviceId, {
+        source: 'stream',
+        udid: device.udid || undefined,
+        maxSize: 1280,
+        bitrate: 4194304,
+        maxAgeMs: 400,
+        timeoutMs: 15000
+      })
+    : c.screenshot(deviceId, {
+        source: 'rest',
+        level: 2,
+        timeoutMs: 10000
+      });
   screenshotJobs.set(jobKey, pending);
   try {
     return await pending;
@@ -132,7 +140,7 @@ function getOcrWorker() {
 }
 
 async function inspectVision(deviceId, tokenOrUser = null) {
-  const result = await previewImage(deviceId, tokenOrUser);
+  const result = await previewImage(deviceId, tokenOrUser, { hd: true });
   try {
     const worker = getOcrWorker();
     const ocr = await worker.recognize(result.data);
@@ -356,12 +364,13 @@ async function handleConsoleRoutes(ctx, request, response, url) {
 
   if (request.method === 'GET' && url.pathname === '/api/screenshot') {
     const deviceId = url.searchParams.get('deviceId');
+    const hd = url.searchParams.get('hd') === '1' || url.searchParams.get('hd') === 'true';
     if (!user || !await authService.ensureDeviceAccess(user, deviceId)) {
       json(response, 403, { ok: false, error: '无权查看此设备画面或该设备已到期回收' });
       return true;
     }
     try {
-      const result = await previewImage(deviceId, user);
+      const result = await previewImage(deviceId, user, { hd });
       const headers = {
         'Content-Type': result.contentType || 'image/jpeg',
         'Cache-Control': 'no-store',

@@ -171,16 +171,17 @@ function appTargetBox(items) {
   if (exact) return exact;
   const key = findPhrase(items, '密钥') || findPhrase(items, '钥认证');
   const auth = findPhrase(items, '认证');
-  if (key && auth && Math.abs(key.top - auth.top) <= 35) return mergedBox([
+  if (key && auth && Math.abs(key.top - auth.top) <= 70) return mergedBox([
     { ...key, right: key.right, bottom: key.bottom },
     { ...auth, right: auth.right, bottom: auth.bottom },
   ]);
   return key || auth || null;
 }
 
-function pageSignature(items) {
+function pageSignature(items, height = 1280) {
+  const maxCenterY = 0.94 * (height || 1280);
   return items
-    .filter(item => item.centerY < 0.94 * 640)
+    .filter(item => item.centerY < maxCenterY)
     .map(item => normalizeText(item.text))
     .filter(Boolean)
     .join('|')
@@ -208,8 +209,16 @@ async function screenshotAndOcr(phone, worker, directory, counter) {
 }
 
 async function screenshotAndOcrMeasured(phone, worker, directory, counter) {
-  const screenshot = await phone.screenshot({ level: SCREENSHOT_LEVEL });
-  const imagePath = path.join(directory, `${String(counter).padStart(3, '0')}.jpg`);
+  let screenshot;
+  try {
+    screenshot = await phone.screenshot({ source: 'stream', maxSize: 1280, maxAgeMs: 250 });
+  } catch {
+    screenshot = await phone.screenshot({ level: SCREENSHOT_LEVEL });
+  }
+  const isPng = screenshot?.contentType === 'image/png' ||
+    (screenshot?.data?.length >= 8 && screenshot.data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
+  const ext = isPng ? 'png' : 'jpg';
+  const imagePath = path.join(directory, `${String(counter).padStart(3, '0')}.${ext}`);
   const writing = fs.writeFile(imagePath, screenshot.data);
   const captured = await Promise.allSettled([writing,
     worker instanceof require('./ocr').LegacyRapidOcrWorker ?
@@ -220,8 +229,8 @@ async function screenshotAndOcrMeasured(phone, worker, directory, counter) {
   const items = validItems(ocr);
   return {
     imagePath,
-    width: Number(ocr.width) || 0,
-    height: Number(ocr.height) || 0,
+    width: Number(ocr.width) || Number(screenshot?.width) || 720,
+    height: Number(ocr.height) || Number(screenshot?.height) || 1280,
     items,
     keyboardSwitches: Array.isArray(ocr.keyboardSwitches) ? ocr.keyboardSwitches : [],
     mapVision: ocr.mapVision || null,
@@ -465,7 +474,7 @@ async function findApp(phone, control, worker, directory, state, home, options,
         return { observation: current, box, direction, page };
       }
 
-      const signature = pageSignature(current.items);
+      const signature = pageSignature(current.items, current.height);
 
       // 下发净空带快速翻页手势
       await swipeHomePage(control, direction);
@@ -482,7 +491,7 @@ async function findApp(phone, control, worker, directory, state, home, options,
         return { observation: nextObservation, box: targetInNext, direction, page: page + 1 };
       }
 
-      const nextSignature = pageSignature(nextObservation.items);
+      const nextSignature = pageSignature(nextObservation.items, nextObservation.height);
       // 若页面签名未变，说明到达该方向尽头（触底）
       if (nextSignature === signature) break;
       // 若出现环路循环页面，停止继续翻页
