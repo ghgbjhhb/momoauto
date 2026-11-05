@@ -26,6 +26,7 @@ const {
   tapBox,
   sendHome,
   clipboardToastVisible,
+  ensureStableObservation,
 } = require('../../automation/screen');
 
 const DEFAULT_DEVICE_ID = '1920787319565701122';
@@ -392,6 +393,7 @@ async function tapAppAndWaitMap(phone, control, worker, directory, state, found,
     targetName: '虚拟定位地图主界面',
     label: 'virtual-location',
     targetBox: virtualLocationBox,
+    launchTimeoutMs: 8000,
     isTarget: observation => mapPageEvidence(observation.items),
     launchEvidence: observation => permissionScreenEvidence(observation.items) || traverseDialogEvidence(observation.items, observation),
     offsets: [{ y: -55 }, { y: -75 }, { y: 0 }],
@@ -844,7 +846,13 @@ async function runStep(context = {}) {
 
     if (directBox && !clipboardToastVisible(initialObs.items)) {
       console.log('[2/5] 当前屏幕已就绪且直达“虚拟定位”入口，直接进入...');
-      found = { observation: initialObs, box: directBox, direction: 'none', page: 0 };
+      const settled = await ensureStableObservation(
+        phone, worker, directory, state, initialObs,
+        obs => Boolean(virtualLocationBox(obs.items)),
+        1500, 200,
+      );
+      const settledBox = virtualLocationBox(settled.items) || directBox;
+      found = { observation: settled, box: settledBox, direction: 'none', page: 0 };
     } else {
       const home = await confirmHome(phone, control, worker, directory, state, {
         ...options,

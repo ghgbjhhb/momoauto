@@ -292,6 +292,48 @@ async function clearAllRecentTasks(phone, control, worker, directory, state, log
   return homeObs;
 }
 
+function areObservationsStable(obsA, obsB, tolerance) {
+  if (!obsA?.items?.length || !obsB?.items?.length) return false;
+  const tol = typeof tolerance === 'number'
+    ? tolerance
+    : Math.max(5, Math.round((obsA.width || 360) * 0.015));
+  const mapB = new Map();
+  for (const b of obsB.items) {
+    const t = normalizeText(b.text);
+    if (t.length >= 2) mapB.set(t, b);
+  }
+  let matched = 0;
+  for (const a of obsA.items) {
+    const t = normalizeText(a.text);
+    const b = mapB.get(t);
+    if (b) {
+      matched += 1;
+      const dx = Math.abs(a.centerX - b.centerX);
+      const dy = Math.abs(a.centerY - b.centerY);
+      if (dx > tol || dy > tol) return false;
+    }
+  }
+  return matched >= 2;
+}
+
+async function ensureStableObservation(phone, worker, directory, state, observation, checkPredicate, timeoutMs = 2500, pollMs = 250) {
+  let current = observation;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    await sleep(pollMs);
+    state.counter += 1;
+    const next = await screenshotAndOcr(phone, worker, directory, state.counter);
+    if (checkPredicate && !checkPredicate(next)) {
+      current = next;
+      continue;
+    }
+    if (areObservationsStable(current, next)) {
+      return next;
+    }
+    current = next;
+  }
+  return current;
+}
 async function confirmHome(phone, control, worker, directory, state, options) {
   const confirmation = options.homeConfirmation || null;
   const startedAt = Date.now();
@@ -324,13 +366,16 @@ async function confirmHome(phone, control, worker, directory, state, options) {
     pollMs,
     'home',
   );
-  if (isConfirmedHome(home)) return reportConfirmation(home, 1);
+  if (isConfirmedHome(home)) {
+    home = await ensureStableObservation(phone, worker, directory, state, home, isConfirmedHome, 1500, 200);
+    return reportConfirmation(home, 1);
+  }
 
   // If first attempt didn't see Page 1 anchors (e.g. returned to Page 2 launcher),
   // immediately swipe right to Page 1!
   await sleep(numberOr(confirmation?.retryDelayMs, 300));
   await swipeHomePage(control, 'right');
-  await sleep(300);
+  await sleep(500);
   home = await observeUntil(
     phone,
     worker,
@@ -341,7 +386,10 @@ async function confirmHome(phone, control, worker, directory, state, options) {
     pollMs,
     'home-retry',
   );
-  if (isConfirmedHome(home)) return reportConfirmation(home, 2);
+  if (isConfirmedHome(home)) {
+    home = await ensureStableObservation(phone, worker, directory, state, home, isConfirmedHome, 2500, 250);
+    return reportConfirmation(home, 2);
+  }
 
   // Fallback: send HOME and swipe right if an overlay was visible
   await sleep(300);
@@ -361,6 +409,7 @@ async function confirmHome(phone, control, worker, directory, state, options) {
   if (!isConfirmedHome(home)) {
     throw new Error('返回主页后未识别到足够的桌面锚点（至少需要两个：通讯录/联系人/相机/电话/设备助手/图库/时钟/日历/音乐）');
   }
+  home = await ensureStableObservation(phone, worker, directory, state, home, isConfirmedHome, 2500, 250);
   return reportConfirmation(home, 3);
 }
 
@@ -397,7 +446,13 @@ async function findApp(phone, control, worker, directory, state, home, options,
     for (let page = 0; page <= options.maxPagesPerDirection; page += 1) {
       const box = targetBoxFinder(current.items);
       if (box && !clipboardToastVisible(current.items)) {
-        return { observation: current, box, direction, page };
+        const settled = await ensureStableObservation(
+          phone, worker, directory, state, current,
+          obs => Boolean(targetBoxFinder(obs.items)),
+          1500, 200,
+        );
+        const settledBox = targetBoxFinder(settled.items) || box;
+        return { observation: settled, box: settledBox, direction, page };
       }
 
       const signature = pageSignature(current.items);
@@ -407,21 +462,18 @@ async function findApp(phone, control, worker, directory, state, home, options,
       let nextObservation = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         await swipeHomePage(control, direction);
-        await sleep(700);
-        let previousFrame = '';
+        await sleep(500);
+        let previousObs = null;
         nextObservation = await observeUntil(
           phone,
           worker,
           directory,
           state,
           observation => {
-            const frame = observation.items
-              .filter(item => item.centerY > observation.height * 0.06 && item.centerY < observation.height * 0.9)
-              .map(item => `${normalizeText(item.text)}:${Math.round(item.centerX / 8)}:${Math.round(item.centerY / 8)}`)
-              .join('|');
-            const stable = frame.length > 0 && frame === previousFrame && !clipboardToastVisible(observation.items);
-            previousFrame = frame;
-            return stable;
+            if (clipboardToastVisible(observation.items)) return false;
+            const stable = previousObs && areObservationsStable(previousObs, observation);
+            previousObs = observation;
+            return Boolean(stable);
           },
           options.homeTimeoutMs,
           options.pollMs,
@@ -482,4 +534,6 @@ module.exports = {
   findApp: require('./timing').timed('screen.findApp', findApp),
   tapBox,
   createOcrDirectory,
+  areObservationsStable,
+  ensureStableObservation: require('./timing').timed('screen.ensureStableObservation', ensureStableObservation),
 };
