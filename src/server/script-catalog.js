@@ -17,21 +17,11 @@ const SCRIPT_DEFINITIONS = Object.freeze([
     requiresCertificate: step.order === 2,
     exclusive: step.order === 1,
     exclusiveKey: step.order === 1 ? 'cloud-disk-transfer' : '',
-    ...(step.order === 2.1 ? {
-      parameters: [
-        { name: 'filePath', label: '云盘真参文件', defaultValue: '', placeholder: '留空默认自动获取云盘可用真参' }
-      ]
-    } : {}),
     ...(step.order === 3 ? {
       parameters: [
         { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
       ]
     } : {}),
-    ...(step.order === 6 ? {
-      parameters: [
-        { name: 'address', label: '目标搜索地址', defaultValue: '', placeholder: '留空默认定位到当前IP所在地；输入具体地点自动搜索穿越' }
-      ]
-    } : {})
   })),
   {
     id: 'flow-09-v2', order: 9, version: 'v2', category: 'v2', title: '重置数据v2',
@@ -61,11 +51,6 @@ const SCRIPT_DEFINITIONS = Object.freeze([
         { name: 'action', label: '代理操作', choices: ['set', 'show', 'close'], defaultValue: 'set' }
       ]
     } : {}),
-    ...(step.order === 6 ? {
-      parameters: [
-        { name: 'address', label: '目标搜索地址', defaultValue: '', placeholder: '留空默认定位到当前IP所在地；输入具体地点自动搜索穿越' }
-      ]
-    } : {})
   })),
   {
     id: 'flow-09-v3', order: 9, title: '改机重置v3',
