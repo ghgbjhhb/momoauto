@@ -6,6 +6,7 @@
 // 点击“同意并继续”后立即结束，不处理后续页面。不主动返回桌面；失败时按现有约定恢复到桌面。
 const fs = require('node:fs/promises');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { openAppWithRecovery, recoverAppPage } = require('../../automation/app-navigation');
 const {
   numberOr,
@@ -638,7 +639,7 @@ async function main() {
       state,
       options,
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+      targetDeviceName: formatDeviceLabel(target)
     });
     success = true;
   } finally {
@@ -906,7 +907,7 @@ async function runStep(context = {}) {
     state: state || { counter: 0 },
     options,
     targetDeviceId: phone.deviceId,
-    targetDeviceName: target?.deviceName || target?.name || '云机'
+    targetDeviceName: formatDeviceLabel(target)
   });
 }
 

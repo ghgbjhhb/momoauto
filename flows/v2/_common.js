@@ -3,7 +3,7 @@
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-const { PROJECT_ROOT, redact } = require('../../src/automation/runtime');
+const { PROJECT_ROOT, redact, formatDeviceLabel } = require('../../src/automation/runtime');
 const timing = require('../../src/automation/timing');
 
 const STEPS = [
@@ -43,7 +43,7 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
     '================================================================================',
     `[调用唯一ID] ${runId}`,
     `[流程步骤]   步骤 ${stepLabel}：${step.name}`,
-    `[目标设备]   ${deviceId}`,
+    `[目标设备]   ${formatDeviceLabel(deviceId)}`,
     `[启动时间]   ${startTime.toLocaleString('zh-CN')} (${startTime.toISOString()})`,
     `[执行脚本]   ${step.source}`,
     '================================================================================',
@@ -61,7 +61,7 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
     YUNMOMO_VERIFY_ONLY: '0',
     YUNMOMO_SCRIPT_RUN_ID: runId,
   });
-  onOutput(`[调用ID: ${runId}]\n开始步骤 ${stepLabel}：${step.name}，目标设备 ${deviceId}\n`);
+  onOutput(`[调用ID: ${runId}]\n开始步骤 ${stepLabel}：${step.name}，目标设备 ${formatDeviceLabel(deviceId)}\n`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(PROJECT_ROOT, step.source), '--execute'], {
       cwd: PROJECT_ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,

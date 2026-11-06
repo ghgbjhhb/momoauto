@@ -5,6 +5,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 
 const DEFAULT_DEVICE_ID = '1920787385311416321'; // GVIP701808715424 (V2)
 const DEFAULT_CERT_PATH = 'C:\\Users\\Administrator\\Documents\\app\\keybox(2)(1) (1).xml';
@@ -40,10 +41,10 @@ async function runStep(context = {}) {
   const actualDeviceId = deviceIdOf(target);
   const data = await fs.readFile(filePath);
   const sizeKb = (data.length / 1024).toFixed(2);
-  const deviceName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
   const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
 
-  console.log(`📱 目标设备: ${deviceName} (${actualDeviceId})`);
+  console.log(`📱 目标设备: ${devLabel}`);
   console.log(`📄 证书文件: ${fileName} (${sizeKb} KB)`);
   console.log('📤 正在上传证书...');
 

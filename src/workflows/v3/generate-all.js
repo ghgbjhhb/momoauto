@@ -7,6 +7,7 @@
 // when the first OCR frame is captured before the app updates.
 const fs = require('node:fs/promises');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
   numberOr,
@@ -265,7 +266,7 @@ async function main() {
       state,
       options,
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+      targetDeviceName: formatDeviceLabel(target)
     });
     homeRestored = true;
   } finally {
@@ -379,7 +380,7 @@ async function runStep(context = {}) {
     state: state || { counter: 0 },
     options,
     targetDeviceId: phone.deviceId,
-    targetDeviceName: target?.deviceName || target?.name || '云机'
+    targetDeviceName: formatDeviceLabel(target)
   });
 }
 

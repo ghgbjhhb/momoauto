@@ -6,6 +6,7 @@
 // proxy-ADB control channel for HOME, swipe and tap events.
 const fs = require('node:fs/promises');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 
 const DEFAULT_DEVICE_ID = '2033060279606353921';
 const DEFAULT_POLL_MS = 700;
@@ -75,7 +76,7 @@ async function main() {
       state,
       options,
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+      targetDeviceName: formatDeviceLabel(target)
     });
     homeRestored = true;
   } finally {
@@ -158,7 +159,7 @@ async function runStep(context = {}) {
     state: state || { counter: 0 },
     options,
     targetDeviceId: phone.deviceId,
-    targetDeviceName: target?.deviceName || target?.name || '云机'
+    targetDeviceName: formatDeviceLabel(target)
   });
 }
 

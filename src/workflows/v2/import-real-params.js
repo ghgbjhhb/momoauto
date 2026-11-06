@@ -8,6 +8,7 @@ const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const path = require('node:path');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { getAuthService } = require('../../server/auth/service');
 
@@ -211,10 +212,10 @@ async function main() {
   const target = listedDevices.records.find(record => matchesDevice(record, requestedDeviceId));
   if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + requestedDeviceId);
   const actualDeviceId = deviceIdOf(target);
-  const deviceName = target.deviceName ?? target.name ?? 'SF';
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
   const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
 
-  console.log(`[准备] 目标设备: ${deviceName} (${actualDeviceId}, 系统: ${sdkVer}) | 流程: 导入真参v2`);
+  console.log(`[准备] 目标设备: ${devLabel} (系统: ${sdkVer}) | 流程: 导入真参v2`);
   if (isAuto) {
     console.log(`[分配] 自动从后台云盘选取可用真参: ${fileName} (云盘剩余可用: ${fileTarget.totalAvailable} 套, 已用: ${fileTarget.totalUsed} 套)`);
   } else {

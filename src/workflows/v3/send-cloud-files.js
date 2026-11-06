@@ -4,6 +4,7 @@
 // The send path is intentionally guarded by YUNMOMO_CONFIRM_SEND=YES because
 // rerunning it creates another transfer batch on the target device.
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 
 const DEFAULT_DEVICE_ID = '2030225672674516993';
 const DEFAULT_POLL_MS = 3000;
@@ -94,7 +95,7 @@ async function main() {
   console.log(JSON.stringify({
     targetDeviceId: actualDeviceId,
     targetDeviceIdentifier: deviceId,
-    targetDeviceName: target.deviceName ?? target.name ?? 'SF',
+    targetDeviceName: formatDeviceLabel(target),
     cloudFileCount: files.records.length,
     cloudFileTotal: files.total,
     fileType,

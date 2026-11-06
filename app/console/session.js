@@ -434,18 +434,14 @@ async function fetchDeviceLogHistory(deviceId, runId) {
 window.fetchDeviceLogHistory = fetchDeviceLogHistory;
 
 function syncCurrentDeviceLogView() {
-  const filter = state.dockLogDeviceFilter || 'all';
-  if (filter === 'all' && state.lastManagedSnapshot) {
+  if (state.view === 'grid' && state.lastManagedSnapshot) {
     if (typeof updateDockLogWithSnapshot === 'function') {
       updateDockLogWithSnapshot(state.lastManagedSnapshot);
       return;
     }
   }
 
-  const currentDev = (filter !== 'all')
-    ? (state.devices.find(d => d.deviceId === filter) || (typeof currentDevice === 'function' ? currentDevice() : null))
-    : (typeof currentDevice === 'function' ? currentDevice() : null);
-
+  const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
   if (!currentDev) return;
   const deviceId = currentDev.deviceId;
   const devState = (state.deviceStates && state.deviceStates[deviceId]) ? state.deviceStates[deviceId] : { status: 'idle' };
@@ -500,30 +496,6 @@ function initOverviewLogDock() {
   elements.dockCollapseBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     setDockCollapsed(true);
-  });
-
-  elements.dockDeviceTabs?.addEventListener('click', event => {
-    const pill = event.target.closest('[data-dock-dev]');
-    if (!pill) return;
-    const dev = pill.dataset.dockDev;
-    state.dockLogDeviceFilter = dev;
-
-    elements.dockDeviceTabs.querySelectorAll('.dock-dev-pill').forEach(el => {
-      el.classList.toggle('active', el.dataset.dockDev === dev);
-    });
-
-    if (dev !== 'all' && dev !== state.selectedDeviceId) {
-      state.selectedDeviceId = dev;
-      if (typeof renderStatusBar === 'function') renderStatusBar();
-    }
-
-    if (state.lastManagedSnapshot) {
-      if (typeof updateDockLogWithSnapshot === 'function') {
-        updateDockLogWithSnapshot(state.lastManagedSnapshot);
-      }
-    } else {
-      syncCurrentDeviceLogView();
-    }
   });
 
   elements.dockTabTerminalScript?.addEventListener('click', () => switchLogTab('script'));

@@ -8,6 +8,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 
 const DEFAULT_POLL_MS = 700;
 const DEFAULT_HOME_TIMEOUT_MS = 15000;
@@ -174,8 +175,8 @@ async function runStep(context = {}) {
     if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
   }
 
-  const targetName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
-  console.log(`📱 目标设备: ${targetName} (${targetDeviceId}) | 环境配置`);
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  console.log(`📱 目标设备: ${devLabel} | 环境配置`);
 
   const phone = context.phone || client.device(targetDeviceId);
   let control = context.control;

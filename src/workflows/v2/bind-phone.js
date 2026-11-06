@@ -20,6 +20,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { SmsService } = require('../../server/sms/service');
 const { solveCaptcha } = require('../../tools/captcha');
 const shared = require('../../automation/screen');
@@ -366,7 +367,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
   if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
   const resolvedDeviceId = deviceIdOf(target);
-  const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+  const devLabel = (options && options.deviceName) ? options.deviceName : formatDeviceLabel(target);
   const projectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE).trim();
   // 手机号来源优先级：显式指定 > 玄武预抢会话 (login-momo 并行抢号) > 旧固定号兜底
   const phoneSession = options.phoneSession || null;
@@ -385,7 +386,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
   await log.file('Bind phone task initialized', { deviceName, resolvedDeviceId, projectCode, phoneNumber, verifyCode });
 
-  log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+  log.console(`[目标设备] ${devLabel} | V2 (安卓 12)`);
   log.console(`[执行操作] 陌陌手机号绑定 (手机: ${phoneNumber} -> 获取验证码 -> 验证码打字: ${verifyCode} -> 提交)`);
 
   const phone = options.phone || client.device(resolvedDeviceId);

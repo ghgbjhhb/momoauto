@@ -1418,64 +1418,6 @@ body:has(#page-overview:not([hidden])) .page {
   background: var(--line);
 }
 
-.dock-device-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4, 4px);
-  overflow-x: auto;
-  scrollbar-width: none;
-  min-width: 0;
-}
-.dock-device-tabs::-webkit-scrollbar {
-  display: none;
-}
-.dock-dev-pill {
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--muted);
-  padding: 1px var(--sp-6, 6px);
-  font-size: var(--fs-11, 11px);
-  border-radius: var(--r-4, 4px);
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  line-height: var(--lh-tight);
-  user-select: none;
-  transition: all var(--dur-1) ease;
-}
-.dock-dev-pill:hover {
-  background: var(--soft);
-  color: var(--text);
-  border-color: var(--accent);
-}
-.dock-dev-pill.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-  font-weight: var(--fw-500);
-}
-.dock-dev-pill .pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.dock-dev-pill .pill-dot.running {
-  background: #52c41a;
-  box-shadow: 0 0 5px #52c41a;
-}
-.dock-dev-pill .pill-dot.failed {
-  background: #ff4d4f;
-}
-.dock-dev-pill .pill-dot.completed {
-  background: #1890ff;
-}
-.dock-dev-pill .pill-dot.idle {
-  background: var(--muted);
-}
-
 .dock-meta-row {
   padding: var(--sp-4) var(--sp-12);
   font-size: var(--fs-11);

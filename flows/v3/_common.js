@@ -3,7 +3,7 @@
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-const { PROJECT_ROOT, redact } = require('../../src/automation/runtime');
+const { PROJECT_ROOT, redact, formatDeviceLabel } = require('../../src/automation/runtime');
 const timing = require('../../src/automation/timing');
 
 const STEPS = [
@@ -30,7 +30,7 @@ async function runStep(order, { env = process.env, onOutput = text => process.st
     [step.confirmation]: 'YES',
     YUNMOMO_VERIFY_ONLY: '0',
   });
-  onOutput(`开始 ${order}/8：${step.name}，目标设备 ${deviceId}\n`);
+  onOutput(`开始 ${order}/8：${step.name}，目标设备 ${formatDeviceLabel(deviceId)}\n`);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(PROJECT_ROOT, step.source), '--execute'], {
       cwd: PROJECT_ROOT, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,

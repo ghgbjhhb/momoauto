@@ -7,6 +7,7 @@
 // 先让高德界面稳定可见一小段时间，再发送 HOME 并确认回到桌面。
 const fs = require('node:fs/promises');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
   numberOr,
@@ -265,7 +266,7 @@ async function main() {
       state,
       options,
       targetDeviceId,
-      targetDeviceName: target.deviceName ?? target.name ?? 'SF'
+      targetDeviceName: formatDeviceLabel(target)
     });
     homeRestored = true;
   } finally {
@@ -390,7 +391,7 @@ async function runStep(context = {}) {
     state: state || { counter: 0 },
     options,
     targetDeviceId: phone.deviceId,
-    targetDeviceName: target?.deviceName || target?.name || '云机'
+    targetDeviceName: formatDeviceLabel(target)
   });
 }
 

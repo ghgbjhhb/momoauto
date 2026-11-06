@@ -5,6 +5,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 
 const DEFAULT_DEVICE_ID = '2030225672674516993';
 const DEFAULT_CERT_PATH = 'C:\\Users\\Administrator\\Documents\\app\\keybox(2)(1) (1).xml';
@@ -32,7 +33,7 @@ async function main() {
   const data = reads[1].value;
   console.log(JSON.stringify({
     targetDeviceId: deviceId,
-    targetDeviceName: target.deviceName ?? target.name ?? 'SF',
+    targetDeviceName: formatDeviceLabel(target),
     fileName,
     bytes: data.length,
   }));

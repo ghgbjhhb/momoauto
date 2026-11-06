@@ -3,6 +3,7 @@
 // Check whether the selected cloud phone is currently at the Android desktop / home screen.
 // If not, sends HOME key to return to desktop safely and verifies the outcome.
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const shared = require('../../automation/screen');
 const { numberOr, deviceIdOf, findPhrase, RapidOcrWorker, sendHome, homeAnchorMatches } = shared;
 
@@ -79,8 +80,8 @@ async function main() {
   const target = devices.records.find(record => deviceIdOf(record) === targetDeviceId);
   if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
-  const targetName = target.deviceName ?? target.name ?? 'SF';
-  console.log(`📱 目标设备: ${targetName} (${targetDeviceId}) | 检查桌面`);
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  console.log(`📱 目标设备: ${devLabel} | 检查桌面`);
 
   const phone = client.device(targetDeviceId);
   const control = await phone.openControl({ udid: target.udid });

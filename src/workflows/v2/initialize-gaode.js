@@ -9,6 +9,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
@@ -342,10 +343,10 @@ async function main() {
     if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
     const resolvedDeviceId = deviceIdOf(target);
-    const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+    const devLabel = (customParams && customParams.deviceName) ? customParams.deviceName : formatDeviceLabel(target);
     logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion });
 
-    logger.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+    logger.console(`[目标设备] ${devLabel} | V2 (安卓 12)`);
     logger.console(`[执行操作] 高德地图首次启动与初始化`);
 
     if (process.env.YUNMOMO_CONFIRM_GAODE_INIT !== 'YES') {
@@ -468,7 +469,7 @@ async function runGaodeWorkflow({ phone, control, worker, directory, state = { c
 
   logger.console('✅ 高德地图初始化完成，已回到桌面');
   if (resolvedDeviceId) {
-    logger.console(`   📱 目标设备: ${deviceName} (${resolvedDeviceId})`);
+    logger.console(`   📱 目标设备: ${devLabel}`);
   }
   logger.console(`   🎯 处理弹窗: ${initialized.promptActions.length} 个`);
   logger.console('✅ 执行成功');

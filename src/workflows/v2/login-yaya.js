@@ -16,6 +16,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
@@ -1100,10 +1101,10 @@ async function runYayaWorkflow(customParams = {}) {
   if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
   const resolvedDeviceId = deviceIdOf(target);
-  const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+  const devLabel = (customParams && customParams.deviceName) ? customParams.deviceName : formatDeviceLabel(target);
   logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, mode });
 
-  logger.console(`📱 目标设备: ${deviceName} (${resolvedDeviceId})`);
+  logger.console(`📱 目标设备: ${devLabel}`);
   logger.console(`⚙️ 运行模式: ${mode === 'direct' ? '直接登录 (一键授权)' : '历史复扫'}`);
 
   const phone = client.device(resolvedDeviceId);

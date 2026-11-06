@@ -22,7 +22,8 @@ const {
   manualBridges,
   activeToken,
   configuredValue,
-  selectedDevice
+  selectedDevice,
+  listDevices
 } = require('./context');
 const { SCRIPT_DEFINITIONS, scriptById } = require('./script-catalog');
 const { targetDeviceId } = require('../automation/runtime');
@@ -438,6 +439,15 @@ async function executeScriptMeasured(body, user = null, workflowLease = null) {
       }
       env.YUNMOMO_DEVICE_ID = selected.deviceId;
       env.YUNMOMO_UDID = selected.udid;
+      if (!env.YUNMOMO_DEVICE_INDEX_LABEL) {
+        try {
+          const allDevs = await listDevices(token);
+          const idx = allDevs.findIndex(d => d.deviceId === selected.deviceId);
+          if (idx >= 0) {
+            env.YUNMOMO_DEVICE_INDEX_LABEL = '#' + String(idx + 1).padStart(2, '0');
+          }
+        } catch {}
+      }
     } else {
       busyAccountScripts.add(script.id);
       accountScriptLocked = true;

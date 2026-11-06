@@ -10,6 +10,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
   numberOr,
@@ -809,9 +810,9 @@ async function runStep(context = {}) {
   }
 
   const actualDeviceId = deviceIdOf(target);
-  const deviceName = context.deviceName ?? target.deviceName ?? target.name ?? 'SF';
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
 
-  console.log(`📱 目标设备: ${deviceName} (${actualDeviceId})`);
+  console.log(`📱 目标设备: ${devLabel}`);
   console.log(`📍 模式: ${mode === 'search' ? `搜索定位 (${address})` : 'IP 自动定位'}`);
   console.log('🏠 [1/5] 检查桌面状态...');
 

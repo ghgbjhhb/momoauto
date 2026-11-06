@@ -6,6 +6,7 @@
 //   - Show current proxy (--show, --status)
 //   - Stop proxy (--stop, --close)
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -160,11 +161,11 @@ async function main() {
     if (!device) throw new Error(`未找到目标 V2 设备: ${targetDeviceId}`);
 
     const resolvedDeviceId = deviceIdOf(device);
-    const deviceName = String(device.deviceName || device.name || resolvedDeviceId);
+    const devLabel = (customParams && customParams.deviceName) ? customParams.deviceName : formatDeviceLabel(device);
     const phone = client.device(resolvedDeviceId);
 
     logger.file('Resolved device info', { deviceName, resolvedDeviceId, sdkVersion: device.sdkVersion });
-    logger.console(`📱 目标设备: ${deviceName} (${resolvedDeviceId})`);
+    logger.console(`📱 目标设备: ${devLabel}`);
     logger.console(`⚙️ 操作: ${currentOp}`);
 
     // ===================== 可选参数分支 1：展示当前代理 =====================

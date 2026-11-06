@@ -9,6 +9,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const { openAppWithRecovery } = require('../../automation/app-navigation');
 const {
   numberOr,
@@ -476,16 +477,16 @@ async function main() {
   if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
   const actualDeviceId = deviceIdOf(target);
-  const deviceName = target.deviceName ?? target.name ?? 'SF';
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
 
   const confirmExecute = process.env.YUNMOMO_CONFIRM_GENERATE_ALL === 'YES' || process.argv.includes('--execute');
   if (!confirmExecute) {
-    console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
+    console.log(`目标云机: ${devLabel}`);
     console.log('预览完成；如确认在该设备执行“一键生成全部”，请设置 YUNMOMO_CONFIRM_GENERATE_ALL=YES 或传入 --execute 重跑。');
     return;
   }
 
-  console.log(`目标云机: ${deviceName} (${actualDeviceId})`);
+  console.log(`目标云机: ${devLabel}`);
 
   const runId = String(process.env.YUNMOMO_SCRIPT_RUN_ID || ('run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)));
   const screenshotsDir = path.join(PROJECT_ROOT, 'logs', 'screenshots', runId);

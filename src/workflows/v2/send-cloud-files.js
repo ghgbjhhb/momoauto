@@ -4,6 +4,7 @@
 // The send path is intentionally guarded by YUNMOMO_CONFIRM_SEND=YES because
 // rerunning it creates another transfer batch on the target device.
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 
 const DEFAULT_DEVICE_ID = '1920787385311416321'; // GVIP701808715424
 const DEFAULT_POLL_MS = 3000;
@@ -142,7 +143,8 @@ async function runStep(context = {}) {
   const publicDiskFiles = await disk.list({ channel: '2', size: 10000 });
   const publicFiles = selectPublicFiles(publicDiskFiles.records);
 
-  console.log(`📱 目标设备: ${context.deviceName ?? target.deviceName ?? target.name ?? 'SF'} (${actualDeviceId})`);
+  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  console.log(`📱 目标设备: ${devLabel}`);
   console.log(`📦 待分发: 私有文件 ${privateFiles.records.length} 个，应用包 ${publicFiles.length} 个`);
   console.log(`📦 应用清单: ${publicFiles.map(f => f.displayLabel || f.appName || f.name).join('、')}`);
 

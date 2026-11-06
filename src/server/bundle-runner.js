@@ -97,7 +97,7 @@ async function main() {
 
   const context = {
     deviceId: targetDeviceId,
-    deviceName,
+    deviceName: devLabel,
     target,
     client,
     phone,

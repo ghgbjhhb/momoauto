@@ -24,6 +24,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const shared = require('../../automation/screen');
 const { logAuthBudget, recordAuthStart } = require('../../automation/auth-session');
 const { resolveGirlNickname } = require('../../automation/nickname-generator');
@@ -435,7 +436,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
   if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
   const resolvedDeviceId = deviceIdOf(target);
-  const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+  const devLabel = (options && options.deviceName) ? options.deviceName : formatDeviceLabel(target);
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
   const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
   // 网名：留空即离线随机生成，显式指定则原样使用
@@ -445,7 +446,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
 
   await log.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, targetTime, yayaMode, nickname });
 
-  log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+  log.console(`[目标设备] ${devLabel} | V2 (安卓 12)`);
   log.console(`[执行操作] 陌陌一键上号 (登录授权 -> 资料完善 -> 头像上传 -> 手机绑定停靠)`);
 
   const phone = client.device(resolvedDeviceId);

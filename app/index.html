@@ -104,15 +104,6 @@
                   <div class="ov-task-workbench" id="ovTaskConfig"></div>
                 </div>
               </section>
-              <!-- 仅在总览右侧展示真实任务状态，不伪造进度/结果 -->
-              <section class="ov-run-summary" id="ovRunSummary" role="status" aria-live="polite">
-                <span class="ov-run-indicator" id="ovRunIndicator" aria-hidden="true"></span>
-                <div class="ov-run-details">
-                  <strong id="ovRunStatusTitle">任务待命</strong>
-                  <span id="ovRunStatusHint">选择任务，配置参数后即可执行</span>
-                </div>
-                <span class="ov-run-target" id="ovRunStatusTarget">未选择设备</span>
-              </section>
 
               <!-- 运行日志嵌入右侧，不再悬浮覆盖执行按钮；原有日志交互 ID 保持不变 -->
               <div class="overview-log-dock" id="overviewLogDock">
@@ -136,7 +127,10 @@
                         <button class="segment active" id="dockTabTerminalScript" type="button">业务脚本日志</button>
                         <button class="segment" id="dockTabTerminalSystem" type="button" hidden>系统运行日志 <span class="log-badge" id="dockSystemLogBadge" hidden>0</span></button>
                       </div>
-                      <div class="dock-device-tabs" id="dockDeviceTabs" style="display: none;"></div>
+                      <div class="dock-status-pill" id="dockStatusPill" role="status" aria-live="polite">
+                        <span class="dock-status-dot" id="dockStatusDot"></span>
+                        <span class="dock-status-text" id="dockStatusText">设备待命</span>
+                      </div>
                     </div>
                     <div class="dock-actions">
                       <button class="btn sm flat" id="dockCopyOutputBtn" type="button" title="复制日志">复制</button>

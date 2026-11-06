@@ -34,6 +34,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { PROJECT_ROOT } = require('../../automation/runtime');
 const { YunmomoClient } = require('../../index');
+const { formatDeviceLabel } = require('../../automation/runtime');
 const shared = require('../../automation/screen');
 const { logAuthBudget } = require('../../automation/auth-session');
 const { resolveGirlNickname } = require('../../automation/nickname-generator');
@@ -267,14 +268,14 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
   if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
   const resolvedDeviceId = deviceIdOf(target);
-  const deviceName = String(target.deviceName || target.name || resolvedDeviceId);
+  const devLabel = (options && options.deviceName) ? options.deviceName : formatDeviceLabel(target);
   // 网名：留空即离线随机生成，显式指定则原样使用
   const nickname = await resolveGirlNickname(options.nickname || process.env.YUNMOMO_MOMO_NICKNAME);
   log.console(`[人设网名] 女生网名: "${nickname}"`);
 
   await log.file('Setup profile task initialized', { deviceName, resolvedDeviceId, nickname });
 
-  log.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+  log.console(`[目标设备] ${devLabel} | V2 (安卓 12)`);
   log.console(`[执行操作] 陌陌资料完善 (性别/网名/生日 -> 头像/网速 -> 云盘传图 -> 允许权限 -> 选第一张图 -> 裁切/美化 -> 进入陌陌 -> 手机绑定停下)`);
 
   const phone = options.phone || client.device(resolvedDeviceId);
