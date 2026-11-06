@@ -247,23 +247,31 @@ function createScriptRunId() {
   return `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ANSI 控制符剥离正则 (颜色、光标等)
+const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+
 function cleanScriptLines(stdout, stderr) {
   const lines = [];
-  if (stdout) {
-    for (const line of stdout.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('{"deviceId"') || trimmed.startsWith('{"ok":true') ||
-          trimmed.startsWith('{"targetDeviceId"') || trimmed.startsWith('{"phase"') || trimmed.startsWith('[timing]')) continue;
-      lines.push(trimmed);
+  function processChunk(chunk, isStderr) {
+    if (!chunk) return;
+    const cleanStr = String(chunk).replace(ANSI_REGEX, '');
+    for (const rawLine of cleanStr.split(/\r?\n/)) {
+      // 终端 \r 行首折叠处理（取最后一个 \r 之后的内容，消除进度条膨胀）
+      const parts = rawLine.split('\r');
+      const folded = parts[parts.length - 1].trim();
+      if (!folded || folded.startsWith('{"deviceId"') || folded.startsWith('{"ok":true') ||
+          folded.startsWith('{"targetDeviceId"') || folded.startsWith('{"phase"') || folded.startsWith('[timing]')) continue;
+      if (isStderr) {
+        // 智能区分真正致命错误与普通警告日志
+        const isRealError = /^(error|fatal|exception|traceback|panic)/i.test(folded) || /failed|timed? out/i.test(folded);
+        lines.push(isRealError ? '错误: ' + folded : folded);
+      } else {
+        lines.push(folded);
+      }
     }
   }
-  if (stderr) {
-    for (const line of stderr.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('[timing]')) continue;
-      lines.push('错误: ' + trimmed);
-    }
-  }
+  processChunk(stdout, false);
+  processChunk(stderr, true);
   return lines;
 }
 window.cleanScriptLines = cleanScriptLines;
@@ -286,7 +294,9 @@ function writeOutput(title, lines, meta = {}) {
 
   if (!meta.skipDeviceLogStore && targetDeviceIds.length > 0 && state.deviceLogs) {
     for (const devId of targetDeviceIds) {
-      state.deviceLogs.set(devId, text);
+      // 保持单个设备的日志内存在安全滑动窗口内（保留最新 120KB），杜绝无节制内存暴涨引发掉帧
+      const boundedText = text.length > 150000 ? '[前序日志已滚动截断]\n' + text.slice(-120000) : text;
+      state.deviceLogs.set(devId, boundedText);
       if (runId && state.deviceActiveRunIds) state.deviceActiveRunIds.set(devId, runId);
     }
   }

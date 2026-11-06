@@ -333,22 +333,101 @@ async function handleConsoleRoutes(ctx, request, response, url) {
   if (request.method === 'GET' && url.pathname === '/api/logs') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
     const scriptRunId = String(url.searchParams.get('scriptRunId') || url.searchParams.get('runId') || '').trim();
+    const targetDevId = String(url.searchParams.get('deviceId') || '').trim();
+    const offsetRaw = url.searchParams.get('offset');
+    const offset = offsetRaw != null ? Math.max(0, parseInt(offsetRaw, 10) || 0) : null;
+    const tailRaw = url.searchParams.get('tail');
+    const tailBytes = tailRaw != null ? Math.max(100, Math.min(200000, parseInt(tailRaw, 10) || 16000)) : null;
+
     if (!/^[A-Za-z0-9_-]{8,128}$/.test(scriptRunId)) {
       json(response, 400, { ok: false, error: '无效的日志调用编号' });
       return true;
     }
-    const ownerUserId = await readRunOwner(scriptRunId);
-    if (user.role !== 'admin' && ownerUserId !== user.id) {
+
+    // 鉴权：允许读取自己发起的运行或管理员
+    let ownerUserId = await readRunOwner(scriptRunId);
+    if (!ownerUserId && targetDevId) {
+      ownerUserId = await readRunOwner(`${scriptRunId}_${targetDevId}`);
+    }
+    if (user.role !== 'admin' && ownerUserId && ownerUserId !== user.id) {
       json(response, 403, { ok: false, error: '无权读取其他用户的执行日志' });
       return true;
     }
-    const logPath = path.join(PROJECT_ROOT, 'logs', 'runs', `${scriptRunId}.log`);
-    try {
-      const content = await fs.promises.readFile(logPath, 'utf8');
-      json(response, 200, { ok: true, scriptRunId, content: redact(content) });
-    } catch {
-      json(response, 404, { ok: false, error: '未找到指定调用的日志文件' });
+
+    // 查找物理文件顺序：
+    // 1. 组合任务设备特定物理日志：logs/runs/{scriptRunId}_{deviceId}.log
+    // 2. 通用单脚本物理日志：logs/runs/{scriptRunId}.log
+    const runsDir = path.join(PROJECT_ROOT, 'logs', 'runs');
+    let content = null;
+    if (targetDevId) {
+      const devPath = path.join(runsDir, `${scriptRunId}_${targetDevId}.log`);
+      try { content = await fs.promises.readFile(devPath, 'utf8'); } catch {}
     }
+    if (content == null) {
+      const genericPath = path.join(runsDir, `${scriptRunId}.log`);
+      try { content = await fs.promises.readFile(genericPath, 'utf8'); } catch {}
+    }
+
+    // 3. 若物理文件未落地或为空，则回退查询内存活跃日志（杜绝 404 导致前端永久卡死）
+    if (!content) {
+      const memLog = getWorkflowDeviceLog(scriptRunId, targetDevId, user);
+      if (memLog) content = memLog;
+    }
+
+    if (content == null) {
+      // 物理和内存均暂无内容时返回空输出而非 404，保持通道畅通
+      json(response, 200, {
+        ok: true, scriptRunId, deviceId: targetDevId, content: '',
+        offset: 0, nextOffset: 0, waiting: true
+      });
+      return true;
+    }
+
+    const safeText = redact(content);
+    const totalBytes = Buffer.byteLength(safeText, 'utf8');
+
+    // 增量切片 (Delta Chunk / Byte Offset)
+    if (offset !== null) {
+      const safeBuf = Buffer.from(safeText, 'utf8');
+      const start = Math.min(offset, safeBuf.length);
+      const delta = safeBuf.slice(start).toString('utf8');
+      json(response, 200, {
+        ok: true,
+        scriptRunId,
+        deviceId: targetDevId,
+        content: delta,
+        offset: start,
+        nextOffset: safeBuf.length,
+        totalBytes: safeBuf.length
+      });
+      return true;
+    }
+
+    // 尾部采样切片 (Tail Window)
+    if (tailBytes !== null && totalBytes > tailBytes) {
+      const safeBuf = Buffer.from(safeText, 'utf8');
+      const delta = safeBuf.slice(-tailBytes).toString('utf8');
+      json(response, 200, {
+        ok: true,
+        scriptRunId,
+        deviceId: targetDevId,
+        content: delta,
+        offset: totalBytes - tailBytes,
+        nextOffset: totalBytes,
+        totalBytes
+      });
+      return true;
+    }
+
+    json(response, 200, {
+      ok: true,
+      scriptRunId,
+      deviceId: targetDevId,
+      content: safeText,
+      offset: 0,
+      nextOffset: totalBytes,
+      totalBytes
+    });
     return true;
   }
 

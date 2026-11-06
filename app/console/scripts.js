@@ -1046,7 +1046,11 @@ async function followManagedWorkflow(runId) {
       const dockBox = elements.dockOutputBox;
       let hasCurDevRealLog = false;
       if (curDev && snapshot.deviceOutputs && snapshot.deviceOutputs[curDev.deviceId]) {
-        const curLog = snapshot.deviceOutputs[curDev.deviceId].trim();
+        let curLog = snapshot.deviceOutputs[curDev.deviceId].trim();
+        const curDevResult = (snapshot.results || []).find(r => r.deviceId === curDev.deviceId);
+        if (curDevResult && (curDevResult.status === 'failed' || curDevResult.status === 'cancelled')) {
+          curLog += `\n\n[系统提示] 该设备执行已${curDevResult.status === 'failed' ? '失败中止' : '已停止'}：${curDevResult.message || '退出'}`;
+        }
         if (dockBox && curLog) {
           dockBox.textContent = curLog;
           if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
@@ -1522,7 +1526,7 @@ async function runScriptOnDevice(script, deviceId, options = {}) {
       if (output.trim() && output !== lastOutput) {
         lastOutput = output;
         writeOutput(`[设备 ${label}] 执行中：${script.title}`,
-          cleanScriptLines(snapshot.stdout, snapshot.stderr), { runId: scriptRunId, logFile: snapshot.logFile });
+          cleanScriptLines(snapshot.stdout, snapshot.stderr), { runId: scriptRunId, logFile: snapshot.logFile, deviceId });
       }
       await new Promise(resolve => setTimeout(resolve, 1200));
     }

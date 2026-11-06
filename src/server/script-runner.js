@@ -33,7 +33,7 @@ const authService = getAuthService();
 function appendOutput(current, chunk) {
   const value = current + String(chunk);
   return value.length > MAX_OUTPUT_BYTES
-    ? value.slice(0, MAX_OUTPUT_BYTES) + '\n[输出已截断]'
+    ? '[前序输出已滚动截断]\n' + value.slice(-MAX_OUTPUT_BYTES)
     : value;
 }
 

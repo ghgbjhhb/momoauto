@@ -480,9 +480,28 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
     run.activeDeviceRuns.set(entry.deviceId, { type: 'bundle', child });
     let fullOutput = '';
 
+    // 为组合任务的每台设备创建物理落盘日志文件，统一日志检索规范
+    const runsLogDir = path.join(PROJECT_ROOT, 'logs', 'runs');
+    try { fs.mkdirSync(runsLogDir, { recursive: true }); } catch {}
+    const devLogFile = path.join(runsLogDir, `${run.id}_${entry.deviceId}.log`);
+    const devOwnerFile = path.join(runsLogDir, `${run.id}_${entry.deviceId}.owner`);
+    try { fs.writeFileSync(devOwnerFile, run.ownerUserId || user?.id || '', 'utf8'); } catch {}
+    const logStream = fs.createWriteStream(devLogFile, { flags: 'a', encoding: 'utf8' });
+    try {
+      logStream.write(`================================================================================\n` +
+        `[工作流编号] ${run.id}\n` +
+        `[目标设备]   ${entry.deviceId}\n` +
+        `[启动时间]   ${new Date().toISOString()}\n` +
+        `================================================================================\n\n`);
+    } catch {}
+
     const handleOutput = chunk => {
       const text = chunk.toString('utf8');
+      try { logStream.write(chunk); } catch {}
       fullOutput += text;
+      if (fullOutput.length > 250000) {
+        fullOutput = '[前序日志已滚动截断]\n' + fullOutput.slice(-180000);
+      }
       run.deviceOutputs.set(entry.deviceId, fullOutput);
 
       const endMatch = text.match(/::step-end:(\d+):[^:]+:ok::/);
@@ -506,6 +525,12 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
     });
 
     child.on('close', code => {
+      try {
+        logStream.end(`\n================================================================================\n` +
+          `[结束时间]   ${new Date().toISOString()}\n` +
+          `[退出代码]   ${code}\n` +
+          `================================================================================\n`);
+      } catch {}
       entry.pid = null;
       run.activeDeviceRuns.delete(entry.deviceId);
       if (code === 0) {
@@ -708,4 +733,20 @@ async function stopWorkflowByDevice(deviceId, user) {
   return { ok: true, stopped: true, workflowRunId: matchedRun.id, deviceId, message: '已停止设备上的工作流步骤' };
 }
 
-module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice, dismissWorkflow };
+function getWorkflowDeviceLog(id, deviceId, user) {
+  try {
+    const run = getWorkflow(id, user);
+    if (!run) return '';
+    if (deviceId && run.deviceOutputs?.has(deviceId)) {
+      return run.deviceOutputs.get(deviceId) || '';
+    }
+    if (run.deviceOutputs && run.deviceOutputs.size > 0) {
+      return [...run.deviceOutputs.values()].join('\n\n');
+    }
+    return run.lastOutput || '';
+  } catch {
+    return '';
+  }
+}
+
+module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice, dismissWorkflow, getWorkflowDeviceLog, getWorkflow };

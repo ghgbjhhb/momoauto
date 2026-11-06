@@ -411,16 +411,21 @@ function initLogPage() {
 async function fetchDeviceLogHistory(deviceId, runId) {
   if (!deviceId || !runId) return;
   try {
-    const res = await requestJson('/api/logs?scriptRunId=' + encodeURIComponent(runId));
-    if (res?.ok && res.content) {
-      if (state.deviceLogs) state.deviceLogs.set(deviceId, res.content);
-      if (state.deviceActiveRunIds) state.deviceActiveRunIds.set(deviceId, runId);
-      const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
-      if (currentDev && currentDev.deviceId === deviceId) {
-        const box = elements.dockOutputBox;
-        if (box) {
-          box.textContent = res.content;
-          if (state.logDockAutoScroll !== false) box.scrollTop = box.scrollHeight;
+    // 携带目标 deviceId 与 tail 采样，支持单脚本与多机组合任务统一流式查询，杜绝 404 死锁
+    const url = `/api/logs?scriptRunId=${encodeURIComponent(runId)}&deviceId=${encodeURIComponent(deviceId)}&tail=32000`;
+    const res = await requestJson(url);
+    if (res?.ok) {
+      const text = res.content || (res.waiting ? '正在执行中，等待输出…' : '');
+      if (text) {
+        if (state.deviceLogs) state.deviceLogs.set(deviceId, text);
+        if (state.deviceActiveRunIds) state.deviceActiveRunIds.set(deviceId, runId);
+        const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
+        if (currentDev && currentDev.deviceId === deviceId) {
+          const box = elements.dockOutputBox;
+          if (box) {
+            box.textContent = text;
+            if (state.logDockAutoScroll !== false) box.scrollTop = box.scrollHeight;
+          }
         }
       }
     }
@@ -531,7 +536,7 @@ function initOverviewLogDock() {
   const dockBox = elements.dockOutputBox;
   if (dockBox) {
     dockBox.addEventListener('scroll', () => {
-      const threshold = 25;
+      const threshold = 65;
       const isAtBottom = (dockBox.scrollHeight - dockBox.scrollTop - dockBox.clientHeight) <= threshold;
       state.logDockAutoScroll = isAtBottom;
       const jumpBtn = elements.dockJumpBottomBtn;
