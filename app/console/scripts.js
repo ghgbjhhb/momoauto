@@ -1009,72 +1009,21 @@ function updateDockLogWithSnapshot(snapshot) {
   const dockBox = elements.dockOutputBox;
   if (!dockBox) return;
 
-  const results = snapshot.results || [];
-  const outputs = snapshot.deviceOutputs || {};
-
-  // 单台视图下只展示当前聚焦设备
+  const outputs = snapshot?.deviceOutputs || {};
   const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
-  if (state.view === 'single' && curDev) {
+  if (curDev) {
     const curLog = (outputs[curDev.deviceId] || state.deviceLogs?.get(curDev.deviceId) || '').trim();
-    dockBox.textContent = curLog || ('[设备 ' + (curDev.name || curDev.deviceId) + '] 暂无日志');
+    if (curLog) {
+      dockBox.textContent = curLog;
+      if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+      return;
+    }
+  }
+
+  // 若尚未取得聚焦设备的独立日志，兜底展示全局输出
+  if (snapshot?.output) {
+    dockBox.textContent = snapshot.output;
     if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
-    return;
-  }
-
-  // 批量/多选模式：设备索引 + 最新日志增量时序流
-  const runId = snapshot.id || snapshot.workflowRunId || '';
-  if (runId && batchStreamState.workflowRunId !== runId) {
-    resetBatchLogStream(runId);
-  }
-
-  const targetIds = results.length > 0 ? results.map(r => r.deviceId) : (state.batchDevices || []);
-  let hasNew = false;
-
-  for (const devId of targetIds) {
-    const dev = state.devices.find(d => d.deviceId === devId);
-    const label = dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : devId;
-    const fullText = (outputs[devId] || state.deviceLogs?.get(devId) || '');
-    const prevCursor = batchStreamState.deviceCursors.get(devId);
-
-    if (prevCursor === undefined) {
-      // 首次接入该设备：提取最新 8 行作为起点，避免巨幅历史输出阻塞
-      const lines = fullText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const initialChunk = lines.slice(-8);
-      for (const line of initialChunk) {
-        if (!line.startsWith('===') && !line.startsWith('----') && !line.startsWith('::step-')) {
-          batchStreamState.streamLines.push('[' + label + '] ' + line);
-          hasNew = true;
-        }
-      }
-      batchStreamState.deviceCursors.set(devId, fullText.length);
-    } else if (fullText.length > prevCursor) {
-      // 增量更新：仅提取该设备新增输出
-      const newChunk = fullText.slice(prevCursor);
-      batchStreamState.deviceCursors.set(devId, fullText.length);
-      const newLines = newChunk.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      for (const line of newLines) {
-        if (!line.startsWith('===') && !line.startsWith('----') && !line.startsWith('::step-')) {
-          batchStreamState.streamLines.push('[' + label + '] ' + line);
-          hasNew = true;
-        }
-      }
-    }
-  }
-
-  // 维持滑动窗口上限 1200 行
-  if (batchStreamState.streamLines.length > 1200) {
-    batchStreamState.streamLines = batchStreamState.streamLines.slice(-1000);
-  }
-
-  if (hasNew || dockBox.textContent === '暂无执行记录。') {
-    if (batchStreamState.streamLines.length > 0) {
-      dockBox.textContent = batchStreamState.streamLines.join('\n');
-    } else if (snapshot.output) {
-      dockBox.textContent = snapshot.output;
-    }
-    if (state.logDockAutoScroll !== false) {
-      dockBox.scrollTop = dockBox.scrollHeight;
-    }
   }
 }
 window.updateDockLogWithSnapshot = updateDockLogWithSnapshot;
@@ -2505,34 +2454,39 @@ function updateOverviewRunSummary() {
   let title = '任务待命';
   let hint = '选择任务，配置参数后即可执行';
   let status = 'idle';
-  let targetText = '未选择设备';
 
+  // 1. 下发目标指示（供右侧执行表单展示，表示下次执行的目标范围）
+  const count = targets.length;
+  const targetText = isGrid
+    ? (count ? `已选 ${count} 台设备` : '未选择设备')
+    : (currentDev ? `目标：${typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId}` : '未选择设备');
+
+  // 2. 真实物理与集群运行状态（供 Dock 状态胶囊与日志栏标题展示，与勾选完全解耦）
   const allRunningDevs = Object.values(state.deviceStates || {}).filter(s => ['running', 'stopping'].includes(s.status));
 
-  if (!isGrid && currentDev) {
+  if (currentDev) {
     const devLabel = typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId;
-    targetText = `目标：${devLabel}`;
     const devState = getDeviceState(currentDev.deviceId);
     if (devState.status === 'running') {
       const otherCount = allRunningDevs.filter(s => s.deviceId !== currentDev.deviceId).length;
-      statusText = `[${devLabel}] 运行中: ${devState.taskTitle || '执行中'}` + (otherCount > 0 ? ` (另有${otherCount}台并发中)` : '');
-      title = '设备任务运行中';
+      statusText = `[${devLabel}] 运行中: ${devState.taskTitle || '执行中'}` + (otherCount > 0 ? ` (共${allRunningDevs.length}台运行)` : '');
+      title = `[${devLabel}] 任务运行中`;
       hint = devState.taskTitle || '正在执行脚本';
       status = 'running';
     } else if (devState.status === 'stopping') {
       statusText = `[${devLabel}] 正在停止任务...`;
-      title = '正在停止设备任务';
+      title = `正在停止设备 [${devLabel}] 任务`;
       hint = '等待动作完成并安全释放云机…';
       status = 'warning';
     } else if (devState.status === 'manual') {
       statusText = `[${devLabel}] 手动控制中`;
-      title = '设备手动控制中';
+      title = `设备 [${devLabel}] 手动控制中`;
       hint = '人工操作正在接管控制通道';
       status = 'running';
     } else {
       if (allRunningDevs.length > 0) {
-        statusText = `[${devLabel}] 待命 (后台${allRunningDevs.length}台执行中)`;
-        title = '设备待命';
+        statusText = `[${devLabel}] 待命 (后台${allRunningDevs.length}台运行中)`;
+        title = `[${devLabel}] 待命`;
         hint = `当前设备空闲 (后台 ${allRunningDevs.length} 台设备运行中)`;
       } else {
         statusText = `[${devLabel}] 待命就绪`;
@@ -2541,24 +2495,17 @@ function updateOverviewRunSummary() {
       }
       status = 'idle';
     }
-  } else if (isGrid) {
-    const count = targets.length;
-    targetText = count ? `已选 ${count} 台设备` : '未选择设备';
-    const busyTargets = targets.map(d => getDeviceState(d.deviceId)).filter(s => ['running', 'stopping'].includes(s.status));
-    if (busyTargets.length > 0) {
-      statusText = `批量运行中 (${busyTargets.length}/${count})`;
-      title = `批量任务运行中 (${busyTargets.length}/${count})`;
-      hint = busyTargets.map(s => s.taskTitle).filter(Boolean).slice(0, 2).join(', ') || '多设备并行执行中';
+  } else {
+    if (allRunningDevs.length > 0) {
+      statusText = `${allRunningDevs.length} 台设备运行中`;
       status = 'running';
     } else {
-      statusText = count ? `批量待命 (已选 ${count} 台)` : '批量待命 (未选择设备)';
-      title = '批量待命';
-      hint = count ? `已选 ${count} 台设备，就绪后可批量启动` : '请在画面上方勾选要批量操作的设备';
+      statusText = '待命就绪';
       status = 'idle';
     }
   }
 
-  // 1. 更新嵌入日志栏头部的状态微胶囊
+  // 3. 更新嵌入日志栏头部的状态微胶囊
   const pill = byId('dockStatusPill');
   const textEl = byId('dockStatusText');
   if (pill) {
@@ -2566,13 +2513,13 @@ function updateOverviewRunSummary() {
     if (textEl) textEl.textContent = statusText;
   }
 
-  // 2. 更新折叠日志栏的小字提示
+  // 4. 更新折叠日志栏的小字提示
   const miniHint = byId('dockMiniHint');
   if (miniHint) {
     miniHint.textContent = statusText;
   }
 
-  // 3. 兼容旧 DOM
+  // 5. 兼容旧 DOM
   const summary = byId('ovRunSummary');
   if (summary) {
     summary.dataset.status = status;

@@ -437,13 +437,6 @@ async function fetchDeviceLogHistory(deviceId, runId) {
 window.fetchDeviceLogHistory = fetchDeviceLogHistory;
 
 async function syncCurrentDeviceLogView() {
-  if (state.view === 'grid' && state.lastManagedSnapshot) {
-    if (typeof updateDockLogWithSnapshot === 'function') {
-      updateDockLogWithSnapshot(state.lastManagedSnapshot);
-      return;
-    }
-  }
-
   const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
   if (!currentDev) return;
   const deviceId = currentDev.deviceId;

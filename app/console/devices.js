@@ -868,8 +868,8 @@ elements.viewerStage?.addEventListener?.('click', event => {
     lastTileClick.deviceId = deviceId;
     lastTileClick.at = now;
 
-    // 单击卡片主体：直接切换勾选！
-    toggleTileBatchSelection(deviceId);
+    // 单击卡片主体：聚焦该设备，联动切换底部状态与右下角日志！
+    selectDevice(deviceId);
     return;
   }
 
