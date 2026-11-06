@@ -225,19 +225,19 @@ async function loadSharedRuntimeState() {
     state.deviceStates = (data.deviceStates && typeof data.deviceStates === 'object') ? data.deviceStates : {};
     // 自动调和：若前端本地持有活跃任务记录，但后端已确认无该任务活跃，则清理僵尸态
     // 注意：若任务正在被 followManagedWorkflow 活跃轮询（following 为 true），其生命周期由自身长轮询全权管理，严禁外部误杀！
-    if (state.activeWorkflowRun && !state.activeWorkflowRun.following) {
+    if (state.activeWorkflowRuns && state.activeWorkflowRuns.size > 0) {
       const activeList = state.runtimeState.activeWorkflows || [];
-      const serverHasIt = activeList.some(w => w.workflowRunId === state.activeWorkflowRun.id);
-      const ageMs = Date.now() - (state.activeWorkflowRun.startedAt || 0);
-      if (!serverHasIt && ageMs > 45000 && !state.batchStopRequested) {
-        sessionStorage.removeItem('yunmomo.workflowRun');
-        state.activeWorkflowRun = null;
-        state.activeBundleRun = null;
-        state.batchRunning = false;
-        state.batchStopRequested = false;
-        if (typeof renderTaskDetail === 'function' && state.page === 'tasks') renderTaskDetail();
-        if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
+      const serverIds = new Set(activeList.map(w => w.workflowRunId));
+      for (const [runId, record] of state.activeWorkflowRuns) {
+        if (!record.following && !serverIds.has(runId)) {
+          const ageMs = Date.now() - (record.startedAt || 0);
+          if (ageMs > 45000 && !state.batchStopRequested) {
+            state.activeWorkflowRuns.delete(runId);
+          }
+        }
       }
+      if (typeof getActiveWorkflow === 'function') state.activeWorkflowRun = getActiveWorkflow();
+      state.batchRunning = state.activeWorkflowRuns.size > 0;
     }
     state.runtimeStateStale = false;
   } catch (error) {

@@ -63,6 +63,8 @@ const state = {
   activeRun: null,
   activeBundleRun: null,
   activeWorkflowRun: null,
+  activeWorkflowRuns: new Map(),
+  activeScriptRuns: new Map(),
   batchDevices: [],
   batchRunning: false,
   batchStopRequested: false,
