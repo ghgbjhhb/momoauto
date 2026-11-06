@@ -2,10 +2,18 @@
 
 // V3 设备模块：画面预览（单台直播 / 宫格截图）、设备表格、状态栏与最近活动。
 
-const TILE_SHOT_TTL = 12000;
-const SHOT_CONCURRENCY = 2;
+const TILE_SHOT_TTL_IDLE = 8000;     // 待命状态 8 秒低频保活
+const TILE_SHOT_TTL_ACTIVE = 1300;   // 任务运行中 1.3 秒自适应高刷 (约 0.8 FPS)
+const SHOT_CONCURRENCY = 6;          // 支持多台设备齐头并进同时刷新
 let shotActive = 0;
 const shotQueue = [];
+
+function isDeviceActive(deviceId) {
+  if (deviceRunning(deviceId)) return true;
+  if (state.batchRunning && (state.batchResults || []).some(r => r.deviceId === deviceId && ['pending', 'running'].includes(r.status))) return true;
+  if (state.activeRun && state.activeRun.deviceId === deviceId) return true;
+  return false;
+}
 
 function deviceIndexLabel(device) {
   const index = state.devices.indexOf(device) + 1;
@@ -605,9 +613,11 @@ function renderGridViewer(forceRebuild = false) {
   }
 }
 
-function queueTileShot(device) {
+function queueTileShot(device, force = false) {
+  const active = isDeviceActive(device.deviceId);
+  const ttl = active ? TILE_SHOT_TTL_ACTIVE : TILE_SHOT_TTL_IDLE;
   const cached = state.tileShots.get(device.deviceId);
-  if (cached && Date.now() - cached.at < TILE_SHOT_TTL) {
+  if (!force && cached && Date.now() - cached.at < ttl) {
     drawTileShot(device.deviceId, cached);
     return;
   }
@@ -967,7 +977,18 @@ eventBus.addEventListener('runtime:changed', () => {
   if (state.page === 'overview') { renderViewerCaption(); renderRecentActivity(); }
 });
 
-setInterval(refreshTileShots, TILE_SHOT_TTL);
+let tileSchedulerTimer = null;
+function scheduleNextTileRefresh() {
+  if (tileSchedulerTimer) clearTimeout(tileSchedulerTimer);
+  const hasRunning = (state.devices || []).some(d => isDeviceActive(d.deviceId));
+  const delay = hasRunning ? TILE_SHOT_TTL_ACTIVE : TILE_SHOT_TTL_IDLE;
+  tileSchedulerTimer = setTimeout(() => {
+    if (!document.hidden) refreshTileShots();
+    scheduleNextTileRefresh();
+  }, delay);
+}
+scheduleNextTileRefresh();
+window.refreshTileShots = refreshTileShots;
 
 
 

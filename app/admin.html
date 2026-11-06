@@ -325,26 +325,27 @@
       <!-- Tab: 资源云盘 -->
       <section class="tab-content" id="tab-disk">
         <div class="table-container" style="margin-bottom: var(--sp-20)">
-          <div class="table-toolbar">
+          <div class="table-toolbar" style="display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); flex-wrap: wrap;">
             <div style="display: flex; align-items: center; gap: var(--sp-8)">
               <button type="button" class="btn-action-sm active" data-dir="真参" id="adminDiskDirParams" style="font-weight: var(--fw-600); padding: var(--sp-6) var(--sp-16); border-radius: var(--r-6); cursor: pointer">
-                真机参数 <span id="adminDiskCountParams" style="background: var(--accent); color: var(--text-on-accent); padding: 0 var(--sp-6); border-radius: var(--r-8); font-size: var(--fs-12); margin-left: var(--sp-4)">0</span>
+                ⚙️ 真机参数 <span id="adminDiskCountParams" style="background: var(--accent); color: var(--text-on-accent); padding: 0 var(--sp-6); border-radius: var(--r-8); font-size: var(--fs-12); margin-left: var(--sp-4)">0</span>
               </button>
               <button type="button" class="btn-action-sm" data-dir="头像" id="adminDiskDirAvatars" style="font-weight: var(--fw-600); padding: var(--sp-6) var(--sp-16); border-radius: var(--r-6); cursor: pointer">
-                用户头像 <span id="adminDiskCountAvatars" style="background: var(--border); color: var(--text-2); padding: 0 var(--sp-6); border-radius: var(--r-8); font-size: var(--fs-12); margin-left: var(--sp-4)">0</span>
+                🖼️ 用户头像 <span id="adminDiskCountAvatars" style="background: var(--border); color: var(--text-2); padding: 0 var(--sp-6); border-radius: var(--r-8); font-size: var(--fs-12); margin-left: var(--sp-4)">0</span>
               </button>
             </div>
-            <div style="display: flex; align-items: center; gap: var(--sp-8)">
-              <div style="display: flex; align-items: center; gap: var(--sp-6)">
-                <label for="adminDiskDeviceSelect" style="font-size: var(--fs-13); color: var(--text-2)">目标云机：</label>
-                <select id="adminDiskDeviceSelect" class="form-input" style="width: 250px; height: var(--h-control-lg); font-size: var(--fs-13)">
-                  <option value="">加载设备中…</option>
-                </select>
-                <button class="btn-action-sm" id="adminDiskRefreshDevicesBtn" type="button" title="刷新设备列表">刷新</button>
+            <div style="display: flex; align-items: center; gap: var(--sp-8); flex: 1; max-width: 480px; justify-content: flex-end;">
+              <div id="adminDiskFilterGroup" style="display: flex; align-items: center; gap: var(--sp-4); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-6); padding: 2px;">
+                <button type="button" class="btn-filter-status active" data-status-filter="all" style="border:none; background:var(--accent); color:var(--text-on-accent); padding:4px 10px; font-size:var(--fs-12); border-radius:var(--r-4); cursor:pointer; font-weight:var(--fw-500);">全部</button>
+                <button type="button" class="btn-filter-status" data-status-filter="avail" style="border:none; background:transparent; color:var(--text-2); padding:4px 10px; font-size:var(--fs-12); border-radius:var(--r-4); cursor:pointer;">🟢 可用</button>
+                <button type="button" class="btn-filter-status" data-status-filter="used" style="border:none; background:transparent; color:var(--text-2); padding:4px 10px; font-size:var(--fs-12); border-radius:var(--r-4); cursor:pointer;">🔴 已用</button>
               </div>
+              <input type="text" id="adminDiskSearchInput" placeholder="🔍 搜索文件 / 机型..." class="form-input" style="width: 180px; height: var(--h-control-lg); font-size: var(--fs-13); padding: 0 var(--sp-10);" />
+            </div>
+            <div style="display: flex; align-items: center; gap: var(--sp-8)">
               <input type="file" id="adminDiskFileInput" multiple hidden />
-              <button class="btn-action-sm" id="adminDiskUploadBtn" type="button" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: var(--fw-500); height: var(--h-control-lg); padding: 0 var(--sp-12)">⬆️ 上传文件</button>
-              <button class="btn-action-sm" id="adminDiskRefreshBtn" type="button" style="height: var(--h-control-lg); padding: 0 var(--sp-12)">刷新</button>
+              <button class="btn-action-sm" id="adminDiskUploadBtn" type="button" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: var(--fw-500); height: var(--h-control-lg); padding: 0 var(--sp-14);">⬆️ 上传文件</button>
+              <button class="btn-action-sm" id="adminDiskRefreshBtn" type="button" title="刷新文件列表" style="height: var(--h-control-lg); padding: 0 var(--sp-12); display: inline-flex; align-items: center; gap: 4px;">🔄 刷新</button>
             </div>
           </div>
           <div style="padding: var(--sp-16) var(--sp-20)">
@@ -357,13 +358,10 @@
               </div>
               <div style="display: flex; align-items: center; gap: var(--sp-8)">
                 <button type="button" class="btn-action-sm" id="btnPreviewSelectedAvatar" style="padding: var(--sp-4) var(--sp-12)">
-                  预览
-                </button>
-                <button type="button" class="btn-action-sm" id="btnPushSelectedAvatar" style="background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); font-weight: var(--fw-600); padding: var(--sp-4) var(--sp-12)">
-                  推送到相册
+                  👁️ 预览原图
                 </button>
                 <button type="button" class="btn-action-sm danger" id="btnDeleteSelectedAvatar" style="padding: var(--sp-4) var(--sp-12)">
-                  删除
+                  🗑️ 删除
                 </button>
               </div>
             </div>
