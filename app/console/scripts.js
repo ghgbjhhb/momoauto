@@ -58,7 +58,8 @@ function setStepState(deviceId, order, status) {
 }
 
 function scriptTitle(script) {
-  return script.order ? script.title.replace(/^(0[1-9](?:\.\d+)?|\d+)\s*[-_、\s]\s*/, '') : script.title;
+  if (!script) return '';
+  return script.order ? script.title.replace(/^(?:\d+(?:\.\d+)?|[a-zA-Z]?\d+)[\.\-_、\s]+\s*/, '') : script.title;
 }
 
 function isScriptManageMode() {
@@ -2015,7 +2016,7 @@ function renderModalSelectedSteps() {
     const row = document.createElement('div');
     row.className = 'bundle-step-row';
     row.innerHTML = `<div class="bundle-step-head">
-        <span class="task-name"><span class="num">${index + 1}</span>${escapeHtml(script ? script.title : stepId)}</span>
+        <span class="task-name"><span class="num">${index + 1}</span>${escapeHtml(script ? scriptTitle(script) : stepId)}</span>
         <span class="bundle-step-actions">
           <button class="btn-icon" data-step-up="${index}" type="button" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
           <button class="btn-icon" data-step-down="${index}" type="button" ${index === editingBundleSteps.length - 1 ? 'disabled' : ''} title="下移">▼</button>

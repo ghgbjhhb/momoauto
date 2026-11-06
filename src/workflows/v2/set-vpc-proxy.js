@@ -6,7 +6,6 @@
 //   - Show current proxy (--show, --status)
 //   - Stop proxy (--stop, --close)
 const { YunmomoClient } = require('../../index');
-const { formatDeviceLabel } = require('../../automation/runtime');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -161,12 +160,12 @@ async function main() {
     if (!device) throw new Error(`未找到目标 V2 设备: ${targetDeviceId}`);
 
     const resolvedDeviceId = deviceIdOf(device);
-    const devLabel = formatDeviceLabel(device);
+    const deviceName = String(device.deviceName || device.name || resolvedDeviceId);
     const phone = client.device(resolvedDeviceId);
 
-    logger.file('Resolved device info', { devLabel, resolvedDeviceId, sdkVersion: device.sdkVersion });
-    logger.console(`📱 目标设备: ${devLabel}`);
-    logger.console(`⚙️ 操作: ${currentOp}`);
+    logger.file('Resolved device info', { deviceName, resolvedDeviceId, sdkVersion: device.sdkVersion });
+    logger.console(`[目标设备] ${deviceName} (${resolvedDeviceId}) | V2 (安卓 12)`);
+    logger.console(`[执行操作] ${currentOp}`);
 
     // ===================== 可选参数分支 1：展示当前代理 =====================
     if (isShow) {
@@ -180,17 +179,17 @@ async function main() {
 
       const isRunning = Number(legacy?.status) === 1 || Boolean(legacy?.addr);
       if (isRunning) {
-        logger.console(`🌐 代理状态: 运行中 (${legacy.addr})`);
+        logger.console(`[代理状态] 运行中 (${legacy.addr})`);
       } else {
-        logger.console(`🌐 代理状态: 未开启`);
+        logger.console(`[代理状态] 未开启 (状态: ${legacy?.statusText || '未启动'})`);
       }
 
       if (v1 && typeof v1 === 'object' && v1.address) {
-        logger.console(`ℹ️ 检测到 V1 代理配置: ${v1.address}`);
+        logger.console(`[提示] 检测到设备存在 V1 代理配置: ${v1.address}`);
       }
 
-      logger.console(`✅ 执行成功`);
-      logger.console(`📄 日志: ${logger.relativeLogPath}`);
+      logger.console(`[执行结果] 成功`);
+      logger.console(`[完整日志] ${logger.relativeLogPath}`);
       return;
     }
 
@@ -274,12 +273,12 @@ async function main() {
       let vpcId;
       if (existingLine) {
         vpcId = String(existingLine.id);
-        logger.console(`🌐 线路: 复用已有线路 (ID: ${vpcId})`);
+        logger.console(`[线路状态] 复用已有线路 (ID: ${vpcId})`);
       } else {
         const added = await client.vpc().addAndGetIds([targetConfig]);
         if (!added?.vpcId) throw new Error('添加 VPC 线路失败，未获取到有效线路 ID');
         vpcId = String(added.vpcId);
-        logger.console(`🌐 线路: 新增线路完成 (ID: ${vpcId})`);
+        logger.console(`[线路状态] 新增线路成功 (ID: ${vpcId})`);
       }
 
       try {
@@ -315,7 +314,7 @@ async function main() {
     const proxyMode = proxyVersion === 'legacy' ? '1' : '2';
 
     logger.file('Proxy configuration chosen', { proxyVersion, domainMode, proxyMode, targetIp: selected.ip, port: selected.port });
-    logger.console(`🌐 协议: ${proxyVersion === 'legacy' ? 'Socks5 代理' : 'Tun 代理'}`);
+    logger.console(`[下发协议] ${proxyVersion === 'legacy' ? '旧版代理 (Legacy S5 | 远端DNS)' : '新版代理 (V1 Tun2socks)'}`);
 
     if (process.env.YUNMOMO_CONFIRM_VPC_PROXY !== 'YES') {
       logger.console('[提示] 如需确认设置云机代理，请传入 --execute 参数后重试。');
@@ -364,13 +363,13 @@ async function main() {
     }
 
     const finalAddr = `${selected.ip}:${selected.port}`;
-    logger.console(`🌐 代理已生效 (${finalAddr})`);
-    logger.console('✅ 代理设置完成');
-    logger.console(`📄 日志: ${logger.relativeLogPath}`);
+    logger.console(`[代理状态] 运行中 (${finalAddr})`);
+    logger.console(`[执行结果] 成功且已确认生效`);
+    logger.console(`[完整日志] ${logger.relativeLogPath}`);
   } catch (err) {
     logger.file('TASK EXCEPTION', { message: err.message, stack: err.stack, data: err.data });
-    logger.console(`❌ 代理设置失败: ${err.message}`);
-    logger.console(`📄 日志: ${logger.relativeLogPath}`);
+    logger.console(`[执行结果] 失败: ${err.message}`);
+    logger.console(`[完整日志] ${logger.relativeLogPath}`);
     throw err;
   }
 }

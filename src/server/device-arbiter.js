@@ -72,6 +72,13 @@ class DeviceArbiter {
       (record.leaseToken === ownerOrToken ? refs.find(ref => !ref.borrowed) : null);
     return handle ? this.releaseLease(handle) : false;
   }
+  forceReleaseDevice(id) {
+    id = String(id);
+    this.quarantined.delete(id);
+    const had = this.locks.has(id);
+    this.locks.delete(id);
+    return had;
+  }
 }
 const defaultArbiter = new DeviceArbiter();
 module.exports = { DeviceArbiter, defaultArbiter };

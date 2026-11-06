@@ -2100,9 +2100,7 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 .ov-bundle-step-fields .field label {
-  font-size: var(--fs-11);
-  font-weight: var(--fw-600);
-  color: var(--muted);
+  display: none;
 }
 
 .ov-bundle-step-fields .field input,
