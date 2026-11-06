@@ -986,6 +986,126 @@ async function onDetailClick(event) {
   }
 }
 
+function renderDockDeviceTabs(results) {
+  const container = elements.dockDeviceTabs;
+  if (!container) return;
+
+  const multiBatchRunning = Array.isArray(results) && results.length > 1;
+  const multiSelected = state.view === 'grid' && (state.batchDevices || []).length > 1;
+
+  if (!multiBatchRunning && !multiSelected) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'flex';
+
+  let targetDevices = [];
+  if (multiBatchRunning) {
+    targetDevices = results.map(r => {
+      const dev = state.devices.find(d => d.deviceId === r.deviceId);
+      return {
+        deviceId: r.deviceId,
+        label: dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : r.deviceId,
+        status: r.status || 'pending'
+      };
+    });
+  } else {
+    targetDevices = (state.batchDevices || []).map(id => {
+      const dev = state.devices.find(d => d.deviceId === id);
+      const isRunning = dev && typeof isDeviceActive === 'function' && isDeviceActive(id);
+      return {
+        deviceId: id,
+        label: dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : id,
+        status: isRunning ? 'running' : 'idle'
+      };
+    });
+  }
+
+  const currentFilter = state.dockLogDeviceFilter || 'all';
+
+  let html = '<button type="button" class="dock-dev-pill ' + (currentFilter === 'all' ? 'active' : '') + '" data-dock-dev="all" title="查看所有设备聚合日志">🌐 全部汇总</button>';
+
+  for (const item of targetDevices) {
+    const isAct = currentFilter === item.deviceId;
+    const dotClass = item.status === 'running' ? 'running' :
+                     item.status === 'failed' ? 'failed' :
+                     item.status === 'completed' || item.status === 'ok' ? 'completed' : 'idle';
+    html += '<button type="button" class="dock-dev-pill ' + (isAct ? 'active' : '') + '" data-dock-dev="' + escapeHtml(item.deviceId) + '" title="查看 ' + escapeHtml(item.label) + ' 独立日志"><span class="pill-dot ' + dotClass + '"></span>' + escapeHtml(item.label) + '</button>';
+  }
+
+  if (container.innerHTML !== html) {
+    container.innerHTML = html;
+  }
+}
+window.renderDockDeviceTabs = renderDockDeviceTabs;
+
+function updateDockLogWithSnapshot(snapshot) {
+  state.lastManagedSnapshot = snapshot;
+  const dockBox = elements.dockOutputBox;
+  if (!dockBox) return;
+
+  const results = snapshot.results || [];
+  const outputs = snapshot.deviceOutputs || {};
+  const isMultiDevice = results.length > 1;
+
+  renderDockDeviceTabs(results);
+
+  const filter = state.dockLogDeviceFilter || 'all';
+
+  if (isMultiDevice && filter === 'all') {
+    const lines = [];
+    const at = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    lines.push('[' + at + '] 批量任务: ' + (snapshot.title || '运行中') + '（已派发步骤: ' + snapshot.currentStep + '/' + snapshot.totalSteps + '，共 ' + results.length + ' 台设备）');
+    lines.push('────────────────────────────────────────────────────────');
+    lines.push('【设备进度概况】');
+    for (const r of results) {
+      const dev = state.devices.find(d => d.deviceId === r.deviceId);
+      const label = dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : r.deviceId;
+      const statusEmoji = r.status === 'completed' || r.status === 'ok' ? '✅ 完成' :
+                          r.status === 'failed' ? '❌ 失败' :
+                          r.status === 'running' ? '🟢 运行中' : '⏳ 待开始';
+      const stepInfo = (r.completedSteps != null && r.totalSteps) ? ('（' + r.completedSteps + '/' + r.totalSteps + ' 步）') : '';
+      const msg = r.message ? (' · ' + r.message) : '';
+      lines.push('  ' + statusEmoji + ' ' + label + stepInfo + msg);
+    }
+    lines.push('────────────────────────────────────────────────────────');
+    lines.push('【各设备实时日志】');
+
+    for (const r of results) {
+      const dev = state.devices.find(d => d.deviceId === r.deviceId);
+      const label = dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : r.deviceId;
+      let devOut = (outputs[r.deviceId] || state.deviceLogs?.get(r.deviceId) || '').trim();
+      if (!devOut) {
+        devOut = '(暂无实时输出，状态: ' + (r.status || 'pending') + ')';
+      } else {
+        const outLines = devOut.split('\n');
+        if (outLines.length > 25) {
+          devOut = '... [前序已折叠] ...\n' + outLines.slice(-25).join('\n');
+        }
+      }
+      lines.push('\n▼ [' + label + '] · ' + (r.status === 'running' ? '正在执行' : r.status));
+      lines.push(devOut);
+    }
+
+    dockBox.textContent = lines.join('\n');
+    if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+  } else {
+    const targetDevId = filter === 'all' ? (results[0]?.deviceId || state.selectedDeviceId) : filter;
+    let curLog = (outputs[targetDevId] || state.deviceLogs?.get(targetDevId) || '').trim();
+    const curResult = results.find(r => r.deviceId === targetDevId);
+    if (curResult && (curResult.status === 'failed' || curResult.status === 'cancelled')) {
+      curLog += '\n\n[系统提示] 该设备执行已' + (curResult.status === 'failed' ? '失败中止' : '已停止') + '：' + (curResult.message || '退出');
+    }
+    const dev = state.devices.find(d => d.deviceId === targetDevId);
+    const label = dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : targetDevId;
+    dockBox.textContent = curLog || ('[设备 ' + label + '] 暂无执行记录。');
+    if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+  }
+}
+window.updateDockLogWithSnapshot = updateDockLogWithSnapshot;
+
 /* ---------- 浏览器只负责创建和订阅；后续步骤均由 Windows 服务端派发 ---------- */
 
 async function followManagedWorkflow(runId) {
@@ -1055,27 +1175,9 @@ async function followManagedWorkflow(runId) {
         }
       }
 
-      // 总览页 Dock：当前查看的设备若有真实输出，优先独占展示该设备真实命令流并实时吸底滚动
-      const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
-      const dockBox = elements.dockOutputBox;
-      let hasCurDevRealLog = false;
-      if (curDev && snapshot.deviceOutputs && snapshot.deviceOutputs[curDev.deviceId]) {
-        let curLog = snapshot.deviceOutputs[curDev.deviceId].trim();
-        const curDevResult = (snapshot.results || []).find(r => r.deviceId === curDev.deviceId);
-        if (curDevResult && (curDevResult.status === 'failed' || curDevResult.status === 'cancelled')) {
-          curLog += `\n\n[系统提示] 该设备执行已${curDevResult.status === 'failed' ? '失败中止' : '已停止'}：${curDevResult.message || '退出'}`;
-        }
-        if (dockBox && curLog) {
-          dockBox.textContent = curLog;
-          if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
-          hasCurDevRealLog = true;
-        }
-      } else if (dockBox && !curDev) {
-        // 未聚焦特定设备时显示合并输出或任务派发摘要
-        const merged = snapshot.output || commonLog.join('\n');
-        dockBox.textContent = merged;
-        if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
-      }
+      // 总览页 Dock：多设备全景聚合与单机切换
+      updateDockLogWithSnapshot(snapshot);
+      const hasCurDevRealLog = true;
 
       writeOutput('Windows 后台任务：' + snapshot.title, commonLog, {
         deviceId: snapshot.currentDeviceId || (snapshot.results[0]?.deviceId),

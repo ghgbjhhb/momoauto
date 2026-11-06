@@ -457,9 +457,11 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
     const bundleSpec = JSON.stringify(deviceSteps);
 
     const startStepIndex = entry.completedSteps || 0;
+    const devIdxLabel = '#' + String(deviceIndex >= 0 ? deviceIndex + 1 : 1).padStart(2, '0');
     const env = {
       ...process.env,
       YUNMOMO_DEVICE_ID: entry.deviceId,
+      YUNMOMO_DEVICE_INDEX_LABEL: devIdxLabel,
       YUNMOMO_TOKEN: userToken,
       YUNMOMO_BUNDLE_RUN_ID: run.id,
       YUNMOMO_BUNDLE_SPEC: bundleSpec,
@@ -490,7 +492,7 @@ function executeDeviceBundle(run, entry, steps, user, lease) {
     try {
       logStream.write(`================================================================================\n` +
         `[工作流编号] ${run.id}\n` +
-        `[目标设备]   ${entry.deviceId}\n` +
+        `[目标设备]   ${devIdxLabel} (${entry.deviceId})\n` +
         `[启动时间]   ${new Date().toISOString()}\n` +
         `================================================================================\n\n`);
     } catch {}

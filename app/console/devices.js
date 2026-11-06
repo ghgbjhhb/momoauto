@@ -95,6 +95,9 @@ function notifyBatchSelectionChanged() {
   if (typeof window.updateOverviewRunSummary === 'function') {
     window.updateOverviewRunSummary();
   }
+  if (typeof renderDockDeviceTabs === 'function') {
+    renderDockDeviceTabs();
+  }
 }
 window.notifyBatchSelectionChanged = notifyBatchSelectionChanged;
 
@@ -135,6 +138,12 @@ function selectDevice(deviceId) {
   if (!state.devices.some(device => device.deviceId === deviceId)) return;
   const changed = state.selectedDeviceId !== deviceId;
   state.selectedDeviceId = deviceId;
+  if (elements.dockDeviceTabs && elements.dockDeviceTabs.style.display !== 'none') {
+    state.dockLogDeviceFilter = deviceId;
+    elements.dockDeviceTabs.querySelectorAll('.dock-dev-pill').forEach(el => {
+      el.classList.toggle('active', el.dataset.dockDev === deviceId);
+    });
+  }
   if (typeof syncCurrentDeviceLogView === 'function') syncCurrentDeviceLogView();
   renderDeviceChips();
   renderViewer();
@@ -995,8 +1004,10 @@ window.refreshTileShots = refreshTileShots;
 // 宫格模式全选/清空
 byId('ovSelectAllBtn')?.addEventListener('click', () => {
   state.batchDevices = state.devices.map(d => d.deviceId);
+  state.dockLogDeviceFilter = 'all';
   updateGridSelection();
   notifyBatchSelectionChanged();
+  if (typeof syncCurrentDeviceLogView === 'function') syncCurrentDeviceLogView();
 });
 
 byId('ovClearBatchBtn')?.addEventListener('click', () => {

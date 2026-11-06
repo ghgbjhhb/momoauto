@@ -131,9 +131,12 @@
                 </div>
                 <div class="dock-panel">
                   <div class="dock-panel-head">
-                    <div class="log-tabs">
-                      <button class="segment active" id="dockTabTerminalScript" type="button">业务脚本日志</button>
-                      <button class="segment" id="dockTabTerminalSystem" type="button" hidden>系统运行日志 <span class="log-badge" id="dockSystemLogBadge" hidden>0</span></button>
+                    <div style="display: flex; align-items: center; gap: var(--sp-10); min-width: 0; flex: 1; overflow: hidden;">
+                      <div class="log-tabs" style="flex-shrink: 0;">
+                        <button class="segment active" id="dockTabTerminalScript" type="button">业务脚本日志</button>
+                        <button class="segment" id="dockTabTerminalSystem" type="button" hidden>系统运行日志 <span class="log-badge" id="dockSystemLogBadge" hidden>0</span></button>
+                      </div>
+                      <div class="dock-device-tabs" id="dockDeviceTabs" style="display: none;"></div>
                     </div>
                     <div class="dock-actions">
                       <button class="btn sm flat" id="dockCopyOutputBtn" type="button" title="复制日志">复制</button>

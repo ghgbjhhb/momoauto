@@ -52,4 +52,19 @@ function launchCli(main) {
   });
 }
 
-module.exports = { PROJECT_ROOT, redact, launchCli, targetDeviceId };
+// 统一设备标识格式化：只显示规范编号与设备ID（如 #01 (2017...)），彻底消除不可控的平台名字与默认 SF
+function formatDeviceLabel(device, fallbackIndex = null) {
+  const id = typeof device === 'string'
+    ? device
+    : String(device?.id ?? device?.deviceId ?? '');
+  let idxStr = process.env.YUNMOMO_DEVICE_INDEX_LABEL || '';
+  if (!idxStr && fallbackIndex != null && Number.isInteger(fallbackIndex)) {
+    idxStr = '#' + String(fallbackIndex + 1).padStart(2, '0');
+  }
+  if (idxStr) {
+    return id ? `${idxStr} (${id})` : idxStr;
+  }
+  return id || '未知设备';
+}
+
+module.exports = { PROJECT_ROOT, redact, launchCli, targetDeviceId, formatDeviceLabel };

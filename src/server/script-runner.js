@@ -192,7 +192,7 @@ async function runScriptMeasured(script, env, run) {
     '================================================================================',
     `[调用唯一ID] ${run.id}`,
     `[执行脚本]   ${script.id} (${script.title})`,
-    `[目标设备]   ${env.YUNMOMO_DEVICE_ID || '无'}`,
+    `[目标设备]   ${env.YUNMOMO_DEVICE_INDEX_LABEL ? env.YUNMOMO_DEVICE_INDEX_LABEL + ' (' + (env.YUNMOMO_DEVICE_ID || '') + ')' : (env.YUNMOMO_DEVICE_ID || '无')}`,
     `[启动时间]   ${startTime.toLocaleString('zh-CN')} (${startTime.toISOString()})`,
     `[环境版本]   SDK=${env.YUNMOMO_SDK_VERSION || (isV2 ? 'v2' : 'v3')}`,
     '================================================================================',

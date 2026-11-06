@@ -68,6 +68,8 @@ const state = {
   batchDevices: [],
   batchRunning: false,
   batchStopRequested: false,
+  dockLogDeviceFilter: 'all',
+  lastManagedSnapshot: null,
   taskScriptId: '',
   taskParamValues: {},
   previewPlayers: new Map(),

@@ -16,7 +16,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { YunmomoClient } = require('../index');
 const { RapidOcrWorker } = require('../automation/screen');
-const { PROJECT_ROOT } = require('../automation/runtime');
+const { PROJECT_ROOT, formatDeviceLabel } = require('../automation/runtime');
 const { acquireExclusiveLock } = require('../automation/concurrency');
 const { scriptById } = require('./script-catalog');
 const { STEPS: STEPS_V2 } = require('../../flows/v2/_common');
@@ -65,8 +65,9 @@ async function main() {
   const target = listed.records.find(d => deviceIdOf(d) === targetDeviceId);
   if (!target) throw new Error('目标设备不在当前账号列表中: ' + targetDeviceId);
 
-  const deviceName = target.deviceName ?? target.name ?? 'SF';
-  console.log(`📱 目标设备: ${deviceName} (${targetDeviceId}) | 共 ${steps.length} 个步骤`);
+  const targetIndex = listed.records.findIndex(d => deviceIdOf(d) === targetDeviceId);
+  const devLabel = formatDeviceLabel(target, targetIndex);
+  console.log(`📱 目标设备: ${devLabel} | 共 ${steps.length} 个步骤`);
 
   const phone = client.device(targetDeviceId);
   let control = null;

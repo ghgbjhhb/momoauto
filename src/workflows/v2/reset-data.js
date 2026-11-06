@@ -117,7 +117,7 @@ async function main(argv = process.argv.slice(2)) {
   const save = () => fs.writeFile(reportPath, redact(JSON.stringify(report, null, 2)), 'utf8');
   await save();
 
-  const devLabel = `${plan.device.name ? plan.device.name + ' (' + plan.device.id + ')' : plan.device.id}`;
+  const devLabel = typeof formatDeviceLabel === 'function' ? formatDeviceLabel(plan.device) : (plan.device.id || '未知设备');
   const relPath = path.relative(PROJECT_ROOT, reportPath).replace(/\\/g, '/');
 
   console.log(`[目标设备] ${devLabel}`);
