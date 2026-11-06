@@ -1107,7 +1107,7 @@ async function followManagedWorkflow(runId) {
         skipDockOutput: hasCurDevRealLog
       });
       if (state.view === 'grid' && typeof refreshTileShots === 'function') {
-        refreshTileShots();
+        refreshTileShots(true);
       }
     }
     if (snapshot.state === 'interrupted') {
@@ -1575,7 +1575,7 @@ async function runScriptOnDevice(script, deviceId, options = {}) {
         writeOutput(`[设备 ${label}] 执行中：${script.title}`,
           cleanScriptLines(snapshot.stdout, snapshot.stderr), { runId: scriptRunId, logFile: snapshot.logFile, deviceId });
         if (state.view === 'grid' && typeof refreshTileShots === 'function') {
-          refreshTileShots();
+        refreshTileShots(true);
         }
       }
       await new Promise(resolve => setTimeout(resolve, 1200));

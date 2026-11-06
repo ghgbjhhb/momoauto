@@ -3,7 +3,7 @@
 // V3 设备模块：画面预览（单台直播 / 宫格截图）、设备表格、状态栏与最近活动。
 
 const TILE_SHOT_TTL_IDLE = 8000;     // 待命状态 8 秒低频保活
-const TILE_SHOT_TTL_ACTIVE = 1300;   // 任务运行中 1.3 秒自适应高刷 (约 0.8 FPS)
+const TILE_SHOT_TTL_ACTIVE = 800;    // 任务运行中 800ms 自适应高刷 (约 1.25 FPS)
 const SHOT_CONCURRENCY = 6;          // 支持多台设备齐头并进同时刷新
 let shotActive = 0;
 const shotQueue = [];
@@ -671,10 +671,10 @@ function drawTileShot(deviceId, entry) {
   canvas.getContext('2d').drawImage(entry.bitmap, 0, 0);
 }
 
-function refreshTileShots() {
+function refreshTileShots(force = false) {
   if (state.view !== 'grid' || state.page !== 'overview') return;
   for (const device of state.devices) {
-    if (isOnline(device)) queueTileShot(device);
+    if (isOnline(device)) queueTileShot(device, force);
   }
 }
 
