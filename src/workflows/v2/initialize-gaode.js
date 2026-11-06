@@ -366,7 +366,7 @@ async function main() {
     try {
       await control.connect();
       logger.file('Control connected successfully');
-      await runGaodeWorkflow({ phone, control, worker, directory, state, options, logger, deviceName, resolvedDeviceId });
+      await runGaodeWorkflow({ phone, control, worker, directory, state, options, logger, deviceName, devLabel, resolvedDeviceId });
       homeRestored = true;
     } finally {
       if (!homeRestored && control.connected && process.env.YUNMOMO_RESTORE_HOME_ON_ERROR !== '0') {
@@ -394,7 +394,8 @@ async function main() {
   }
 }
 
-async function runGaodeWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, logger = defaultLogger(), deviceName = '设备', resolvedDeviceId = '' }) {
+async function runGaodeWorkflow({ phone, control, worker, directory, state = { counter: 0 }, options = {}, logger = defaultLogger(), deviceName = '设备', devLabel = '', resolvedDeviceId = '' }) {
+  const currentDevLabel = devLabel || deviceName || (resolvedDeviceId ? formatDeviceLabel(resolvedDeviceId) : '');
   if (!control.connected) {
     await control.connect();
     logger.file('Control connected successfully');
@@ -469,8 +470,8 @@ async function runGaodeWorkflow({ phone, control, worker, directory, state = { c
   }
 
   logger.console('✅ 高德地图初始化完成，已回到桌面');
-  if (resolvedDeviceId) {
-    logger.console(`   📱 目标设备: ${devLabel}`);
+  if (currentDevLabel) {
+    logger.console(`   📱 目标设备: ${currentDevLabel}`);
   }
   logger.console(`   🎯 处理弹窗: ${initialized.promptActions.length} 个`);
   logger.console('✅ 执行成功');
@@ -511,6 +512,8 @@ async function runStep(context = {}) {
   const targetDir = directory || path.join(PROJECT_ROOT, 'logs', 'screenshots', 'session');
   await fs.mkdir(targetDir, { recursive: true });
 
+  const devLabel = (context && context.deviceName) ? context.deviceName : (target ? formatDeviceLabel(target) : (phone?.deviceId ? formatDeviceLabel(phone.deviceId) : '云机'));
+
   return await runGaodeWorkflow({
     phone,
     control,
@@ -519,7 +522,8 @@ async function runStep(context = {}) {
     state: state || { counter: 0 },
     options,
     logger: defaultLogger(),
-    deviceName: target?.deviceName || target?.name || '云机',
+    deviceName: devLabel,
+    devLabel,
     resolvedDeviceId: phone.deviceId
   });
 }

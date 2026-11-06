@@ -671,10 +671,10 @@ function drawTileShot(deviceId, entry) {
   canvas.getContext('2d').drawImage(entry.bitmap, 0, 0);
 }
 
-function refreshTileShots(force = false) {
+function refreshTileShots() {
   if (state.view !== 'grid' || state.page !== 'overview') return;
   for (const device of state.devices) {
-    if (isOnline(device)) queueTileShot(device, force);
+    if (isOnline(device)) queueTileShot(device);
   }
 }
 
