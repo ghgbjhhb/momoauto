@@ -2036,6 +2036,64 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 
+
+.ov-flow-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: var(--r-8);
+  margin-bottom: var(--sp-6);
+  flex: none;
+}
+
+.ov-flow-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ov-flow-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ov-flow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: var(--r-full, 9999px);
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-2, #64748b);
+  user-select: none;
+}
+
+.ov-flow-chip.has-params {
+  border-color: var(--blue-chip);
+  background: var(--blue-light);
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.ov-flow-chip .num {
+  font-weight: 700;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.ov-flow-arrow {
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.6;
+}
+
 .ov-bundle-steps-list {
   display: flex;
   flex-direction: column;

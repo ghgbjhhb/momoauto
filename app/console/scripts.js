@@ -1153,6 +1153,11 @@ async function followManagedWorkflow(runId) {
       if (typeof updateOverviewRuntime === 'function') updateOverviewRuntime();
       eventBus.dispatchEvent(new CustomEvent('runtime:changed'));
       if (typeof requestAllPreviews === 'function') requestAllPreviews();
+      if (state.view === 'grid') {
+        state.tileShots?.clear();
+        if (typeof refreshTileShots === 'function') refreshTileShots();
+      }
+      if (typeof loadDevices === 'function') loadDevices(true);
       const ok = snapshot.state === 'finished' &&
         snapshot.results.length > 0 && snapshot.results.every(item => item.status === 'ok');
       const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
@@ -2397,19 +2402,32 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
     const bundle = state.bundles?.find(b => b.id === state.taskBundleId);
     if (!bundle) { container.innerHTML = '<div class="empty">请选择左侧任务</div>'; return; }
     const steps = bundleSteps(bundle);
-    const stepsHtml = steps.map((s, idx) => {
-      const fields = (s.parameters || []).map(field => bundleRunFieldHtml(bundle, s, idx, field)).join('');
-      return `
-        <div class="ov-bundle-step-item">
-          <div class="ov-bundle-step-head">
-            <span class="ov-bundle-step-badge">${idx + 1}</span>
-            <strong class="ov-bundle-step-name">${escapeHtml(scriptTitle(s))}</strong>
-            <span class="hint">(${escapeHtml(s.id)})</span>
-          </div>
-          ${fields ? `<div class="ov-bundle-step-fields">${fields}</div>` : ''}
+
+    // 仅提取真正需要填写参数的子步骤，无参数步骤不占大卡片位置
+    const parameterizedSteps = steps.map((s, idx) => ({
+      script: s,
+      index: idx,
+      fields: (s.parameters || []).map(field => bundleRunFieldHtml(bundle, s, idx, field)).join('')
+    })).filter(item => Boolean(item.fields));
+
+    const paramsHtml = parameterizedSteps.map(item => `
+      <div class="ov-bundle-step-item">
+        <div class="ov-bundle-step-head">
+          <span class="ov-bundle-step-badge">${item.index + 1}</span>
+          <strong class="ov-bundle-step-name">${escapeHtml(scriptTitle(item.script))}</strong>
+          <span class="hint" style="font-size:11px;">(步骤 ${item.index + 1})</span>
         </div>
-      `;
-    }).join('');
+        <div class="ov-bundle-step-fields">${item.fields}</div>
+      </div>
+    `).join('');
+
+    // 顶部紧凑流程链路胶囊行：一览全部步骤，无需纵向大量占地
+    const flowChipsHtml = steps.map((s, idx) => `
+      <span class="ov-flow-chip ${s.parameters?.length ? 'has-params' : ''}" title="${escapeHtml(s.id)}${s.parameters?.length ? ' (包含可配置参数)' : ''}">
+        <span class="num">${idx + 1}</span>
+        <span class="txt">${escapeHtml(scriptTitle(s))}</span>
+      </span>
+    `).join('<span class="ov-flow-arrow">›</span>');
 
     container.innerHTML = `
       <div class="ov-wb-header">
@@ -2422,13 +2440,26 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
         </div>
       </div>
       ${bundle.description ? `<div class="ov-wb-desc">${escapeHtml(bundle.description)}</div>` : ''}
+      <div class="ov-flow-container">
+        <div class="ov-flow-label">包含步骤 (${steps.length} 步)：</div>
+        <div class="ov-flow-strip">${flowChipsHtml}</div>
+      </div>
       <div class="ov-wb-fields">
-        <div class="ov-wb-steps-box">
-          <div class="hint" style="font-weight:600; margin-bottom:8px;">包含步骤清单与参数配置 (${steps.length} 步)：</div>
-          <div class="ov-bundle-steps-list">
-            ${stepsHtml || '<div class="hint">暂无配置步骤</div>'}
+        ${paramsHtml ? `
+          <div class="ov-wb-steps-box">
+            <div class="hint" style="font-size:11px; font-weight:600; margin-bottom:6px; color:var(--muted);">
+              参数配置 (${parameterizedSteps.length} 个步骤需要配置)：
+            </div>
+            <div class="ov-bundle-steps-list">
+              ${paramsHtml}
+            </div>
           </div>
-        </div>
+        ` : `
+          <div class="ov-wb-empty-fields">
+            <span class="ov-wb-empty-icon">${ic('check', 16)}</span>
+            <span>该流程所有步骤均采用默认参数，就绪后可直接执行。</span>
+          </div>
+        `}
       </div>
       <div class="ov-wb-footer">
         ${(() => {
