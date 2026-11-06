@@ -196,6 +196,25 @@ function statusSnapshot(run) {
     }
     if (entries.length > 0) logText = entries.join('\n\n');
   }
+  // 关键：桥接正在执行中的子脚本实时输出，绝不在运行中返回空白！
+  if (run.activeDeviceRuns && run.activeDeviceRuns.size > 0) {
+    for (const [devId, active] of run.activeDeviceRuns) {
+      if (active?.type === 'script' && active.scriptRunId) {
+        const child = activeScriptRuns.get(active.scriptRunId);
+        if (child) {
+          const liveOut = (child.stdout || '') + (child.stderr || '');
+          if (liveOut && liveOut.trim()) {
+            const existing = deviceOutputsObj[devId] || '';
+            const combined = existing ? (existing + '\n' + liveOut) : liveOut;
+            deviceOutputsObj[devId] = safeOutput(run.ownerUserId, combined).slice(-16000);
+            const shortId = devId.length > 8 ? devId.slice(-6) : devId;
+            const snippet = `[设备 ${shortId}]\n` + liveOut.trim().split('\n').slice(-15).join('\n');
+            logText = logText ? (logText + '\n\n' + snippet) : snippet;
+          }
+        }
+      }
+    }
+  }
   const completedSteps = run.results.reduce((sum, item) => sum + (item.completedSteps || 0), 0);
   const activeDevices = run.activeDeviceRuns ? [...run.activeDeviceRuns.keys()] : [];
   return {
@@ -388,6 +407,13 @@ async function executeWorkflow(run, steps, user) {
           }
           const out = (result?.stdout || '') + (result?.stderr || '');
           if (out) run.deviceOutputs.set(entry.deviceId, out);
+          persistWorkflow(run);
+          const runsLogDir = path.join(PROJECT_ROOT, 'logs', 'runs');
+          try {
+            fs.mkdirSync(runsLogDir, { recursive: true });
+            fs.writeFileSync(path.join(runsLogDir, `${run.id}_${entry.deviceId}.log`), out, 'utf8');
+            fs.writeFileSync(path.join(runsLogDir, `${run.id}_${entry.deviceId}.owner`), run.ownerUserId || user?.id || '', 'utf8');
+          } catch {}
           if (run.stopRequested || result?.cancelled) {
             entry.status = 'cancelled';
             entry.message = '已停止执行';
@@ -739,9 +765,22 @@ function getWorkflowDeviceLog(id, deviceId, user) {
   try {
     const run = getWorkflow(id, user);
     if (!run) return '';
+    let out = '';
     if (deviceId && run.deviceOutputs?.has(deviceId)) {
-      return run.deviceOutputs.get(deviceId) || '';
+      out = run.deviceOutputs.get(deviceId) || '';
     }
+    // 若当前设备正在执行子脚本，实时叠加子脚本最新 stdout
+    if (deviceId && run.activeDeviceRuns?.has(deviceId)) {
+      const active = run.activeDeviceRuns.get(deviceId);
+      if (active?.type === 'script' && active.scriptRunId) {
+        const child = activeScriptRuns.get(active.scriptRunId);
+        if (child) {
+          const live = (child.stdout || '') + (child.stderr || '');
+          if (live) out = out ? (out + '\n' + live) : live;
+        }
+      }
+    }
+    if (out) return out;
     if (run.deviceOutputs && run.deviceOutputs.size > 0) {
       return [...run.deviceOutputs.values()].join('\n\n');
     }
@@ -751,4 +790,73 @@ function getWorkflowDeviceLog(id, deviceId, user) {
   }
 }
 
-module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice, dismissWorkflow, getWorkflowDeviceLog, getWorkflow };
+function getDeviceLatestWorkflow(deviceId, user) {
+  if (!deviceId) return null;
+  pruneWorkflows();
+  // 1. 优先查内存活跃与最近的 workflows（按更新/完成时间降序）
+  const allRuns = [...workflows.values()];
+  allRuns.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+
+  for (const run of allRuns) {
+    if (user && user.role !== 'admin' && run.ownerUserId !== user.id) continue;
+    const res = (run.results || []).find(r => r.deviceId === deviceId);
+    if (res) {
+      const out = run.deviceOutputs instanceof Map ? run.deviceOutputs.get(deviceId) : (run.deviceOutputs?.[deviceId] || '');
+      return {
+        workflowRunId: run.id,
+        title: run.title,
+        kind: run.kind,
+        state: run.state,
+        status: res.status,
+        createdAt: run.createdAt || 0,
+        finishedAt: run.finishedAt || null,
+        durationMs: (run.finishedAt && run.createdAt) ? (run.finishedAt - run.createdAt) : null,
+        outputSnippet: out ? out.slice(-2000) : ''
+      };
+    }
+  }
+
+  // 2. 扫描 storage/workflows/ 磁盘文件（保护跨重启历史）
+  try {
+    if (fs.existsSync(WORKFLOWS_DIR)) {
+      const files = fs.readdirSync(WORKFLOWS_DIR)
+        .filter(f => f.endsWith('.json'))
+        .map(f => {
+          const fp = path.join(WORKFLOWS_DIR, f);
+          try {
+            return { name: f, time: fs.statSync(fp).mtimeMs };
+          } catch {
+            return { name: f, time: 0 };
+          }
+        })
+        .sort((a, b) => b.time - a.time)
+        .slice(0, 30);
+
+      for (const item of files) {
+        const id = item.name.replace(/\.json$/, '');
+        const run = loadWorkflowFromDisk(id);
+        if (!run) continue;
+        if (user && user.role !== 'admin' && run.ownerUserId !== user.id) continue;
+        const res = (run.results || []).find(r => r.deviceId === deviceId);
+        if (res) {
+          const out = run.deviceOutputs instanceof Map ? run.deviceOutputs.get(deviceId) : (run.deviceOutputs?.[deviceId] || '');
+          return {
+            workflowRunId: run.id,
+            title: run.title,
+            kind: run.kind,
+            state: run.state,
+            status: res.status,
+            createdAt: run.createdAt || 0,
+            finishedAt: run.finishedAt || null,
+            durationMs: (run.finishedAt && run.createdAt) ? (run.finishedAt - run.createdAt) : null,
+            outputSnippet: out ? out.slice(-2000) : ''
+          };
+        }
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+module.exports = { launchWorkflow, stopWorkflow, getWorkflowStatus, resumeWorkflow, getActiveWorkflowsSummary, stopWorkflowByDevice, dismissWorkflow, getWorkflowDeviceLog, getWorkflow, getDeviceLatestWorkflow };

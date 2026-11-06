@@ -2448,66 +2448,92 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
 }
 
 function updateOverviewRunSummary() {
-  const summary = byId('ovRunSummary');
-  if (!summary) return;
   const currentDev = currentDevice();
   const isGrid = state.view === 'grid';
   const targets = getOverviewTargetDevices();
 
+  let statusText = '待命就绪';
   let title = '任务待命';
   let hint = '选择任务，配置参数后即可执行';
   let status = 'idle';
   let targetText = '未选择设备';
 
+  const allRunningDevs = Object.values(state.deviceStates || {}).filter(s => ['running', 'stopping'].includes(s.status));
+
   if (!isGrid && currentDev) {
-    targetText = `目标：${deviceIndexLabel(currentDev)}`;
+    const devLabel = typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId;
+    targetText = `目标：${devLabel}`;
     const devState = getDeviceState(currentDev.deviceId);
     if (devState.status === 'running') {
+      const otherCount = allRunningDevs.filter(s => s.deviceId !== currentDev.deviceId).length;
+      statusText = `[${devLabel}] 运行中: ${devState.taskTitle || '执行中'}` + (otherCount > 0 ? ` (另有${otherCount}台并发中)` : '');
       title = '设备任务运行中';
       hint = devState.taskTitle || '正在执行脚本';
       status = 'running';
     } else if (devState.status === 'stopping') {
+      statusText = `[${devLabel}] 正在停止任务...`;
       title = '正在停止设备任务';
       hint = '等待动作完成并安全释放云机…';
       status = 'warning';
     } else if (devState.status === 'manual') {
+      statusText = `[${devLabel}] 手动控制中`;
       title = '设备手动控制中';
       hint = '人工操作正在接管控制通道';
       status = 'running';
     } else {
-      const otherRunning = Object.values(state.deviceStates || {}).find(s => s.deviceId !== currentDev.deviceId && s.status === 'running');
-      if (otherRunning) {
+      if (allRunningDevs.length > 0) {
+        statusText = `[${devLabel}] 待命 (后台${allRunningDevs.length}台执行中)`;
         title = '设备待命';
-        hint = `当前设备空闲 (后台 ${escapeHtml(otherRunning.taskTitle || '其他任务')} 运行中)`;
-        status = 'idle';
+        hint = `当前设备空闲 (后台 ${allRunningDevs.length} 台设备运行中)`;
       } else {
+        statusText = `[${devLabel}] 待命就绪`;
         title = '任务待命';
         hint = '选择任务，配置参数后即可执行';
-        status = 'idle';
       }
+      status = 'idle';
     }
   } else if (isGrid) {
     const count = targets.length;
     targetText = count ? `已选 ${count} 台设备` : '未选择设备';
     const busyTargets = targets.map(d => getDeviceState(d.deviceId)).filter(s => ['running', 'stopping'].includes(s.status));
     if (busyTargets.length > 0) {
+      statusText = `批量运行中 (${busyTargets.length}/${count})`;
       title = `批量任务运行中 (${busyTargets.length}/${count})`;
       hint = busyTargets.map(s => s.taskTitle).filter(Boolean).slice(0, 2).join(', ') || '多设备并行执行中';
       status = 'running';
     } else {
+      statusText = count ? `批量待命 (已选 ${count} 台)` : '批量待命 (未选择设备)';
       title = '批量待命';
       hint = count ? `已选 ${count} 台设备，就绪后可批量启动` : '请在画面上方勾选要批量操作的设备';
       status = 'idle';
     }
   }
 
-  summary.dataset.status = status;
-  const titleEl = byId('ovRunStatusTitle');
-  if (titleEl) titleEl.textContent = title;
-  const hintEl = byId('ovRunStatusHint');
-  if (hintEl) hintEl.textContent = hint;
-  const targetEl = byId('ovRunStatusTarget');
-  if (targetEl) targetEl.textContent = targetText;
+  // 1. 更新嵌入日志栏头部的状态微胶囊
+  const pill = byId('dockStatusPill');
+  const textEl = byId('dockStatusText');
+  if (pill) {
+    pill.dataset.status = status;
+    if (textEl) textEl.textContent = statusText;
+  }
+
+  // 2. 更新折叠日志栏的小字提示
+  const miniHint = byId('dockMiniHint');
+  if (miniHint) {
+    miniHint.textContent = statusText;
+  }
+
+  // 3. 兼容旧 DOM
+  const summary = byId('ovRunSummary');
+  if (summary) {
+    summary.dataset.status = status;
+    const titleEl = byId('ovRunStatusTitle');
+    if (titleEl) titleEl.textContent = title;
+    const hintEl = byId('ovRunStatusHint');
+    if (hintEl) hintEl.textContent = hint;
+    const targetEl = byId('ovRunStatusTarget');
+    if (targetEl) targetEl.textContent = targetText;
+  }
 }
 
 function updateOverviewRuntime() {

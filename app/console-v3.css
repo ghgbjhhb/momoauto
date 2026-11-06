@@ -2241,18 +2241,18 @@ body:has(#page-overview:not([hidden])) .page {
 #page-overview .right-col {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1.45fr) auto minmax(0, 0.9fr);
+  grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: var(--sp-10);
   align-items: stretch;
   overflow: hidden;
 }
 
 #page-overview .right-col:has(.overview-log-dock.collapsed) {
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 #page-overview .right-col:has(.overview-log-dock.is-maximized) {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 #page-overview .right-col:has(.overview-log-dock.is-maximized) .overview-tasks-panel .ov-task-split {
@@ -2384,63 +2384,62 @@ body:has(#page-overview:not([hidden])) .page {
   padding: var(--sp-16);
 }
 
-#page-overview .ov-run-summary {
-  min-width: 0;
-  display: flex;
+.dock-status-pill {
+  display: inline-flex;
   align-items: center;
-  gap: var(--sp-12);
-  padding: var(--sp-12) var(--sp-16);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-12);
-}
-
-#page-overview .ov-run-indicator {
-  width: var(--sp-10);
-  height: var(--sp-10);
-  flex: none;
-  border-radius: var(--r-pill);
-  background: var(--line-strong);
-}
-
-#page-overview .ov-run-summary[data-status="running"] .ov-run-indicator {
-  background: var(--green);
-  /* 状态以实际颜色区分，避免额外叠加阴影 */
-}
-
-#page-overview .ov-run-summary[data-status="warning"] .ov-run-indicator {
-  background: var(--orange);
-}
-
-#page-overview .ov-run-details {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: var(--sp-4);
-  flex: 1;
-}
-
-#page-overview .ov-run-details strong {
-  font-size: var(--fs-13);
-  color: var(--text);
-}
-
-#page-overview .ov-run-details span {
-  color: var(--muted);
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-full, 9999px);
+  background: var(--soft, #f1f5f9);
+  border: 1px solid var(--line, #e2e8f0);
   font-size: var(--fs-12);
-  white-space: nowrap;
+  color: var(--text-2, #64748b);
+  user-select: none;
+  flex-shrink: 0;
+  max-width: 50%;
   overflow: hidden;
-  text-overflow: ellipsis;
+  transition: background-color var(--dur-2), border-color var(--dur-2), color var(--dur-2);
 }
 
-#page-overview .ov-run-target {
+.dock-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted, #94a3b8);
   flex: none;
-  font-size: var(--fs-12);
-  color: var(--muted);
-  max-width: 38%;
+  transition: background-color var(--dur-2);
+}
+
+.dock-status-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: var(--fw-500);
+}
+
+.dock-status-pill[data-status="running"] {
+  background: var(--green-light, #ecfdf5);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: var(--green-dark, #065f46);
+}
+
+.dock-status-pill[data-status="running"] .dock-status-dot {
+  background: var(--green, #10b981);
+  box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.25);
+}
+
+.dock-status-pill[data-status="warning"] {
+  background: var(--orange-light, #fffbeb);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--orange-dark, #92400e);
+}
+
+.dock-status-pill[data-status="warning"] .dock-status-dot {
+  background: var(--orange, #f59e0b);
+}
+
+#page-overview .ov-run-summary {
+  display: none !important;
 }
 
 /* 原右下角浮窗变为固定占据右侧布局的一块可折叠日志面板。 */
