@@ -161,10 +161,10 @@ async function main() {
     if (!device) throw new Error(`未找到目标 V2 设备: ${targetDeviceId}`);
 
     const resolvedDeviceId = deviceIdOf(device);
-    const devLabel = (customParams && customParams.deviceName) ? customParams.deviceName : formatDeviceLabel(device);
+    const devLabel = formatDeviceLabel(device);
     const phone = client.device(resolvedDeviceId);
 
-    logger.file('Resolved device info', { deviceName, resolvedDeviceId, sdkVersion: device.sdkVersion });
+    logger.file('Resolved device info', { devLabel, resolvedDeviceId, sdkVersion: device.sdkVersion });
     logger.console(`📱 目标设备: ${devLabel}`);
     logger.console(`⚙️ 操作: ${currentOp}`);
 

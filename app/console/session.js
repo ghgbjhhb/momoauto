@@ -223,6 +223,9 @@ async function loadSharedRuntimeState() {
       manualDevices: Array.isArray(data.manualDevices) ? data.manualDevices : []
     };
     state.deviceStates = (data.deviceStates && typeof data.deviceStates === 'object') ? data.deviceStates : {};
+    if (data.deviceLatestRuns && typeof data.deviceLatestRuns === 'object') {
+      state.deviceLatestRuns = data.deviceLatestRuns;
+    }
     // 自动调和：若前端本地持有活跃任务记录，但后端已确认无该任务活跃，则清理僵尸态
     // 注意：若任务正在被 followManagedWorkflow 活跃轮询（following 为 true），其生命周期由自身长轮询全权管理，严禁外部误杀！
     if (state.activeWorkflowRuns && state.activeWorkflowRuns.size > 0) {
@@ -433,7 +436,7 @@ async function fetchDeviceLogHistory(deviceId, runId) {
 }
 window.fetchDeviceLogHistory = fetchDeviceLogHistory;
 
-function syncCurrentDeviceLogView() {
+async function syncCurrentDeviceLogView() {
   if (state.view === 'grid' && state.lastManagedSnapshot) {
     if (typeof updateDockLogWithSnapshot === 'function') {
       updateDockLogWithSnapshot(state.lastManagedSnapshot);
@@ -449,15 +452,53 @@ function syncCurrentDeviceLogView() {
   if (!box) return;
 
   const label = typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId;
+
+  // 1. 内存中已有实时日志（本次会话输出）
   if (state.deviceLogs && state.deviceLogs.has(deviceId)) {
     box.textContent = state.deviceLogs.get(deviceId);
     if (state.logDockAutoScroll !== false) box.scrollTop = box.scrollHeight;
-  } else if (devState.runId) {
-    box.textContent = `[${label}] 正在拉取运行日志…`;
-    fetchDeviceLogHistory(deviceId, devState.runId);
-  } else {
-    box.textContent = `[${label}] 暂无执行记录。`;
+    if (typeof updateStopButton === 'function') updateStopButton();
+    if (typeof updateLogMeta === 'function') updateLogMeta();
+    return;
   }
+
+  // 2. 当前正在运行中，拉取并跟进运行中日志
+  if (devState.runId && ['running', 'stopping'].includes(devState.status)) {
+    box.textContent = `[${label}] 正在拉取运行日志…`;
+    await fetchDeviceLogHistory(deviceId, devState.runId);
+    if (typeof updateStopButton === 'function') updateStopButton();
+    if (typeof updateLogMeta === 'function') updateLogMeta();
+    return;
+  }
+
+  // 3. 检查是否有最近一次已完成的落盘任务（向服务端主动回填水化）
+  try {
+    const res = await requestJson('/api/devices/latest-run?deviceId=' + encodeURIComponent(deviceId));
+    if (res?.ok && res.run) {
+      const run = res.run;
+      const statusText = run.status === 'ok' ? '已完成' : run.status === 'failed' ? '执行失败' : run.status === 'cancelled' ? '已停止' : run.status;
+      const durationSec = run.durationMs ? ` (耗时 ${(run.durationMs / 1000).toFixed(1)}s)` : '';
+      const timeStr = run.finishedAt ? new Date(run.finishedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '';
+      const header = `[${label}] 最近执行：${run.title} · ${statusText}${durationSec} · ${timeStr}`;
+      const fullText = run.log ? (header + '\n\n' + run.log) : header;
+
+      if (state.deviceLogs) state.deviceLogs.set(deviceId, fullText);
+      box.textContent = fullText;
+      if (state.logDockAutoScroll !== false) box.scrollTop = box.scrollHeight;
+
+      state.lastOutput = {
+        at: timeStr,
+        title: `${run.title} (${statusText})`,
+        runId: run.workflowRunId,
+        deviceId
+      };
+      if (typeof updateStopButton === 'function') updateStopButton();
+      if (typeof updateLogMeta === 'function') updateLogMeta();
+      return;
+    }
+  } catch {}
+
+  box.textContent = `[${label}] 暂无执行记录。`;
   if (typeof updateStopButton === 'function') updateStopButton();
   if (typeof updateLogMeta === 'function') updateLogMeta();
 }
@@ -735,6 +776,9 @@ async function init() {
     else if (typeof resumeManagedWorkflow === 'function') resumeManagedWorkflow();
     const initialPage = isEmbedMode ? 'overview' : (typeof getPageFromUrl === 'function' ? getPageFromUrl() : 'overview');
     setPage(initialPage, { updateHash: true });
+    if (typeof syncCurrentDeviceLogView === 'function') {
+      syncCurrentDeviceLogView();
+    }
 
     window.AppLogger?.info('Init', '控制台工作台初始化全部完成，就绪待命');
   } catch (fatalErr) {

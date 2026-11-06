@@ -1101,8 +1101,8 @@ async function runYayaWorkflow(customParams = {}) {
   if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
   const resolvedDeviceId = deviceIdOf(target);
-  const devLabel = (customParams && customParams.deviceName) ? customParams.deviceName : formatDeviceLabel(target);
-  logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion, mode });
+  const devLabel = formatDeviceLabel(target);
+  logger.file('Target device resolved', { devLabel, resolvedDeviceId, sdkVersion: target.sdkVersion, mode });
 
   logger.console(`📱 目标设备: ${devLabel}`);
   logger.console(`⚙️ 运行模式: ${mode === 'direct' ? '直接登录 (一键授权)' : '历史复扫'}`);

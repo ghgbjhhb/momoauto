@@ -80,7 +80,7 @@ async function main() {
   const target = devices.records.find(record => deviceIdOf(record) === targetDeviceId);
   if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
-  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  const devLabel = formatDeviceLabel(target);
   console.log(`📱 目标设备: ${devLabel} | 检查桌面`);
 
   const phone = client.device(targetDeviceId);

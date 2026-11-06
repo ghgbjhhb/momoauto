@@ -212,7 +212,7 @@ async function main() {
   const target = listedDevices.records.find(record => matchesDevice(record, requestedDeviceId));
   if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + requestedDeviceId);
   const actualDeviceId = deviceIdOf(target);
-  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  const devLabel = formatDeviceLabel(target);
   const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
 
   console.log(`[准备] 目标设备: ${devLabel} (系统: ${sdkVer}) | 流程: 导入真参v2`);

@@ -477,7 +477,7 @@ async function main() {
   if (!target) throw new Error('所选设备不在当前账号设备列表中: ' + targetDeviceId);
 
   const actualDeviceId = deviceIdOf(target);
-  const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  const devLabel = formatDeviceLabel(target);
 
   const confirmExecute = process.env.YUNMOMO_CONFIRM_GENERATE_ALL === 'YES' || process.argv.includes('--execute');
   if (!confirmExecute) {

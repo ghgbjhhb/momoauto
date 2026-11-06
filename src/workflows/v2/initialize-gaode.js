@@ -343,8 +343,8 @@ async function main() {
     if (!target) throw new Error(`未找到匹配的 V2 设备: ${targetDeviceId}`);
 
     const resolvedDeviceId = deviceIdOf(target);
-    const devLabel = (customParams && customParams.deviceName) ? customParams.deviceName : formatDeviceLabel(target);
-    logger.file('Target device resolved', { deviceName, resolvedDeviceId, sdkVersion: target.sdkVersion });
+    const devLabel = formatDeviceLabel(target);
+    logger.file('Target device resolved', { devLabel, resolvedDeviceId, sdkVersion: target.sdkVersion });
 
     logger.console(`[目标设备] ${devLabel} | V2 (安卓 12)`);
     logger.console(`[执行操作] 高德地图首次启动与初始化`);

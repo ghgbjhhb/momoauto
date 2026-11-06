@@ -923,7 +923,12 @@ async function onDetailClick(event) {
     const script = state.scripts.find(s => s.order === order && (s.category === (isV2 ? 'v2' : 'v3') || s.id.endsWith('-' + (isV2 ? 'v2' : 'v3'))))
       || state.scripts.find(s => s.order === order);
     if (!script) { showToast(`未找到步骤 ${order} 对应的执行脚本`); return; }
-    await runScriptDirect(script, target.deviceId);
+    await runManagedWorkflow({
+      kind: 'script',
+      scriptId: script.id,
+      options: {},
+      confirmedSteps: script.destructive ? [0] : []
+    }, [target.deviceId]);
     return;
   }
 
@@ -2677,16 +2682,12 @@ byId('overviewTaskPanel')?.addEventListener('click', async event => {
         options.vpcData = vpcData;
       }
       if (script.destructive && !(await confirmDestructive(script, options, targetIds))) return;
-      if (targetIds.length === 1) {
-        await runScriptDirect(script, targetIds[0]);
-      } else {
-        await runManagedWorkflow({
-          kind: 'script',
-          scriptId: script.id,
-          options,
-          confirmedSteps: script.destructive ? [0] : []
-        }, targetIds);
-      }
+      await runManagedWorkflow({
+        kind: 'script',
+        scriptId: script.id,
+        options,
+        confirmedSteps: script.destructive ? [0] : []
+      }, targetIds);
     } else if (state.taskBundleId) {
       const bundle = state.bundles.find(b => b.id === state.taskBundleId);
       if (!bundle) return;
