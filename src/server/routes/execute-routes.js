@@ -254,7 +254,7 @@ async function handleExecuteRoutes(ctx, request, response, url) {
     }
     try { await stopActiveScript({ deviceId }, user); } catch {}
     try { await stopWorkflowByDevice(deviceId, user); } catch {}
-    try { defaultArbiter.releaseDevice(deviceId, 'user-stop'); } catch {}
+    try { defaultArbiter.forceReleaseDevice(deviceId); } catch {}
     json(response, 200, { ok: true, deviceId, status: 'idle', message: '已请求停止设备任务并释放设备' });
     return true;
   }

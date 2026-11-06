@@ -13,6 +13,28 @@ const { PROJECT_ROOT, busyDevices, manualBridges, activeScriptRuns } = require('
 const { redact } = require('./http');
 const authService = getAuthService();
 const workflows = new Map();
+async function terminateWorkflowChild(child) {
+  if (!child || !Number.isInteger(child.pid)) return;
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === 'win32') {
+    await new Promise(resolve => {
+      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore'
+      });
+      killer.once('error', () => {
+        try { child.kill('SIGKILL'); } catch {}
+        resolve();
+      });
+      killer.once('close', () => resolve());
+    });
+  } else {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch {
+      try { child.kill('SIGKILL'); } catch {}
+    }
+  }
+}
+
 function safeOutput(userId, output) {
   let value = redact(output);
   const userToken = authService.getUserPlatformToken(userId);
@@ -614,8 +636,9 @@ async function stopWorkflow(id, user) {
   if (run.activeDeviceRuns) {
     for (const [deviceId, active] of run.activeDeviceRuns) {
       if (active.type === 'bundle' && active.child) {
-        try { active.child.kill('SIGTERM'); } catch {}
+        await terminateWorkflowChild(active.child);
       }
+      try { defaultArbiter.forceReleaseDevice(deviceId); } catch {}
       if (active.type === 'script' && active.scriptRunId) {
         try {
           await stopActiveScript({ scriptRunId: active.scriptRunId }, { role: 'admin' });
@@ -757,8 +780,9 @@ async function stopWorkflowByDevice(deviceId, user) {
   if (matchedRun.activeDeviceRuns?.has(deviceId)) {
     const active = matchedRun.activeDeviceRuns.get(deviceId);
     if (active.type === 'bundle' && active.child) {
-      try { active.child.kill('SIGTERM'); } catch {}
+      await terminateWorkflowChild(active.child);
     }
+    try { defaultArbiter.forceReleaseDevice(deviceId); } catch {}
     if (active.type === 'script' && active.scriptRunId) {
       try {
         await stopActiveScript({ scriptRunId: active.scriptRunId }, { role: 'admin' });
@@ -766,7 +790,7 @@ async function stopWorkflowByDevice(deviceId, user) {
     }
   }
   try {
-    defaultArbiter.releaseDevice(deviceId, matchedRun.id);
+    defaultArbiter.forceReleaseDevice(deviceId);
   } catch {}
   return { ok: true, stopped: true, workflowRunId: matchedRun.id, deviceId, message: '已停止设备上的工作流步骤' };
 }
