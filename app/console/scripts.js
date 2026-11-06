@@ -2363,9 +2363,6 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
           <span class="ov-wb-title">${escapeHtml(scriptTitle(script))}</span>
           <span class="badge ${script.batch ? 'run' : 'ghost'} xs">${script.batch ? '全流程' : '业务任务'}</span>
         </div>
-        <div class="ov-wb-target">
-          <span class="hint">目标：</span><strong>${escapeHtml(devLabel)}</strong>
-        </div>
       </div>
       ${script.description ? `<div class="ov-wb-desc">${escapeHtml(script.description)}</div>` : ''}
       <div class="ov-wb-fields">
@@ -2403,7 +2400,7 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
     if (!bundle) { container.innerHTML = '<div class="empty">请选择左侧任务</div>'; return; }
     const steps = bundleSteps(bundle);
 
-    // 仅提取真正需要填写参数的子步骤，无参数步骤不占大卡片位置
+    // 仅提取真正需要填写参数的子步骤，任何无用信息彻底不渲染
     const parameterizedSteps = steps.map((s, idx) => ({
       script: s,
       index: idx,
@@ -2415,19 +2412,10 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
         <div class="ov-bundle-step-head">
           <span class="ov-bundle-step-badge">${item.index + 1}</span>
           <strong class="ov-bundle-step-name">${escapeHtml(scriptTitle(item.script))}</strong>
-          <span class="hint" style="font-size:11px;">(步骤 ${item.index + 1})</span>
         </div>
         <div class="ov-bundle-step-fields">${item.fields}</div>
       </div>
     `).join('');
-
-    // 顶部紧凑流程链路胶囊行：一览全部步骤，无需纵向大量占地
-    const flowChipsHtml = steps.map((s, idx) => `
-      <span class="ov-flow-chip ${s.parameters?.length ? 'has-params' : ''}" title="${escapeHtml(s.id)}${s.parameters?.length ? ' (包含可配置参数)' : ''}">
-        <span class="num">${idx + 1}</span>
-        <span class="txt">${escapeHtml(scriptTitle(s))}</span>
-      </span>
-    `).join('<span class="ov-flow-arrow">›</span>');
 
     container.innerHTML = `
       <div class="ov-wb-header">
@@ -2435,29 +2423,16 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
           <span class="ov-wb-title">${escapeHtml(bundle.name)}</span>
           <span class="badge run xs">组合流程</span>
         </div>
-        <div class="ov-wb-target">
-          <span class="hint">目标：</span><strong>${escapeHtml(devLabel)}</strong>
-        </div>
-      </div>
-      ${bundle.description ? `<div class="ov-wb-desc">${escapeHtml(bundle.description)}</div>` : ''}
-      <div class="ov-flow-container">
-        <div class="ov-flow-label">包含步骤 (${steps.length} 步)：</div>
-        <div class="ov-flow-strip">${flowChipsHtml}</div>
       </div>
       <div class="ov-wb-fields">
         ${paramsHtml ? `
-          <div class="ov-wb-steps-box">
-            <div class="hint" style="font-size:11px; font-weight:600; margin-bottom:6px; color:var(--muted);">
-              参数配置 (${parameterizedSteps.length} 个步骤需要配置)：
-            </div>
-            <div class="ov-bundle-steps-list">
-              ${paramsHtml}
-            </div>
+          <div class="ov-bundle-steps-list">
+            ${paramsHtml}
           </div>
         ` : `
           <div class="ov-wb-empty-fields">
             <span class="ov-wb-empty-icon">${ic('check', 16)}</span>
-            <span>该流程所有步骤均采用默认参数，就绪后可直接执行。</span>
+            <span>该流程无需额外配置参数，就绪后可直接执行。</span>
           </div>
         `}
       </div>
