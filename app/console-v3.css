@@ -2466,60 +2466,6 @@ body:has(#page-overview:not([hidden])) .page {
   padding: var(--sp-16);
 }
 
-.dock-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: var(--r-full, 9999px);
-  background: var(--soft, #f1f5f9);
-  border: 1px solid var(--line, #e2e8f0);
-  font-size: var(--fs-12);
-  color: var(--text-2, #64748b);
-  user-select: none;
-  flex-shrink: 0;
-  max-width: 50%;
-  overflow: hidden;
-  transition: background-color var(--dur-2), border-color var(--dur-2), color var(--dur-2);
-}
-
-.dock-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted, #94a3b8);
-  flex: none;
-  transition: background-color var(--dur-2);
-}
-
-.dock-status-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: var(--fw-500);
-}
-
-.dock-status-pill[data-status="running"] {
-  background: var(--green-light, #ecfdf5);
-  border-color: rgba(16, 185, 129, 0.3);
-  color: var(--green-dark, #065f46);
-}
-
-.dock-status-pill[data-status="running"] .dock-status-dot {
-  background: var(--green, #10b981);
-  box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.25);
-}
-
-.dock-status-pill[data-status="warning"] {
-  background: var(--orange-light, #fffbeb);
-  border-color: rgba(245, 158, 11, 0.3);
-  color: var(--orange-dark, #92400e);
-}
-
-.dock-status-pill[data-status="warning"] .dock-status-dot {
-  background: var(--orange, #f59e0b);
-}
-
 #page-overview .ov-run-summary {
   display: none !important;
 }

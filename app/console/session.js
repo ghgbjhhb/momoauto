@@ -13,6 +13,10 @@ function renderSharedActivity() {
   }
   for (const run of state.runtimeState.runs) {
     if (run.currentPage) continue;
+    // 如果当前页面正在执行/管理该任务，坚决不误报为“来自另一个网页”
+    if (state.activeWorkflowRuns?.has(run.id) || state.activeWorkflowRun?.id === run.id || state.activeRun?.id === run.id || state.activeBundleRun?.id === run.id) {
+      continue;
+    }
     const device = state.devices.find(item => item.deviceId === run.deviceId);
     const target = device ? deviceLabel(device) + '：' : '';
     const activity = run.status === 'cancelling' ? '正在停止' : run.status === 'starting' ? '准备执行' : '正在执行';

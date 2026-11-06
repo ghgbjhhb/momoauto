@@ -903,8 +903,14 @@ elements.viewerStage?.addEventListener?.('click', event => {
     lastTileClick.deviceId = deviceId;
     lastTileClick.at = now;
 
-    // 单击卡片主体：聚焦该设备，联动切换底部状态与右下角日志！
-    selectDevice(deviceId);
+    // 单击卡片主体：
+    // - 宫格模式下：切换该设备的勾选状态（并同步选中），直接体现在多选集合与右侧执行按钮上！
+    // - 单台模式下：切换聚焦设备
+    if (state.view === 'grid') {
+      toggleTileBatchSelection(deviceId);
+    } else {
+      selectDevice(deviceId);
+    }
     return;
   }
 

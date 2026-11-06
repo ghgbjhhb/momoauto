@@ -122,14 +122,10 @@
                 </div>
                 <div class="dock-panel">
                   <div class="dock-panel-head">
-                    <div style="display: flex; align-items: center; gap: var(--sp-10); min-width: 0; flex: 1; overflow: hidden;">
+                    <div style="display: flex; align-items: center; gap: var(--sp-10); min-width: 0; flex: 1;">
                       <div class="log-tabs" style="flex-shrink: 0;">
                         <button class="segment active" id="dockTabTerminalScript" type="button">业务脚本日志</button>
                         <button class="segment" id="dockTabTerminalSystem" type="button" hidden>系统运行日志 <span class="log-badge" id="dockSystemLogBadge" hidden>0</span></button>
-                      </div>
-                      <div class="dock-status-pill" id="dockStatusPill" role="status" aria-live="polite">
-                        <span class="dock-status-dot" id="dockStatusDot"></span>
-                        <span class="dock-status-text" id="dockStatusText">设备待命</span>
                       </div>
                     </div>
                     <div class="dock-actions">
