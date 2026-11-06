@@ -9,7 +9,7 @@ const { YunmomoClient } = require('../../index');
 const { extractDeviceInfo } = require('../../workflows/v2/import-real-params');
 const { SCRIPT_DEFINITIONS, scriptById } = require('../script-catalog');
 const { readRunOwner } = require('../script-runner');
-const { getActiveWorkflowsSummary } = require('../workflow-runner');
+const { getActiveWorkflowsSummary, getDeviceLatestWorkflow, getWorkflowDeviceLog } = require('../workflow-runner');
 const {
   PROJECT_ROOT,
   CLOUD_DISK_ROOT,
@@ -320,20 +320,55 @@ async function handleConsoleRoutes(ctx, request, response, url) {
         }
       }
     }
+    const deviceLatestRuns = {};
+    for (const devId of Object.keys(deviceStates)) {
+      const latest = getDeviceLatestWorkflow(devId, user);
+      if (latest) deviceLatestRuns[devId] = latest;
+    }
     json(response, 200, {
       ok: true,
       runs,
       activeWorkflows: activeWfs,
       manualDevices: [...manualByDevice.values()],
-      deviceStates
+      deviceStates,
+      deviceLatestRuns
+    });
+    return true;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/devices/latest-run') {
+    if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
+    const deviceId = String(url.searchParams.get('deviceId') || '').trim();
+    if (!deviceId) { json(response, 400, { ok: false, error: '缺少 deviceId' }); return true; }
+    if (user.role !== 'admin' && !await authService.ensureDeviceAccess(user, deviceId)) {
+      json(response, 403, { ok: false, error: '无权查看该设备' });
+      return true;
+    }
+    const latest = getDeviceLatestWorkflow(deviceId, user);
+    if (!latest) {
+      json(response, 200, { ok: true, deviceId, run: null });
+      return true;
+    }
+    const log = getWorkflowDeviceLog(latest.workflowRunId, deviceId, user);
+    json(response, 200, {
+      ok: true,
+      deviceId,
+      run: {
+        ...latest,
+        log: redact(log || '')
+      }
     });
     return true;
   }
 
   if (request.method === 'GET' && url.pathname === '/api/logs') {
     if (!user) { json(response, 401, { ok: false, error: '请先登录' }); return true; }
-    const scriptRunId = String(url.searchParams.get('scriptRunId') || url.searchParams.get('runId') || '').trim();
+    let scriptRunId = String(url.searchParams.get('scriptRunId') || url.searchParams.get('runId') || '').trim();
     const targetDevId = String(url.searchParams.get('deviceId') || '').trim();
+    if (!scriptRunId && targetDevId) {
+      const latest = getDeviceLatestWorkflow(targetDevId, user);
+      if (latest?.workflowRunId) scriptRunId = latest.workflowRunId;
+    }
     const offsetRaw = url.searchParams.get('offset');
     const offset = offsetRaw != null ? Math.max(0, parseInt(offsetRaw, 10) || 0) : null;
     const tailRaw = url.searchParams.get('tail');
