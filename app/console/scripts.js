@@ -991,6 +991,19 @@ async function onDetailClick(event) {
   }
 }
 
+const batchStreamState = {
+  workflowRunId: '',
+  deviceCursors: new Map(),
+  streamLines: []
+};
+
+function resetBatchLogStream(runId = '') {
+  batchStreamState.workflowRunId = runId;
+  batchStreamState.deviceCursors.clear();
+  batchStreamState.streamLines = [];
+}
+window.resetBatchLogStream = resetBatchLogStream;
+
 function updateDockLogWithSnapshot(snapshot) {
   state.lastManagedSnapshot = snapshot;
   const dockBox = elements.dockOutputBox;
@@ -999,7 +1012,7 @@ function updateDockLogWithSnapshot(snapshot) {
   const results = snapshot.results || [];
   const outputs = snapshot.deviceOutputs || {};
 
-  // 单台视图下只展示当前设备
+  // 单台视图下只展示当前聚焦设备
   const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
   if (state.view === 'single' && curDev) {
     const curLog = (outputs[curDev.deviceId] || state.deviceLogs?.get(curDev.deviceId) || '').trim();
@@ -1008,30 +1021,61 @@ function updateDockLogWithSnapshot(snapshot) {
     return;
   }
 
-  // 宫格/多选模式：直接按设备并列输出每台窗口的真实执行日志
+  // 批量/多选模式：设备索引 + 最新日志增量时序流
+  const runId = snapshot.id || snapshot.workflowRunId || '';
+  if (runId && batchStreamState.workflowRunId !== runId) {
+    resetBatchLogStream(runId);
+  }
+
   const targetIds = results.length > 0 ? results.map(r => r.deviceId) : (state.batchDevices || []);
-  const entries = [];
+  let hasNew = false;
 
   for (const devId of targetIds) {
     const dev = state.devices.find(d => d.deviceId === devId);
     const label = dev && typeof deviceIndexLabel === 'function' ? deviceIndexLabel(dev) : devId;
-    const rawOut = (outputs[devId] || state.deviceLogs?.get(devId) || '').trim();
-    if (rawOut) {
-      entries.push('=== [' + label + '] ===\n' + rawOut);
-    } else {
-      const r = results.find(item => item.deviceId === devId);
-      if (r && r.status) {
-        entries.push('=== [' + label + '] ===\n状态: ' + r.status + (r.message ? ' (' + r.message + ')' : ''));
+    const fullText = (outputs[devId] || state.deviceLogs?.get(devId) || '');
+    const prevCursor = batchStreamState.deviceCursors.get(devId);
+
+    if (prevCursor === undefined) {
+      // 首次接入该设备：提取最新 8 行作为起点，避免巨幅历史输出阻塞
+      const lines = fullText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const initialChunk = lines.slice(-8);
+      for (const line of initialChunk) {
+        if (!line.startsWith('===') && !line.startsWith('----') && !line.startsWith('::step-')) {
+          batchStreamState.streamLines.push('[' + label + '] ' + line);
+          hasNew = true;
+        }
+      }
+      batchStreamState.deviceCursors.set(devId, fullText.length);
+    } else if (fullText.length > prevCursor) {
+      // 增量更新：仅提取该设备新增输出
+      const newChunk = fullText.slice(prevCursor);
+      batchStreamState.deviceCursors.set(devId, fullText.length);
+      const newLines = newChunk.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      for (const line of newLines) {
+        if (!line.startsWith('===') && !line.startsWith('----') && !line.startsWith('::step-')) {
+          batchStreamState.streamLines.push('[' + label + '] ' + line);
+          hasNew = true;
+        }
       }
     }
   }
 
-  if (entries.length > 0) {
-    dockBox.textContent = entries.join('\n\n');
-  } else if (snapshot.output) {
-    dockBox.textContent = snapshot.output;
+  // 维持滑动窗口上限 1200 行
+  if (batchStreamState.streamLines.length > 1200) {
+    batchStreamState.streamLines = batchStreamState.streamLines.slice(-1000);
   }
-  if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+
+  if (hasNew || dockBox.textContent === '暂无执行记录。') {
+    if (batchStreamState.streamLines.length > 0) {
+      dockBox.textContent = batchStreamState.streamLines.join('\n');
+    } else if (snapshot.output) {
+      dockBox.textContent = snapshot.output;
+    }
+    if (state.logDockAutoScroll !== false) {
+      dockBox.scrollTop = dockBox.scrollHeight;
+    }
+  }
 }
 window.updateDockLogWithSnapshot = updateDockLogWithSnapshot;
 

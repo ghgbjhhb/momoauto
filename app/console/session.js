@@ -546,6 +546,7 @@ function initOverviewLogDock() {
   });
 
   elements.dockClearOutput?.addEventListener('click', () => {
+    if (typeof resetBatchLogStream === 'function') resetBatchLogStream();
     if (state.logTab === 'system') {
       window.AppLogger?.clear();
       updateSystemLogView();
