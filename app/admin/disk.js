@@ -4,39 +4,12 @@
 let adminDiskInitialized = false;
 let adminDiskCurrentDir = '真参';
 let adminDiskFiles = [];
-let adminDiskDevices = [];
 let adminDiskSelectedFile = null;
 let adminDiskRequestSeq = 0;
-const diskDevicesRequests = createAdminLatestRequest();
 let adminDiskPreviewSeq = 0;
 let adminDiskPreviewController = null;
-
-async function loadAdminDiskDevices() {
-  const select = document.getElementById('adminDiskDeviceSelect');
-  if (!select) return;
-  const request = diskDevicesRequests.start();
-  try {
-    const res = await fetch('/api/devices', { signal: request.signal });
-    const data = await res.json();
-    if (!request.isCurrent()) return;
-    if (data.ok && Array.isArray(data.devices)) {
-      adminDiskDevices = data.devices;
-      if (adminDiskDevices.length === 0) {
-        select.innerHTML = '<option value="">暂无可用云机</option>';
-      } else {
-        const selected = window.adminRequestedDeviceId || select.value;
-        select.innerHTML = adminDiskDevices.map(d => {
-          const name = d.name ? (d.name + ' (' + d.deviceId + ')') : d.deviceId;
-          return '<option value="' + escapeHtml(d.deviceId) + '">' + escapeHtml(name) + '</option>';
-        }).join('');
-        if (adminDiskDevices.some(device => device.deviceId === selected)) select.value = selected;
-        window.adminRequestedDeviceId = '';
-      }
-    }
-  } catch (err) {
-    if (request.isCurrent() && err.name !== 'AbortError') console.error('加载设备列表失败:', err);
-  }
-}
+let adminDiskStatusFilter = 'all'; // 'all' | 'avail' | 'used'
+let adminDiskSearchQuery = '';
 
 async function loadAdminDiskFiles() {
   const requestId = ++adminDiskRequestSeq;
@@ -76,6 +49,31 @@ async function loadAdminDiskFiles() {
   }
 }
 
+function getFilteredAdminDiskFiles() {
+  let list = adminDiskFiles;
+  if (adminDiskCurrentDir === '真参' && adminDiskStatusFilter !== 'all') {
+    if (adminDiskStatusFilter === 'avail') {
+      list = list.filter(f => !f.zhencanStatus || f.zhencanStatus.status !== 'used');
+    } else if (adminDiskStatusFilter === 'used') {
+      list = list.filter(f => f.zhencanStatus && f.zhencanStatus.status === 'used');
+    }
+  }
+  const q = adminDiskSearchQuery.trim().toLowerCase();
+  if (q) {
+    list = list.filter(f => {
+      if (f.name.toLowerCase().includes(q)) return true;
+      if (f.previewInfo) {
+        const brand = (f.previewInfo.brand || '').toLowerCase();
+        const model = (f.previewInfo.model || '').toLowerCase();
+        const ver = (f.previewInfo.androidVersion || '').toLowerCase();
+        if (brand.includes(q) || model.includes(q) || ver.includes(q)) return true;
+      }
+      return false;
+    });
+  }
+  return list;
+}
+
 window.selectAdminDiskFile = function(fileName, event) {
   if (event) event.stopPropagation();
 
@@ -104,7 +102,7 @@ function updateAvatarOperationBar() {
   const bar = document.getElementById('avatarOperationBar');
   if (!bar) return;
 
-  // 仅在头像目录下且选中了图片时展示操作栏，其余情况完全隐藏，保持界面极简干净
+  // 仅在头像目录下且选中了图片时展示操作栏，其余情况完全隐藏
   if (adminDiskCurrentDir !== '头像' || !adminDiskSelectedFile) {
     bar.style.display = 'none';
     return;
@@ -120,12 +118,10 @@ function updateAvatarOperationBar() {
 
   const nameEl = document.getElementById('avatarSelectedName');
   const sizeEl = document.getElementById('avatarSelectedSize');
-  const btnPush = document.getElementById('btnPushSelectedAvatar');
   const btnDel = document.getElementById('btnDeleteSelectedAvatar');
 
   if (nameEl) nameEl.textContent = selected.name;
   if (sizeEl) sizeEl.textContent = '(' + selected.sizeFormatted + ')';
-  if (btnPush) btnPush.disabled = false;
   if (btnDel) btnDel.disabled = false;
 }
 
@@ -134,23 +130,25 @@ function renderAdminDiskFileList() {
   if (!listEl) return;
 
   const isAvatarDir = adminDiskCurrentDir === '头像';
+  const displayFiles = getFilteredAdminDiskFiles();
 
   if (isAvatarDir) {
     listEl.className = 'disk-grid-view';
 
-    if (adminDiskFiles.length === 0) {
+    if (displayFiles.length === 0) {
       adminDiskSelectedFile = null;
       updateAvatarOperationBar();
+      const emptyTip = adminDiskFiles.length === 0 ? '暂无头像图片' : '未找到匹配的头像图片';
+      const emptyHint = adminDiskFiles.length === 0 ? '点击右上角【上传文件】或直接将图片拖拽至此上传' : '请尝试调整搜索关键词';
       listEl.innerHTML = '<div class="disk-empty-state" style="padding: 48px 20px; grid-column: 1 / -1; width:100%; text-align:center;">' +
         '<div class="disk-empty-icon">🖼️</div>' +
-        '<p style="font-size:14px; color:#595959; margin:0 0 6px;">暂无头像图片</p>' +
-        '<span style="font-size:12px; color:#8c8c8c;">点击右上角【上传文件】或直接将图片拖拽至此上传</span>' +
+        '<p style="font-size:14px; color:#595959; margin:0 0 6px;">' + escapeHtml(emptyTip) + '</p>' +
+        '<span style="font-size:12px; color:#8c8c8c;">' + escapeHtml(emptyHint) + '</span>' +
       '</div>';
       return;
     }
 
-    // 若此前选中的文件已不存在则清空，严禁在初始加载时强行选中第一项
-    const hasCurrent = adminDiskFiles.some(f => f.name === adminDiskSelectedFile);
+    const hasCurrent = displayFiles.some(f => f.name === adminDiskSelectedFile);
     if (!hasCurrent) {
       adminDiskSelectedFile = null;
     }
@@ -165,7 +163,7 @@ function renderAdminDiskFileList() {
       }
     };
 
-    listEl.innerHTML = adminDiskFiles.map(file => {
+    listEl.innerHTML = displayFiles.map(file => {
       const selected = file.name === adminDiskSelectedFile;
       const previewUrl = '/api/cloud-disk/preview?dir=' + encodeURIComponent(adminDiskCurrentDir) +
         '&name=' + encodeURIComponent(file.name);
@@ -185,14 +183,15 @@ function renderAdminDiskFileList() {
   listEl.className = 'disk-file-list';
   updateAvatarOperationBar();
 
-  if (adminDiskFiles.length === 0) {
+  if (displayFiles.length === 0) {
+    const emptyTip = adminDiskFiles.length === 0 ? '暂无真参文件，点击右上角【上传文件】或直接将文件拖拽至此' : '未找到匹配的真参文件，请尝试调整搜索或过滤条件';
     listEl.innerHTML = '<div class="disk-empty-state" style="padding: 36px 20px;">' +
-      '<p style="font-size:14px; color:#595959; margin:0;">暂无真参文件，点击右上角【上传文件】或直接将文件拖拽至此</p>' +
+      '<p style="font-size:14px; color:#595959; margin:0;">' + escapeHtml(emptyTip) + '</p>' +
     '</div>';
     return;
   }
 
-  listEl.innerHTML = adminDiskFiles.map(file => {
+  listEl.innerHTML = displayFiles.map(file => {
     let thumbHtml = '<div class="disk-file-thumb params-thumb" style="font-size:22px; display:flex; align-items:center; justify-content:center;">⚙️</div>';
 
     let metaText = '';
@@ -209,15 +208,19 @@ function renderAdminDiskFileList() {
 
     let statusBadge = '';
     let toggleBtn = '';
-    if (file.zhencanStatus) {
-      if (file.zhencanStatus.status === 'used') {
-        const titleTip = '使用时间: ' + (file.zhencanStatus.usedAtFormatted || '此前') + ' | 目标云机: ' + (file.zhencanStatus.usedOnDeviceName || file.zhencanStatus.usedOnDeviceId || '未知');
-        statusBadge = '<span class="badge-status-used" style="background:#fff2f0; color:#cf1322; border:1px solid #ffccc7; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;" title="' + escapeHtml(titleTip) + '">🔴 已使用 (' + (file.zhencanStatus.usedAtFormatted ? escapeHtml(file.zhencanStatus.usedAtFormatted.slice(5, 16)) : '已导入') + ')</span>';
-        toggleBtn = '<button type="button" class="disk-action-btn success" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; padding:4px 10px; font-size:12px;" data-disk-action="available" title="将该真参重置为可用状态，允许再次导入">🔄 重新启用</button>';
-      } else {
-        statusBadge = '<span class="badge-status-avail" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;">🟢 可用</span>';
-        toggleBtn = '<button type="button" class="disk-action-btn subtle" style="color:#8c8c8c; border:1px solid #d9d9d9; padding:4px 10px; font-size:12px;" data-disk-action="used" title="将该真参标记为已使用">🚫 设为已用</button>';
-      }
+    if (file.zhencanStatus && file.zhencanStatus.status === 'used') {
+      const devName = file.zhencanStatus.usedOnDeviceName || file.zhencanStatus.usedOnDeviceId || '';
+      const timeStr = file.zhencanStatus.usedAtFormatted ? file.zhencanStatus.usedAtFormatted.slice(5, 16) : '';
+      let noteParts = [];
+      if (devName) noteParts.push(escapeHtml(devName));
+      if (timeStr) noteParts.push(escapeHtml(timeStr));
+      const noteText = noteParts.length ? ' (' + noteParts.join(' · ') + ')' : '';
+
+      statusBadge = '<span class="badge-status-used" style="background:#fff2f0; color:#cf1322; border:1px solid #ffccc7; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;" title="使用时间: ' + escapeHtml(file.zhencanStatus.usedAtFormatted || '此前') + '">🔴 已使用' + noteText + '</span>';
+      toggleBtn = '<button type="button" class="disk-action-btn success" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; padding:4px 12px; font-size:12px; border-radius:4px;" data-disk-action="available" title="重置为可用状态">🔄 恢复可用</button>';
+    } else {
+      statusBadge = '<span class="badge-status-avail" style="background:#f6ffed; color:#389e0d; border:1px solid #b7eb8f; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; margin-left:8px;">🟢 可用</span>';
+      toggleBtn = '<button type="button" class="disk-action-btn subtle" style="color:#595959; background:#fafafa; border:1px solid #d9d9d9; padding:4px 12px; font-size:12px; border-radius:4px;" data-disk-action="used" title="将该真参标记为已使用">🚫 设为已用</button>';
     }
 
     return '<div class="disk-file-card" data-filename="' + escapeHtml(file.name) + '">' +
@@ -228,16 +231,13 @@ function renderAdminDiskFileList() {
         '</div>' +
         '<div class="disk-file-meta">' + metaText + '</div>' +
       '</div>' +
-      '<div class="disk-file-actions">' +
+      '<div class="disk-file-actions" style="display:flex; align-items:center; gap:8px;">' +
         toggleBtn +
-        '<button type="button" class="disk-action-btn primary push-btn" data-disk-action="push">' +
-          '🚀 推送到云机' +
+        '<button type="button" class="disk-action-btn view-btn" style="padding:4px 12px; font-size:12px; border-radius:4px;" data-disk-action="preview">' +
+          '👁️ 预览' +
         '</button>' +
-        '<button type="button" class="disk-action-btn view-btn" data-disk-action="preview">' +
-          '预览' +
-        '</button>' +
-        '<button type="button" class="disk-action-btn danger delete-btn" data-disk-action="delete">' +
-          '删除' +
+        '<button type="button" class="disk-action-btn danger delete-btn" style="padding:4px 12px; font-size:12px; border-radius:4px;" data-disk-action="delete">' +
+          '🗑️ 删除' +
         '</button>' +
       '</div>' +
     '</div>';
@@ -258,25 +258,29 @@ function clearAdminDiskActivePreviewUrl() {
 
 function formatDiskFileSize(bytes) {
   if (!bytes || bytes <= 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return val.toFixed(1) + ' ' + units[i];
 }
 
-window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
+async function previewAdminDiskFile(fileName, isImage, isText, explicitDir) {
+  const currentDir = explicitDir || adminDiskCurrentDir;
+  clearAdminDiskActivePreviewUrl();
+  const controller = new AbortController();
+  adminDiskPreviewController = controller;
+  const seq = adminDiskPreviewSeq;
+  const previewIsCurrent = () => seq === adminDiskPreviewSeq && !controller.signal.aborted;
+
   const dialog = document.getElementById('adminDiskPreviewDialog');
   const titleEl = document.getElementById('adminDiskPreviewTitle');
   const bodyEl = document.getElementById('adminDiskPreviewBody');
   if (!dialog || !titleEl || !bodyEl) return;
 
-  clearAdminDiskActivePreviewUrl();
-  const previewId = adminDiskPreviewSeq;
-  const controller = new AbortController();
-  adminDiskPreviewController = controller;
-  const previewIsCurrent = () => previewId === adminDiskPreviewSeq && dialog.open;
-
-  const currentDir = targetDir || adminDiskCurrentDir || '头像';
   titleEl.textContent = '文件预览: ' + fileName;
   bodyEl.innerHTML = '<div style="padding:48px 16px; text-align:center; color:#595959;">' +
     '<div class="spinning" style="display:inline-block; font-size:28px; margin-bottom:12px;">🔄</div>' +
@@ -348,135 +352,68 @@ window.previewAdminDiskFile = async (fileName, isImage, isText, targetDir) => {
       }
       const text = await res.text();
       if (!previewIsCurrent()) return;
-      bodyEl.innerHTML = '<div style="max-height:65vh; overflow:auto; padding:14px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;">' +
-        '<pre style="margin:0; font-family:Consolas, monospace; font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-all; line-height:1.5;">' + escapeHtml(text) + '</pre>' +
+      bodyEl.innerHTML = '<div style="max-height: 60vh; overflow-y: auto; background: var(--bg-hover); padding: var(--sp-12); border-radius: var(--r-6); font-family: var(--font-mono); font-size: var(--fs-12); line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text-1);">' +
+        escapeHtml(text) +
       '</div>';
     } catch (err) {
       if (!previewIsCurrent() || err.name === 'AbortError') return;
-      bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#cf1322;">读取文件内容失败: ' + escapeHtml(err.message) + '</div>';
+      bodyEl.innerHTML = '<div style="padding:24px; text-align:center; color:#cf1322;">网络异常: ' + escapeHtml(err.message) + '</div>';
     }
   } else {
-    bodyEl.innerHTML = '<div style="padding:36px 16px; text-align:center;">' +
-      '<div style="font-size:38px; margin-bottom:12px;">📄</div>' +
-      '<p style="color:#595959; margin-bottom:16px; font-size:13.5px;">此文件格式暂不支持在线直接预览，请下载到本地查看</p>' +
-      '<a href="/api/cloud-disk/download?dir=' + encodeURIComponent(currentDir) + '&amp;name=' + encodeURIComponent(fileName) + '" download="' + escapeHtml(fileName) + '" class="btn-action-sm" style="display:inline-block; text-decoration:none; background:#1677ff; color:#fff; padding:6px 16px;">⬇️ 下载该文件</a>' +
+    bodyEl.innerHTML = '<div style="text-align: center; padding: var(--sp-24); color: var(--text-2);">' +
+      '<p>暂不支持在网页中直接内联预览该格式文件。</p>' +
+      '<a href="' + escapeHtml(fileUrl) + '" download class="btn-action-sm" style="margin-top: var(--sp-12); display: inline-block; text-decoration: none;">⬇️ 下载文件</a>' +
     '</div>';
   }
-};
+}
 
-window.deleteAdminDiskFile = async (fileName) => {
-  const targetDir = adminDiskCurrentDir;
-  const key = 'disk-delete:' + targetDir + ':' + fileName;
-  if (adminWriteGuard.isPending(key)) return;
+window.deleteAdminDiskFile = async function(fileName) {
+  const currentDir = adminDiskCurrentDir;
   const confirmed = await showConfirm({
-    title: '确认删除该文件？',
-    desc: '确定要从【' + escapeHtml(targetDir) + '】目录删除文件 <strong>' + escapeHtml(fileName) + '</strong> 吗？此操作无法撤销。',
+    title: '确认删除文件？',
+    desc: '即将永久从云盘中删除：<strong class="admin-confirm-highlight">' + escapeHtml(fileName) + '</strong><br>此操作不可撤销，请确认！',
     okText: '确认删除',
     cancelText: '取消',
     isDanger: true,
     icon: '🗑️'
   });
+  if (!confirmed) return;
 
-  if (!confirmed || !adminWriteGuard.begin(key)) return;
+  const key = 'disk-delete:' + currentDir + ':' + fileName;
+  if (!adminWriteGuard.begin(key)) return;
 
   try {
     const res = await fetch('/api/cloud-disk/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: targetDir, name: fileName })
+      body: JSON.stringify({ dir: currentDir, name: fileName })
     });
     const data = await res.json();
     if (data.ok) {
-      showToast('已成功删除文件 "' + fileName + '"', 'success');
-      if (adminDiskCurrentDir === targetDir) {
-        if (adminDiskSelectedFile === fileName) adminDiskSelectedFile = null;
-        loadAdminDiskFiles();
+      showToast('文件已彻底删除', 'success');
+      if (adminDiskSelectedFile === fileName) {
+        adminDiskSelectedFile = null;
+        updateAvatarOperationBar();
       }
+      loadAdminDiskFiles();
     } else {
-      showToast('删除失败: ' + (data.error || '未知错误'), 'error');
+      showToast('删除失败: ' + (data.error || '权限不足'), 'error');
     }
   } catch (err) {
-    showToast('删除请求失败: ' + err.message, 'error');
+    showToast('删除网络异常: ' + err.message, 'error');
   } finally {
     adminWriteGuard.end(key);
-  }
-};
-
-window.sendAdminDiskFileToDevice = async (fileName) => {
-  const targetDir = adminDiskCurrentDir;
-  const select = document.getElementById('adminDiskDeviceSelect');
-  const deviceId = select ? select.value : '';
-  const deviceName = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : deviceId;
-  const key = 'disk-push:' + deviceId + ':' + targetDir + ':' + fileName;
-  if (adminWriteGuard.isPending(key)) return;
-
-  if (!deviceId) {
-    showToast('请先在上方下拉框中选择要下发的目标云机！', 'error');
-    return;
-  }
-
-  const isParamsDir = targetDir === '真参';
-  const confirmed = await showConfirm({
-    title: isParamsDir ? '确认推送真参配置到云机？' : '确认推送图片到云机相册？',
-    desc: isParamsDir
-      ? ('确认将真参文件 <strong class="admin-confirm-highlight">' + escapeHtml(fileName) + '</strong> 推送并应用到云机 <strong>' + escapeHtml(deviceName) + '</strong>？')
-      : ('确认将图片 <strong class="admin-confirm-highlight">' + escapeHtml(fileName) + '</strong> 立即推送到云机 <strong>' + escapeHtml(deviceName) + '</strong> 的相册？'),
-    okText: '立即推送',
-    cancelText: '取消',
-    isDanger: false,
-    icon: '🚀'
-  });
-
-  if (!confirmed || !adminWriteGuard.begin(key)) return;
-
-  const card = document.querySelector('.disk-file-card[data-filename="' + CSS.escape(fileName) + '"]');
-  const pushBtn = card ? card.querySelector('.push-btn') : null;
-  const originalText = pushBtn ? pushBtn.innerHTML : '';
-  const topPushBtn = document.getElementById('btnPushSelectedAvatar');
-  const originalTopText = topPushBtn ? topPushBtn.innerHTML : '';
-
-  if (pushBtn) {
-    pushBtn.disabled = true;
-    pushBtn.innerHTML = '⏳ 正在实时下发…';
-  }
-  if (topPushBtn) {
-    topPushBtn.disabled = true;
-    topPushBtn.innerHTML = '⏳ 正在下发…';
-  }
-
-  try {
-    const res = await fetch('/api/cloud-disk/send-to-device', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId, dir: targetDir, name: fileName })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      showToast('下发成功！' + (data.message || ''), 'success');
-    } else {
-      showToast('下发失败: ' + (data.error || '操作未能完成'), 'error');
-    }
-  } catch (err) {
-    showToast('网络或下发接口异常: ' + err.message, 'error');
-  } finally {
-    adminWriteGuard.end(key);
-    if (pushBtn) {
-      pushBtn.disabled = false;
-      pushBtn.innerHTML = originalText;
-    }
-    if (topPushBtn) {
-      topPushBtn.disabled = false;
-      topPushBtn.innerHTML = originalTopText;
-    }
   }
 };
 
 async function uploadAdminDiskFiles(files) {
   if (!files || !files.length) return;
-  // 固定一次批量上传的目录，防止用户在文件读取期间切换目录导致误上传。
   const uploadDir = adminDiskCurrentDir;
   const total = files.length;
   let successCount = 0;
+  let failCount = 0;
+
+  showToast('开始上传 ' + total + ' 个文件到【' + uploadDir + '】…', 'info');
 
   for (let i = 0; i < total; i++) {
     const file = files[i];
@@ -485,18 +422,31 @@ async function uploadAdminDiskFiles(files) {
       const res = await fetch('/api/cloud-disk/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dir: uploadDir, name: file.name, contentBase64: base64 })
+        body: JSON.stringify({
+          dir: uploadDir,
+          name: file.name,
+          data: base64
+        })
       });
       const data = await res.json();
-      if (data.ok) successCount++;
-      else showToast('文件 [' + file.name + '] 上传失败: ' + (data.error || '服务器错误'), 'error');
+      if (data.ok) {
+        successCount++;
+      } else {
+        failCount++;
+        console.warn('文件上传失败:', file.name, data.error);
+      }
     } catch (err) {
-      showToast('文件 [' + file.name + '] 读取或上传失败: ' + err.message, 'error');
+      failCount++;
+      console.error('上传过程出错:', file.name, err);
     }
   }
 
-  showToast('成功上传 ' + successCount + '/' + total + ' 个文件到【' + uploadDir + '】',
-    successCount === total ? 'success' : 'error');
+  if (failCount === 0) {
+    showToast('全部 ' + successCount + ' 个文件上传成功！', 'success');
+  } else {
+    showToast('上传完成: ' + successCount + ' 成功, ' + failCount + ' 失败', 'warning');
+  }
+
   if (uploadDir === adminDiskCurrentDir) loadAdminDiskFiles();
 }
 
@@ -518,6 +468,9 @@ function loadAdminDisk() {
     adminDiskInitialized = true;
     const btnParams = document.getElementById('adminDiskDirParams');
     const btnAvatars = document.getElementById('adminDiskDirAvatars');
+    const filterGroup = document.getElementById('adminDiskFilterGroup');
+    const searchInput = document.getElementById('adminDiskSearchInput');
+
     if (btnParams) {
       btnParams.addEventListener('click', () => {
         adminDiskCurrentDir = '真参';
@@ -526,8 +479,10 @@ function loadAdminDisk() {
         btnAvatars?.classList.remove('active');
         const countP = document.getElementById('adminDiskCountParams');
         const countA = document.getElementById('adminDiskCountAvatars');
-        if (countP) { countP.style.background = '#1677ff'; countP.style.color = '#fff'; }
-        if (countA) { countA.style.background = '#e8e8e8'; countA.style.color = '#595959'; }
+        if (countP) { countP.style.background = 'var(--accent)'; countP.style.color = 'var(--text-on-accent)'; }
+        if (countA) { countA.style.background = 'var(--border)'; countA.style.color = 'var(--text-2)'; }
+        if (filterGroup) filterGroup.style.display = 'flex';
+        if (searchInput) searchInput.placeholder = '🔍 搜索文件 / 机型...';
         loadAdminDiskFiles();
       });
     }
@@ -539,18 +494,45 @@ function loadAdminDisk() {
         btnParams?.classList.remove('active');
         const countP = document.getElementById('adminDiskCountParams');
         const countA = document.getElementById('adminDiskCountAvatars');
-        if (countA) { countA.style.background = '#1677ff'; countA.style.color = '#fff'; }
-        if (countP) { countP.style.background = '#e8e8e8'; countP.style.color = '#595959'; }
+        if (countA) { countA.style.background = 'var(--accent)'; countA.style.color = 'var(--text-on-accent)'; }
+        if (countP) { countP.style.background = 'var(--border)'; countP.style.color = 'var(--text-2)'; }
+        if (filterGroup) filterGroup.style.display = 'none';
+        if (searchInput) searchInput.placeholder = '🔍 搜索头像图片...';
         loadAdminDiskFiles();
       });
     }
 
-    const btnPushAvatar = document.getElementById('btnPushSelectedAvatar');
-    if (btnPushAvatar) {
-      btnPushAvatar.addEventListener('click', () => {
-        if (adminDiskSelectedFile) sendAdminDiskFileToDevice(adminDiskSelectedFile);
+    // 状态过滤切换
+    if (filterGroup) {
+      filterGroup.addEventListener('click', e => {
+        const btn = e.target.closest('[data-status-filter]');
+        if (!btn) return;
+        adminDiskStatusFilter = btn.dataset.statusFilter || 'all';
+        filterGroup.querySelectorAll('.btn-filter-status').forEach(el => {
+          if (el === btn) {
+            el.classList.add('active');
+            el.style.background = 'var(--accent)';
+            el.style.color = 'var(--text-on-accent)';
+            el.style.fontWeight = 'var(--fw-500)';
+          } else {
+            el.classList.remove('active');
+            el.style.background = 'transparent';
+            el.style.color = 'var(--text-2)';
+            el.style.fontWeight = 'normal';
+          }
+        });
+        renderAdminDiskFileList();
       });
     }
+
+    // 搜索实时过滤
+    if (searchInput) {
+      searchInput.addEventListener('input', e => {
+        adminDiskSearchQuery = e.target.value || '';
+        renderAdminDiskFileList();
+      });
+    }
+
     const btnPrevAvatar = document.getElementById('btnPreviewSelectedAvatar');
     if (btnPrevAvatar) {
       btnPrevAvatar.addEventListener('click', () => {
@@ -566,9 +548,6 @@ function loadAdminDisk() {
 
     const refreshBtn = document.getElementById('adminDiskRefreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', loadAdminDiskFiles);
-
-    const refreshDevsBtn = document.getElementById('adminDiskRefreshDevicesBtn');
-    if (refreshDevsBtn) refreshDevsBtn.addEventListener('click', loadAdminDiskDevices);
 
     const fileInput = document.getElementById('adminDiskFileInput');
     const uploadBtn = document.getElementById('adminDiskUploadBtn');
@@ -593,24 +572,29 @@ function loadAdminDisk() {
         if (action === 'preview') {
           const file = adminDiskFiles.find(item => item.name === fileName);
           previewAdminDiskFile(fileName, adminDiskCurrentDir === '头像', Boolean(file?.isText));
-        } else if (action === 'push') sendAdminDiskFileToDevice(fileName);
-        else if (action === 'delete') deleteAdminDiskFile(fileName);
-        else if (action === 'used' || action === 'available') toggleZhencanStatus(fileName, action);
+        } else if (action === 'delete') {
+          deleteAdminDiskFile(fileName);
+        } else if (action === 'used' || action === 'available') {
+          toggleZhencanStatus(fileName, action);
+        }
       } else if (node.classList.contains('disk-grid-item')) {
         selectAdminDiskFile(fileName, event);
       }
     });
+
     list?.addEventListener('dblclick', event => {
       const node = event.target.closest('.disk-grid-item');
       if (node && !event.target.closest('[data-disk-action]')) {
         previewAdminDiskFile(node.dataset.filename, true, false);
       }
     });
+
     list?.addEventListener('error', event => {
       if (event.target.tagName !== 'IMG' || !event.target.closest('.disk-grid-thumb')) return;
       const thumb = event.target.parentElement;
       thumb.replaceChildren(document.createTextNode('🖼️'));
     }, true);
+
     document.getElementById('adminDiskPreviewBody')?.addEventListener('click', event => {
       if (!event.target.closest('[data-disk-retry]')) return;
       const dialog = document.getElementById('adminDiskPreviewDialog');
@@ -665,12 +649,8 @@ function loadAdminDisk() {
     }
   }
 
-  loadAdminDiskDevices();
   loadAdminDiskFiles();
 }
-
-
-
 
 window.toggleZhencanStatus = async function(fileName, targetStatus) {
   const key = 'zhencan-status:' + fileName;

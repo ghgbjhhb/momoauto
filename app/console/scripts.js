@@ -1082,6 +1082,9 @@ async function followManagedWorkflow(runId) {
         skipDeviceLogStore: true,
         skipDockOutput: hasCurDevRealLog
       });
+      if (state.view === 'grid' && typeof refreshTileShots === 'function') {
+        refreshTileShots();
+      }
     }
     if (snapshot.state === 'interrupted') {
       const interruptedRecord = {
@@ -1547,6 +1550,9 @@ async function runScriptOnDevice(script, deviceId, options = {}) {
         lastOutput = output;
         writeOutput(`[设备 ${label}] 执行中：${script.title}`,
           cleanScriptLines(snapshot.stdout, snapshot.stderr), { runId: scriptRunId, logFile: snapshot.logFile, deviceId });
+        if (state.view === 'grid' && typeof refreshTileShots === 'function') {
+          refreshTileShots();
+        }
       }
       await new Promise(resolve => setTimeout(resolve, 1200));
     }
