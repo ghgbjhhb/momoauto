@@ -762,7 +762,7 @@ function renderBundleDetail(panel, bundle) {
 // 以面板 DOM 实际值为准收集各步骤参数（空值删除，回退脚本默认行为），并校验必填
 function collectBundleRunOptions(bundle) {
   const options = bundleSteps(bundle).map((_, i) => ({ ...(bundle.stepOptions?.[i] || {}) }));
-  const panel = byId('taskDetailPanel');
+  const panel = byId('ovTaskConfig') || byId('taskDetailPanel') || document;
   if (panel) {
     for (const input of panel.querySelectorAll('[data-bundle-run-param]')) {
       const raw = input.dataset.bundleRunParam || '';
@@ -2397,9 +2397,19 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
     const bundle = state.bundles?.find(b => b.id === state.taskBundleId);
     if (!bundle) { container.innerHTML = '<div class="empty">请选择左侧任务</div>'; return; }
     const steps = bundleSteps(bundle);
-    const stepsHtml = steps.map((s, idx) => `
-      <li>${idx + 1}. <strong>${escapeHtml(scriptTitle(s))}</strong> <span class="hint">(${escapeHtml(s.id)})</span></li>
-    `).join('');
+    const stepsHtml = steps.map((s, idx) => {
+      const fields = (s.parameters || []).map(field => bundleRunFieldHtml(bundle, s, idx, field)).join('');
+      return `
+        <div class="ov-bundle-step-item">
+          <div class="ov-bundle-step-head">
+            <span class="ov-bundle-step-badge">${idx + 1}</span>
+            <strong class="ov-bundle-step-name">${escapeHtml(scriptTitle(s))}</strong>
+            <span class="hint">(${escapeHtml(s.id)})</span>
+          </div>
+          ${fields ? `<div class="ov-bundle-step-fields">${fields}</div>` : ''}
+        </div>
+      `;
+    }).join('');
 
     container.innerHTML = `
       <div class="ov-wb-header">
@@ -2414,10 +2424,10 @@ function renderOverviewTaskConfig(container, currentDev, isRunning, forceRebuild
       ${bundle.description ? `<div class="ov-wb-desc">${escapeHtml(bundle.description)}</div>` : ''}
       <div class="ov-wb-fields">
         <div class="ov-wb-steps-box">
-          <div class="hint" style="font-weight:600; margin-bottom:8px;">包含步骤清单 (${steps.length} 步)：</div>
-          <ol class="ov-wb-step-list">
-            ${stepsHtml || '<li class="hint">暂无配置步骤</li>'}
-          </ol>
+          <div class="hint" style="font-weight:600; margin-bottom:8px;">包含步骤清单与参数配置 (${steps.length} 步)：</div>
+          <div class="ov-bundle-steps-list">
+            ${stepsHtml || '<div class="hint">暂无配置步骤</div>'}
+          </div>
         </div>
       </div>
       <div class="ov-wb-footer">
@@ -2695,6 +2705,17 @@ function onOvParamChange(event) {
   const input = event.target.closest('[data-ov-param]');
   if (input && state.taskScriptId) {
     state.taskParamValues[state.taskScriptId + ':' + input.dataset.ovParam] = input.value;
+    return;
+  }
+  const bundleInput = event.target.closest('[data-bundle-run-param]');
+  if (bundleInput && state.taskBundleId) {
+    state.bundleParamValues = state.bundleParamValues || {};
+    const raw = bundleInput.dataset.bundleRunParam;
+    const colon = raw.indexOf(':');
+    const stepIdx = raw.slice(0, colon);
+    const fieldName = raw.slice(colon + 1);
+    const key = bundleRunParamKey(state.taskBundleId, stepIdx, fieldName);
+    state.bundleParamValues[key] = bundleInput.value;
   }
 }
 

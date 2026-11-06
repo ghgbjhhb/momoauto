@@ -2035,6 +2035,86 @@ body:has(#page-overview:not([hidden])) .page {
   height: var(--h-control-lg);
 }
 
+
+.ov-bundle-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.ov-bundle-step-item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-8);
+  padding: var(--sp-8) var(--sp-10);
+  background: var(--card);
+  transition: border-color var(--dur-2);
+}
+
+.ov-bundle-step-item:hover {
+  border-color: var(--line-strong);
+}
+
+.ov-bundle-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  font-size: var(--fs-12);
+}
+
+.ov-bundle-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-full, 9999px);
+  background: var(--soft-2, #e2e8f0);
+  color: var(--text, #1e293b);
+  font-size: 11px;
+  font-weight: 700;
+  flex: none;
+}
+
+.ov-bundle-step-name {
+  color: var(--text);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-600);
+}
+
+.ov-bundle-step-fields {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.ov-bundle-step-fields .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: 0;
+}
+
+.ov-bundle-step-fields .field label {
+  font-size: var(--fs-11);
+  font-weight: var(--fw-600);
+  color: var(--muted);
+}
+
+.ov-bundle-step-fields .field input,
+.ov-bundle-step-fields .field select,
+.ov-bundle-step-fields .field textarea {
+  font-size: var(--fs-12);
+  padding: var(--sp-6) var(--sp-8);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-6);
+  background: var(--soft);
+  color: var(--text);
+  width: 100%;
+}
+
 .ov-wb-footer {
   display: flex;
   flex-direction: column;
