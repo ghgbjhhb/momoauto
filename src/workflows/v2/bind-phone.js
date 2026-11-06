@@ -368,6 +368,7 @@ async function runBindPhone(client, targetDeviceId, options = {}, logger = conso
 
   const resolvedDeviceId = deviceIdOf(target);
   const devLabel = (options && options.deviceName) ? options.deviceName : formatDeviceLabel(target);
+  const deviceName = devLabel;
   const projectCode = String(options.projectCode || process.env.YUNMOMO_MOMO_PROJECT_CODE || DEFAULT_PROJECT_CODE).trim();
   // 手机号来源优先级：显式指定 > 玄武预抢会话 (login-momo 并行抢号) > 旧固定号兜底
   const phoneSession = options.phoneSession || null;

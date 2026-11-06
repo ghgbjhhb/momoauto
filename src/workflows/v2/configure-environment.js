@@ -176,6 +176,8 @@ async function runStep(context = {}) {
   }
 
   const devLabel = (context && context.deviceName) ? context.deviceName : formatDeviceLabel(target);
+  const targetName = devLabel;
+  const deviceName = devLabel;
   console.log(`📱 目标设备: ${devLabel} | 环境配置`);
 
   const phone = context.phone || client.device(targetDeviceId);

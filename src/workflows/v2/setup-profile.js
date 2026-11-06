@@ -269,6 +269,7 @@ async function runSetupProfile(client, targetDeviceId, options = {}, logger = co
 
   const resolvedDeviceId = deviceIdOf(target);
   const devLabel = (options && options.deviceName) ? options.deviceName : formatDeviceLabel(target);
+  const deviceName = devLabel;
   // 网名：留空即离线随机生成，显式指定则原样使用
   const nickname = await resolveGirlNickname(options.nickname || process.env.YUNMOMO_MOMO_NICKNAME);
   log.console(`[人设网名] 女生网名: "${nickname}"`);

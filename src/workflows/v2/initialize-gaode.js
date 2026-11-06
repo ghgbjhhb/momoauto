@@ -344,6 +344,7 @@ async function main() {
 
     const resolvedDeviceId = deviceIdOf(target);
     const devLabel = formatDeviceLabel(target);
+    const deviceName = devLabel;
     logger.file('Target device resolved', { devLabel, resolvedDeviceId, sdkVersion: target.sdkVersion });
 
     logger.console(`[目标设备] ${devLabel} | V2 (安卓 12)`);

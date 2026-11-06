@@ -213,6 +213,7 @@ async function main() {
   if (!target) throw new Error('目标设备不在当前账号设备列表中: ' + requestedDeviceId);
   const actualDeviceId = deviceIdOf(target);
   const devLabel = formatDeviceLabel(target);
+  const deviceName = devLabel;
   const sdkVer = String(target.sdkVersion || 'V2').toUpperCase();
 
   console.log(`[准备] 目标设备: ${devLabel} (系统: ${sdkVer}) | 流程: 导入真参v2`);

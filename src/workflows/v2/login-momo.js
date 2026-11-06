@@ -437,6 +437,7 @@ async function runMomoLogin(client, targetDeviceId, options = {}, logger = conso
 
   const resolvedDeviceId = deviceIdOf(target);
   const devLabel = (options && options.deviceName) ? options.deviceName : formatDeviceLabel(target);
+  const deviceName = devLabel;
   const targetTime = String(options.targetTime || process.env.YAYA_TARGET_TIME || DEFAULT_TARGET_TIME).trim();
   const yayaMode = String(options.yayaMode || process.env.YAYA_MODE || DEFAULT_YAYA_MODE).trim();
   // 网名：留空即离线随机生成，显式指定则原样使用
