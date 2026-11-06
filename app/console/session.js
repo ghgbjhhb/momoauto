@@ -437,12 +437,21 @@ async function fetchDeviceLogHistory(deviceId, runId) {
 window.fetchDeviceLogHistory = fetchDeviceLogHistory;
 
 async function syncCurrentDeviceLogView() {
+  const box = elements.dockOutputBox;
+  if (!box) return;
+
+  // 关键：在宫格多选模式下，始终优先保持多机时序增量流，绝不可被某台空设备或单设备日志盲目冲掉！
+  if (state.view === 'grid') {
+    if (typeof renderBatchLogStreamToDock === 'function') {
+      renderBatchLogStreamToDock();
+    }
+    return;
+  }
+
   const currentDev = typeof currentDevice === 'function' ? currentDevice() : null;
   if (!currentDev) return;
   const deviceId = currentDev.deviceId;
   const devState = (state.deviceStates && state.deviceStates[deviceId]) ? state.deviceStates[deviceId] : { status: 'idle' };
-  const box = elements.dockOutputBox;
-  if (!box) return;
 
   const label = typeof deviceIndexLabel === 'function' ? deviceIndexLabel(currentDev) : currentDev.deviceId;
 

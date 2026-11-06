@@ -996,6 +996,7 @@ const batchStreamState = {
   deviceCursors: new Map(),
   streamLines: []
 };
+window.batchStreamState = batchStreamState;
 
 function resetBatchLogStream(runId = '') {
   batchStreamState.workflowRunId = runId;
@@ -1004,14 +1005,49 @@ function resetBatchLogStream(runId = '') {
 }
 window.resetBatchLogStream = resetBatchLogStream;
 
+function resolveDeviceBadge(devId) {
+  const dev = state.devices?.find(d => d.deviceId === devId);
+  if (dev && typeof deviceIndexLabel === 'function') {
+    return deviceIndexLabel(dev);
+  }
+  const idx = state.devices ? state.devices.findIndex(d => d.deviceId === devId) : -1;
+  if (idx >= 0) {
+    return '#' + String(idx + 1).padStart(2, '0');
+  }
+  return '#' + String(devId).slice(-4);
+}
+
+function isLogNoise(line) {
+  if (!line) return true;
+  if (line.startsWith('===') || line.startsWith('---') || line.startsWith('::step-')) return true;
+  if (line.includes('================================================================================')) return true;
+  return false;
+}
+
+function renderBatchLogStreamToDock() {
+  const dockBox = elements.dockOutputBox;
+  if (!dockBox) return;
+  if (batchStreamState.streamLines.length > 0) {
+    dockBox.textContent = batchStreamState.streamLines.join('\n');
+    if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+  } else if (state.lastManagedSnapshot?.output) {
+    dockBox.textContent = state.lastManagedSnapshot.output;
+    if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+  }
+}
+window.renderBatchLogStreamToDock = renderBatchLogStreamToDock;
+
 function updateDockLogWithSnapshot(snapshot) {
   state.lastManagedSnapshot = snapshot;
   const dockBox = elements.dockOutputBox;
   if (!dockBox) return;
 
+  const results = snapshot?.results || [];
   const outputs = snapshot?.deviceOutputs || {};
   const curDev = typeof currentDevice === 'function' ? currentDevice() : null;
-  if (curDev) {
+
+  // 1. 严格单台视图（用户明确处于单台大图排查模式）
+  if (state.view === 'single' && curDev) {
     const curLog = (outputs[curDev.deviceId] || state.deviceLogs?.get(curDev.deviceId) || '').trim();
     if (curLog) {
       dockBox.textContent = curLog;
@@ -1020,10 +1056,66 @@ function updateDockLogWithSnapshot(snapshot) {
     }
   }
 
-  // 若尚未取得聚焦设备的独立日志，兜底展示全局输出
-  if (snapshot?.output) {
-    dockBox.textContent = snapshot.output;
-    if (state.logDockAutoScroll !== false) dockBox.scrollTop = dockBox.scrollHeight;
+  // 2. 宫格多机模式 / 批量任务模式：统一规范 [#01]、[#02] 增量时序流
+  const runId = snapshot.id || snapshot.workflowRunId || '';
+  if (runId && batchStreamState.workflowRunId !== runId) {
+    resetBatchLogStream(runId);
+  }
+
+  const targetIds = results.length > 0
+    ? results.map(r => r.deviceId)
+    : (state.batchDevices?.length > 0 ? state.batchDevices : (state.devices || []).map(d => d.deviceId));
+
+  let hasNew = false;
+
+  for (const devId of targetIds) {
+    const badge = resolveDeviceBadge(devId);
+    const fullText = (outputs[devId] || state.deviceLogs?.get(devId) || '');
+    if (!fullText) continue;
+
+    const prevCursor = batchStreamState.deviceCursors.get(devId);
+
+    if (prevCursor === undefined) {
+      // 首次接入该设备：提取最新 12 行作为起点，避免巨幅历史输出阻塞页面
+      const lines = fullText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const initialChunk = lines.slice(-12);
+      for (const line of initialChunk) {
+        if (!isLogNoise(line)) {
+          const formatted = line.match(/^\[#\d+\]/) ? line : `[${badge}] ${line}`;
+          batchStreamState.streamLines.push(formatted);
+          hasNew = true;
+        }
+      }
+      batchStreamState.deviceCursors.set(devId, fullText.length);
+    } else if (fullText.length > prevCursor) {
+      // 增量更新：仅提取新增部分并逐行打上统一设备前缀
+      const newChunk = fullText.slice(prevCursor);
+      batchStreamState.deviceCursors.set(devId, fullText.length);
+      const newLines = newChunk.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      for (const line of newLines) {
+        if (!isLogNoise(line)) {
+          const formatted = line.match(/^\[#\d+\]/) ? line : `[${badge}] ${line}`;
+          batchStreamState.streamLines.push(formatted);
+          hasNew = true;
+        }
+      }
+    }
+  }
+
+  // 滑动窗口防护，最多保留 1500 行，避免长时间高频输出引发页面卡顿掉帧
+  if (batchStreamState.streamLines.length > 1500) {
+    batchStreamState.streamLines = batchStreamState.streamLines.slice(-1200);
+  }
+
+  if (hasNew || dockBox.textContent === '暂无执行记录。') {
+    if (batchStreamState.streamLines.length > 0) {
+      dockBox.textContent = batchStreamState.streamLines.join('\n');
+    } else if (snapshot.output) {
+      dockBox.textContent = snapshot.output;
+    }
+    if (state.logDockAutoScroll !== false) {
+      dockBox.scrollTop = dockBox.scrollHeight;
+    }
   }
 }
 window.updateDockLogWithSnapshot = updateDockLogWithSnapshot;

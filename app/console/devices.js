@@ -57,6 +57,15 @@ function switchToView(view) {
     seg.classList.toggle('active', seg.dataset.view === view);
   }
   renderViewer();
+  if (view === 'grid') {
+    if (typeof renderBatchLogStreamToDock === 'function') {
+      renderBatchLogStreamToDock();
+    }
+  } else {
+    if (typeof syncCurrentDeviceLogView === 'function') {
+      syncCurrentDeviceLogView();
+    }
+  }
 }
 window.switchToView = switchToView;
 
@@ -619,11 +628,11 @@ function queueTileShot(device, force = false) {
   const active = isDeviceActive(device.deviceId);
   const ttl = active ? TILE_SHOT_TTL_ACTIVE : TILE_SHOT_TTL_IDLE;
   const cached = state.tileShots.get(device.deviceId);
-  if (!force && cached && Date.now() - cached.at < ttl) {
+  if (cached?.loading) return;
+  if (!force && cached?.bitmap && Date.now() - cached.at < ttl) {
     drawTileShot(device.deviceId, cached);
     return;
   }
-  if (cached?.loading) return;
   if (shotActive >= SHOT_CONCURRENCY) {
     if (!shotQueue.some(item => item.deviceId === device.deviceId)) shotQueue.push(device);
     return;

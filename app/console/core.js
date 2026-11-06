@@ -317,11 +317,20 @@ function writeOutput(title, lines, meta = {}) {
   const isCurrentDev = targetDeviceIds.length === 0 || (currentDev && targetDeviceIds.includes(currentDev.deviceId));
 
   const dockBox = elements.dockOutputBox;
-  if (!meta.skipDockOutput && dockBox && isCurrentDev) {
-    dockBox.textContent = text;
-    // 智能吸底（Stick-to-bottom）：仅当用户位于底部时自动跟随，向上翻阅历史时绝不强拽用户
-    if (state.logDockAutoScroll !== false) {
-      dockBox.scrollTop = dockBox.scrollHeight;
+  if (!meta.skipDockOutput && dockBox) {
+    if (state.view === 'grid') {
+      const hasBatchStream = typeof window.batchStreamState !== 'undefined' && window.batchStreamState?.streamLines?.length > 0;
+      if (!hasBatchStream) {
+        dockBox.textContent = text;
+        if (state.logDockAutoScroll !== false) {
+          dockBox.scrollTop = dockBox.scrollHeight;
+        }
+      }
+    } else if (isCurrentDev) {
+      dockBox.textContent = text;
+      if (state.logDockAutoScroll !== false) {
+        dockBox.scrollTop = dockBox.scrollHeight;
+      }
     }
   }
 
