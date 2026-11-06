@@ -2130,7 +2130,6 @@ function renderOverviewTasks() {
         type="button" data-ov-card="script:${escapeHtml(script.id)}"
         aria-pressed="${active}" title="${escapeHtml(script.description || script.title)}">
         <span class="ov-task-card-left">
-          <span class="ov-task-icon">${ic('tasks', 14)}</span>
           <span class="ov-task-title">${escapeHtml(scriptTitle(script))}</span>
         </span>
         ${running ? '<span class="badge run xs">执行中</span>' : ''}
@@ -2146,7 +2145,6 @@ function renderOverviewTasks() {
         type="button" data-ov-card="bundle:${escapeHtml(bundle.id)}"
         aria-pressed="${active}" title="${escapeHtml(bundle.description || bundle.name)}">
         <span class="ov-task-card-left">
-          <span class="ov-task-icon">${ic('phoneDevice', 14)}</span>
           <span class="ov-task-title">${escapeHtml(bundle.name)}</span>
         </span>
         ${running ? '<span class="badge run xs">执行中</span>' : ''}
