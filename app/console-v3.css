@@ -1890,14 +1890,15 @@ body:has(#page-overview:not([hidden])) .page {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-8);
-  padding: var(--sp-8) var(--sp-10);
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-8);
   background: var(--card);
-  transition: border-color var(--dur-2), background-color var(--dur-2);
+  transition: border-color var(--dur-2), background-color var(--dur-2), box-shadow var(--dur-2);
   cursor: pointer;
   user-select: none;
   flex: none;
+  position: relative;
 }
 
 .ov-task-card:hover {
@@ -1908,11 +1909,13 @@ body:has(#page-overview:not([hidden])) .page {
 .ov-task-card.active {
   border-color: var(--blue);
   background: var(--blue-light);
+  box-shadow: inset 3.5px 0 0 var(--blue);
 }
 
 .ov-task-card.running {
   border-color: var(--green);
   background: var(--green-light);
+  box-shadow: inset 3.5px 0 0 var(--green);
 }
 
 .ov-task-card-left {
@@ -1924,20 +1927,7 @@ body:has(#page-overview:not([hidden])) .page {
 }
 
 .ov-task-icon {
-  width: 24px;
-  height: var(--h-control-sm);
-  border-radius: var(--r-6);
-  background: var(--soft);
-  color: var(--blue);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-}
-
-.ov-task-card.running .ov-task-icon {
-  background: var(--green-light);
-  color: var(--green);
+  display: none !important;
 }
 
 .ov-task-title {
@@ -1947,6 +1937,15 @@ body:has(#page-overview:not([hidden])) .page {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+
+.ov-task-card.active .ov-task-title {
+  color: var(--blue);
+}
+
+.ov-task-card.running .ov-task-title {
+  color: var(--green-dark, #065f46);
 }
 
 .ov-task-card-actions {
