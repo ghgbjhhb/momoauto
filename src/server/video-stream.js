@@ -412,6 +412,13 @@ function createVideoStreams({ client }) {
       const settings = control?.videoSettings || SETTINGS;
       return { ...settings, bounds: { ...settings.bounds } };
     },
+    closeDevice(deviceId, code = 'VIDEO_CLOSED', message = '设备视频连接已关闭') {
+      for (const [key, entry] of streams) {
+        if (key.startsWith(deviceId + ':')) {
+          entry.close(code, message);
+        }
+      }
+    },
     async closeAll() {
       const entries = [...streams.values()];
       for (const entry of entries) entry.close('VIDEO_CLOSED', '视频会话已关闭');

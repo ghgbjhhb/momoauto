@@ -313,6 +313,15 @@ function launchWorkflow(body, user) {
   };
   workflows.set(id, run);
   persistWorkflow(run);
+  const isResetAction = steps.some(s => s.scriptId && /reset/i.test(s.scriptId));
+  if (isResetAction) {
+    for (const bridge of manualBridges) {
+      for (const devId of ids) {
+        bridge.closeDevice?.(devId, 'DEVICE_RESET');
+      }
+    }
+    clearDeviceCache();
+  }
   run.done = executeWorkflow(run, steps, user).catch(error => {
     run.state = 'unknown';
     for (const entry of run.results) {
@@ -325,6 +334,7 @@ function launchWorkflow(body, user) {
   }).finally(() => {
     run.finishedAt = Date.now();
     if (run.state === 'running') run.state = run.stopRequested ? 'cancelled' : 'finished';
+    if (isResetAction) clearDeviceCache();
     persistWorkflow(run);
     pruneWorkflows();
   });

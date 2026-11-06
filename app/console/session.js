@@ -794,6 +794,11 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     loadSharedRuntimeState();
     if (state.tokenConfigured) loadDevices(true);
+    if (state.view === 'grid' && typeof refreshTileShots === 'function') {
+      refreshTileShots();
+    } else if (state.view === 'single' && typeof requestAllPreviews === 'function') {
+      requestAllPreviews();
+    }
   }
 });
 

@@ -320,6 +320,7 @@ function attachManualControl(server, { allowedRequest, selectedDevice, client, b
     isBusy: deviceId => manualDevices.has(deviceId),
     closeDevice(deviceId, reason = 'DEVICE_EXPIRED', userId = null) {
       revokeSessions(lease => lease.deviceId === deviceId && (!userId || lease.user.id === userId), reason);
+      videos.closeDevice?.(deviceId, reason);
     },
     closeUser(userId) {
       revokeSessions(lease => lease.user.id === userId, 'ACCOUNT_BANNED');

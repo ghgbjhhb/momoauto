@@ -631,8 +631,14 @@ function queueTileShot(device, force = false) {
   fetchTileShot(device);
 }
 
+const tileRetryTimers = new Map();
+
 async function fetchTileShot(device) {
   const id = device.deviceId;
+  if (tileRetryTimers.has(id)) {
+    clearTimeout(tileRetryTimers.get(id));
+    tileRetryTimers.delete(id);
+  }
   const entry = { at: Date.now(), loading: true };
   state.tileShots.set(id, entry);
   shotActive++;
@@ -644,11 +650,31 @@ async function fetchTileShot(device) {
     entry.bitmap = bitmap;
     entry.at = Date.now();
     entry.loading = false;
+    state.tileFailures?.delete(id);
     drawTileShot(id, entry);
   } catch {
     state.tileShots.delete(id);
+    state.tileFailures = state.tileFailures || new Map();
+    const fails = (state.tileFailures.get(id) || 0) + 1;
+    state.tileFailures.set(id, fails);
+
     const slot = document.querySelector(`[data-shot-for="${CSS.escape(id)}"]`);
-    if (slot) slot.innerHTML = '<div class="tile-shot-failed"><span>快照不可用</span><button class="tile-retry-btn" type="button" data-retry-shot="' + CSS.escape(id) + '" title="重试">重试</button></div>';
+    if (slot) {
+      slot.innerHTML = `<div class="tile-shot-failed"><span>连接中断，正在重连 (${fails})…</span><button class="tile-retry-btn" type="button" data-retry-shot="${CSS.escape(id)}" title="立即重试">重试</button></div>`;
+    }
+
+    // 自动重试机制：采用渐进退避 (2s ~ 6s) 循环自动探测恢复，设备重启/重置后自动重新出画
+    const retryDelay = Math.min(2000 + fails * 1000, 6000);
+    const timer = setTimeout(() => {
+      tileRetryTimers.delete(id);
+      if (state.view === 'grid' && state.page === 'overview') {
+        const curDev = state.devices.find(d => d.deviceId === id);
+        if (curDev && isOnline(curDev)) {
+          queueTileShot(curDev, true);
+        }
+      }
+    }, retryDelay);
+    tileRetryTimers.set(id, timer);
   } finally {
     shotActive--;
     const next = shotQueue.shift();
@@ -985,8 +1011,11 @@ function scheduleNextTileRefresh() {
   const hasRunning = (state.devices || []).some(d => isDeviceActive(d.deviceId));
   const delay = hasRunning ? TILE_SHOT_TTL_ACTIVE : TILE_SHOT_TTL_IDLE;
   tileSchedulerTimer = setTimeout(() => {
-    if (!document.hidden) refreshTileShots();
-    scheduleNextTileRefresh();
+    try {
+      if (!document.hidden) refreshTileShots();
+    } finally {
+      scheduleNextTileRefresh();
+    }
   }, delay);
 }
 scheduleNextTileRefresh();
